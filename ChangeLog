@@ -1,8 +1,8 @@
-2005.332: version 1.6
+2005.332: version 1.6rc1
 	- Test for NULL pointers int logging.c routines and handle
 	them as best as possible.
 	- Add 'b' to the mode of all fopen() calls; WIN32 then does
-	not try to interpret line endings.
+	not try to translate line endings.
 
 2005.103: version 1.5
 	- Fixup some in-line comments.
