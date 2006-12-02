@@ -1,6 +1,6 @@
 2006.336: version 1.7rc1
 	- Add "sl_" prefix to SEED structures to avoid collision,
-	changed stucts: sl_blkt_head_s, sl_btime_s, sl_blkt_100_s,
+	changed structs: sl_blkt_head_s, sl_btime_s, sl_blkt_100_s,
 	sl_blkt_1000_s, sl_blkt_1001_s, sl_fsdh_s.
 	- Add "sl_" prefix to the following routines to avoid
 	collision with libmseed functions: sl_msr_new, sl_msr_free,
