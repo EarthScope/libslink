@@ -37,7 +37,7 @@
  *
  *  Modified by Chad Trabant, ORFEUS/EC-Project MEREDIAN		
  *
- *  modified: 2005.103
+ *  modified: 2006.336
  ************************************************************************/
 
 /*
@@ -117,16 +117,16 @@ static int unpack_int_32 (int32_t*, int, int, int, int32_t*, int);
 
 
 /************************************************************************/
-/*  msr_unpack():							*/
-/*  Unpack Mini-SEED data for a given MSrecord.  The data is accessed	*/
-/*  in the record indicated by MSrecord->msrecord and the unpacked	*/
-/*  samples are placed in MSrecord->datasamples.  The resulting data	*/
+/*  sl_msr_unpack():							*/
+/*  Unpack Mini-SEED data for a given SLMSrecord.  The data is accessed	*/
+/*  in the record indicated by SLMSrecord->msrecord and the unpacked	*/
+/*  samples are placed in SLMSrecord->datasamples.  The resulting data	*/
 /*  samples are 32-bit integers in host order.				*/
 /*                                                                      */
 /*  Return number of samples unpacked or -1 on error.                   */
 /************************************************************************/
 int
-msr_unpack (SLlog * log, MSrecord * msr, int swapflag)
+sl_msr_unpack (SLlog * log, SLMSrecord * msr, int swapflag)
 {
   int     i;
   int     blksize;		/* byte size of Mini-SEED record	*/

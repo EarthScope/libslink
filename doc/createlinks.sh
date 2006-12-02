@@ -1,7 +1,7 @@
 #!/bin/sh
 
-ORIG=msr_new.3
-LIST="msr_free.3 msr_parse.3 msr_print.3 msr_dsamprate.3 msr_dnomsamprate.3 msr_depochstime.3"
+ORIG=sl_msr_new.3
+LIST="sl_msr_free.3 sl_msr_parse.3 sl_msr_print.3 sl_msr_dsamprate.3 sl_msr_dnomsamprate.3 sl_msr_depochstime.3"
 for link in $LIST ; do
     ln -s $ORIG $link
 done
