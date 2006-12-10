@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2006.336
+ * modified: 2006.344
  ***************************************************************************/
 
 #include <stdlib.h>
@@ -775,8 +775,8 @@ update_stream (SLCD * slconn, SLpacket * slpack)
   /* Change byte order? */
   if ( swapflag )
     {
-      gswap2 (&fsdh.start_time.year);
-      gswap2 (&fsdh.start_time.day);
+      sl_gswap2 (&fsdh.start_time.year);
+      sl_gswap2 (&fsdh.start_time.day);
     }
 
   curstream = slconn->streams;
@@ -784,8 +784,8 @@ update_stream (SLCD * slconn, SLpacket * slpack)
   /* Generate some "clean" net and sta strings */
   if ( curstream != NULL )
     {
-      strncpclean (net, fsdh.network, 2);
-      strncpclean (sta, fsdh.station, 5);
+      sl_strncpclean (net, fsdh.network, 2);
+      sl_strncpclean (sta, fsdh.station, 5);
     }
 
   /* For uni-station mode */

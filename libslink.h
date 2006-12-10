@@ -19,7 +19,7 @@
  *   ORFEUS/EC-Project MEREDIAN
  *   IRIS Data Management Center
  *
- * modified: 2005.336
+ * modified: 2005.344
  ***************************************************************************/
 
 
@@ -32,9 +32,9 @@ extern "C" {
 
 #include "slplatform.h"
 
-#define LIBSLINK_VERSION "1.7rc1"
-#define LIBSLINK_RELEASE "2006.336"
-
+#define LIBSLINK_VERSION "1.7rc2"
+#define LIBSLINK_RELEASE "2006.344"
+  
 #define SLRECSIZE           512      /* Mini-SEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
 #define SLHEADSIZE          8        /* SeedLink header size */
@@ -325,32 +325,32 @@ extern double      sl_msr_depochstime (SLMSrecord * msr);
 /* strutils.c */
 
 /* For a linked list of strings, as filled by strparse() */
-typedef struct strlist_s {
-  char             *element;
-  struct strlist_s *next;
-} strlist;
+typedef struct SLstrlist_s {
+  char               *element;
+  struct SLstrlist_s *next;
+} SLstrlist;
 
-extern int  strparse(const char *string, const char *delim, strlist **list);
-extern int  strncpclean(char *dest, const char *source, int length);
+extern int  sl_strparse(const char *string, const char *delim, SLstrlist **list);
+extern int  sl_strncpclean(char *dest, const char *source, int length);
 
 /* gswap.c */
 
 /* Generic byte swapping routines */
-extern void   gswap2 ( void *data2 );
-extern void   gswap3 ( void *data3 );
-extern void   gswap4 ( void *data4 );
-extern void   gswap8 ( void *data8 );
+extern void   sl_gswap2 ( void *data2 );
+extern void   sl_gswap3 ( void *data3 );
+extern void   sl_gswap4 ( void *data4 );
+extern void   sl_gswap8 ( void *data8 );
 
 /* Generic byte swapping routines for memory aligned quantities */
-extern void   gswap2a ( void *data2 );
-extern void   gswap4a ( void *data4 );
-extern void   gswap8a ( void *data8 );
+extern void   sl_gswap2a ( void *data2 );
+extern void   sl_gswap4a ( void *data4 );
+extern void   sl_gswap8a ( void *data8 );
 
 /* Byte swap macro for the BTime struct */
-#define SWAPBTIME(x) \
-  gswap2 (x.year);   \
-  gswap2 (x.day);    \
-  gswap2 (x.fract);
+#define SL_SWAPBTIME(x)   \
+  sl_gswap2 (x.year);  \
+  sl_gswap2 (x.day);   \
+  sl_gswap2 (x.fract);
 
 
 #ifdef __cplusplus

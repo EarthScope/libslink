@@ -49,7 +49,7 @@ for link in $LIST ; do
 done
 
 ORIG=sl_utils.3
-LIST="sl_dtime.3 sl_doy2md.3 strncpclean.3"
+LIST="sl_dtime.3 sl_doy2md.3 sl_strncpclean.3"
 for link in $LIST ; do
     ln -s $ORIG $link
 done

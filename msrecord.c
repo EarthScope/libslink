@@ -14,7 +14,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2006.336
+ * modified: 2006.344
  ***************************************************************************/
 
 #include <stdio.h>
@@ -216,13 +216,13 @@ sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
   /* Change byte order? */
   if ( swapflag )
     {
-      SWAPBTIME (&msr->fsdh.start_time);
-      gswap2 (&msr->fsdh.num_samples);
-      gswap2 (&msr->fsdh.samprate_fact);
-      gswap2 (&msr->fsdh.samprate_mult);
-      gswap4 (&msr->fsdh.time_correct);
-      gswap2 (&msr->fsdh.begin_data);
-      gswap2 (&msr->fsdh.begin_blockette);
+      SL_SWAPBTIME (&msr->fsdh.start_time);
+      sl_gswap2 (&msr->fsdh.num_samples);
+      sl_gswap2 (&msr->fsdh.samprate_fact);
+      sl_gswap2 (&msr->fsdh.samprate_mult);
+      sl_gswap4 (&msr->fsdh.time_correct);
+      sl_gswap2 (&msr->fsdh.begin_data);
+      sl_gswap2 (&msr->fsdh.begin_blockette);
     }
 
   /* Parse the blockettes if requested */
@@ -251,8 +251,8 @@ sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
 		  sizeof (struct sl_blkt_head_s));
 	  if ( swapflag )
 	    {
-	      gswap2 (&blkt_head->blkt_type);
-	      gswap2 (&blkt_head->next_blkt);
+	      sl_gswap2 (&blkt_head->blkt_type);
+	      sl_gswap2 (&blkt_head->next_blkt);
 	    }
 
 	  if (blkt_head->blkt_type == 100)
@@ -263,7 +263,7 @@ sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
 	      
 	      if ( swapflag )
 		{
-		  gswap4 (&blkt_100->sample_rate);
+		  sl_gswap4 (&blkt_100->sample_rate);
 		}
 	      
 	      blkt_100->blkt_type = blkt_head->blkt_type;
@@ -349,10 +349,10 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
   int usec;
 
   /* Generate clean identifier strings */
-  strncpclean (prtnet, msr->fsdh.network, 2);
-  strncpclean (prtsta, msr->fsdh.station, 5);
-  strncpclean (prtloc, msr->fsdh.location, 2);
-  strncpclean (prtchan, msr->fsdh.channel, 3);
+  sl_strncpclean (prtnet, msr->fsdh.network, 2);
+  sl_strncpclean (prtsta, msr->fsdh.station, 5);
+  sl_strncpclean (prtloc, msr->fsdh.location, 2);
+  sl_strncpclean (prtchan, msr->fsdh.channel, 3);
 
   if (prtnet[0] != '\0')
     strcat (prtnet, "_");
