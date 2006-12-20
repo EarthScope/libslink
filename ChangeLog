@@ -1,3 +1,7 @@
+2006.354: version 1.7
+	- No functionality changes since 1.6; only function, macro and 
+	struct name changes to avoid collisions with other libraries.
+
 2006.344: version 1.7rc2
 	- Add "sl_" prefix to sl_strparse, sl_strncpclean and sl_gswap
 	functions.
