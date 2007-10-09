@@ -7,7 +7,7 @@ GCCFLAGS = -O2 -Wall
 
 LIB_OBJS = gswap.o unpack.o msrecord.o genutils.o strutils.o \
            logging.o network.o statefile.o config.o \
-           slplatform.o slutils.o
+           globmatch.o slplatform.o slutils.o
 
 CURRENT_VER = 1.1
 COMPAT_VER = 1.0
