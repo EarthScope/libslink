@@ -11,7 +11,7 @@
  * Originally based on the SeedLink interface of the modified Comserv in
  * SeisComP written by Andres Heinloo
  *
- * Version: 2007.281
+ * Version: 2007.282
  ***************************************************************************/
 
 #include <stdio.h>
@@ -84,7 +84,7 @@ sl_negotiate_uni (SLCD * slconn)
   int bytesread = 0;
   int acceptsel = 0;		/* Count of accepted selectors */
   char *selptr;
-  char *ereplyptr = 0;
+  char *extreply = 0;
   char *term1, *term2;
   char sendstr[100];		/* A buffer for command strings */
   char readbuf[100];		/* A buffer for responses */
@@ -129,28 +129,27 @@ sl_negotiate_uni (SLCD * slconn)
 		}
 	      
 	      /* Search for 2nd "\r" indicating extended reply message present */
+	      extreply = 0;
 	      if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
 		{
 		  if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
 		    {
 		      *term2 = '\0';
-		      ereplyptr = term1+1;
+		      extreply = term1+1;
 		    }
 		}
-	      else
-		ereplyptr = 0;
 	      
 	      /* Check response to SELECT */
 	      if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 		{
 		  sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n", slconn->sladdr,
-			    sellen, selptr, (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+			    sellen, selptr, (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 		  acceptsel++;
 		}
 	      else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 		{
 		  sl_log_r (slconn, 1, 2, "[%s] selector %.*s not accepted %s%s%s\n", slconn->sladdr,
-			    sellen, selptr, (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+			    sellen, selptr, (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 		}
 	      else
 		{
@@ -287,7 +286,7 @@ sl_negotiate_multi (SLCD * slconn)
   int acceptsel = 0;		/* Count of accepted selectors */
   char *selptr;
   char *term1, *term2;
-  char *ereplyptr = 0;
+  char *extreply = 0;
   char sendstr[100];		/* A buffer for command strings */
   char readbuf[100];		/* A buffer for responses */
   char slring[12];		/* Keep track of the ring name */
@@ -317,28 +316,27 @@ sl_negotiate_multi (SLCD * slconn)
 	}
       
       /* Search for 2nd "\r" indicating extended reply message present */
+      extreply = 0;
       if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
 	{
 	  if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
 	    {
 	      *term2 = '\0';
-	      ereplyptr = term1+1;
+	      extreply = term1+1;
 	    }
 	}
-      else
-	ereplyptr = 0;
-
+      
       /* Check the response */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] station is OK %s%s%s\n", slring,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	  acceptsta++;
 	}
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
 	  sl_log_r (slconn, 2, 0, "[%s] station not accepted %s%s%s\n", slring,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	  /* Increment the loop control and skip to the next stream */
 	  curstream = curstream->next;
 	  continue;
@@ -387,28 +385,27 @@ sl_negotiate_multi (SLCD * slconn)
 		    }
 		  
 		  /* Search for 2nd "\r" indicating extended reply message present */
+		  extreply = 0;
 		  if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
 		    {
 		      if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
 			{
 			  *term2 = '\0';
-			  ereplyptr = term1+1;
+			  extreply = term1+1;
 			}
 		    }
-		  else
-		    ereplyptr = 0;
-
+		  
 		  /* Check response to SELECT */
 		  if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 		    {
 		      sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n", slring,
-				sellen, selptr, (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+				sellen, selptr, (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 		      acceptsel++;
 		    }
 		  else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 		    {
 		      sl_log_r (slconn, 2, 0, "[%s] selector %.*s not accepted %s%s%s\n", slring,
-				sellen, selptr, (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+				sellen, selptr, (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 		    }
 		  else
 		    {
@@ -522,29 +519,30 @@ sl_negotiate_multi (SLCD * slconn)
 	  sl_log_r (slconn, 2, 0, "[%s] error with DATA/FETCH/TIME request\n", slring);
 	  return -1;
 	}
-
+      
       /* Search for 2nd "\r" indicating extended reply message present */
+      extreply = 0;
       if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
 	{
 	  if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
 	    {
+	      fprintf (stderr, "term2: '%s'\n", term2);
+
 	      *term2 = '\0';
-	      ereplyptr = term1+1;
+	      extreply = term1+1;
 	    }
 	}
-      else
-	ereplyptr = 0;
-
+      
       /* Check response to DATA/FETCH/TIME request */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] DATA/FETCH/TIME command is OK %s%s%s\n", slring,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	}
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
 	  sl_log_r (slconn, 2, 0, "[%s] DATA/FETCH/TIME command is not accepted %s%s%s\n", slring,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	}
       else
 	{
@@ -552,12 +550,12 @@ sl_negotiate_multi (SLCD * slconn)
 		    slring, bytesread, readbuf);
 	  return -1;
 	}
-
+      
       /* Point to the next stream */
       curstream = curstream->next;
 
-    }				/* End of stream and selector config (end of stream chain). */
-
+    }  /* End of stream and selector config (end of stream chain). */
+  
   /* Fail if no stations were accepted */
   if (!acceptsta)
     {
@@ -813,17 +811,19 @@ sl_sayhello (SLCD * slconn)
   int servcnt = 0;
   int sitecnt = 0;
   char sendstr[100];		/* A buffer for command strings */
-  char servstr[100];		/* The remote server ident */
+  char servstr[200];		/* The remote server ident */
   char sitestr[100];		/* The site/data center ident */
   char servid[100];		/* Server ID string, i.e. 'SeedLink' */
-  
+  char *capptr;                 /* Pointer to capabilities flags */  
+  char capflag = 0;             /* Capabilities are supported by server */
+
   /* Send HELLO */
   sprintf (sendstr, "HELLO\r");
   sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
   sl_senddata (slconn, (void *) sendstr, strlen (sendstr), slconn->sladdr,
 	       NULL, 0);
   
-  /* Recv the two lines of response */
+  /* Recv the two lines of response: server ID and site installation ID */
   if ( sl_recvresp (slconn, (void *) servstr, (size_t) sizeof (servstr),
 		    sendstr, slconn->sladdr) < 0 )
     {
@@ -836,53 +836,100 @@ sl_sayhello (SLCD * slconn)
       return -1;
     }
   
+  /* Terminate on first "\r" character or at one character before end of buffer */
   servcnt = strcspn (servstr, "\r");
-  if ( servcnt > 90 )
+  if ( servcnt > (sizeof(servstr)-2) )
     {
-      servcnt = 90;
+      servcnt = (sizeof(servstr)-2);
     }
   servstr[servcnt] = '\0';
-
+  
   sitecnt = strcspn (sitestr, "\r");
-  if ( sitecnt > 90 )
+  if ( sitecnt > (sizeof(sitestr)-2) )
     {
-      sitecnt = 90;
+      sitecnt = (sizeof(sitestr)-2);
     }
   sitestr[sitecnt] = '\0';
   
+  /* Search for capabilities flags in server ID by looking for "::"
+   * The expected format of the complete server ID is:
+   * "seedlink v#.# <optional text> <:: optional capability flags>"
+   */
+  capptr = strstr (servstr, "::");
+  if ( capptr )
+    {
+      /* Truncate server ID portion of string */
+      *capptr = '\0';
+
+      /* Move pointer to beginning of flags */
+      capptr += 2;
+      
+      /* Move capptr up to first non-space character */
+      while ( *capptr == ' ' )
+	capptr++;
+    }
+  
+  /* Report received IDs */
   sl_log_r (slconn, 1, 1, "[%s] connected to: %s\n", slconn->sladdr, servstr);
+  if ( capptr )
+    sl_log_r (slconn, 1, 1, "[%s] capabilities: %s\n", slconn->sladdr, capptr);
   sl_log_r (slconn, 1, 1, "[%s] organization: %s\n", slconn->sladdr, sitestr);
   
-  /* Parse the server ID and version from the returned string.
-   * The expected format is:
+  /* Parse old-school server ID and version from the returned string.
+   * The expected format at this point is:
    * "seedlink v#.# <optional text>"
    * where 'seedlink' is case insensitive and '#.#' is the server/protocol version.
    */
+  /* Add a space to the end to allowing parsing when the optionals are not present */
   servstr[servcnt] = ' '; servstr[servcnt+1] = '\0';
   ret = sscanf (servstr, "%s v%f ", &servid[0], &slconn->protocol_ver);
   
   if ( ret != 2 || strncasecmp (servid, "SEEDLINK", 8) )
     {
       sl_log_r (slconn, 1, 1,
-                "[%s] unknown server version, assuming minimum functionality\n",
-                slconn->sladdr, servstr);
+                "[%s] unrecognized server version, assuming minimum functionality\n",
+                slconn->sladdr);
       slconn->protocol_ver = 0.0;
     }
   
-  /* Send CAPABILITIES flags if protocol version > 3.0 */
-  if ( slconn->protocol_ver > 3.0 )
+  /* Check capabilities flags */
+  if ( capptr )
+    {
+      char *tptr;
+      
+      /* Parse protocol version flag: "SLPROTO:<#.#>" if present */
+      if ( (tptr = strstr(capptr, "SLPROTO")) )
+	{
+	  /* This protocol specification overrides that from earlier in the server ID */
+	  ret = sscanf (tptr, "SLPROTO:%f", &slconn->protocol_ver);
+	  
+	  if ( ret != 1 )
+	    sl_log_r (slconn, 1, 1,
+		      "[%s] could not parse protocol version from SLPROTO flag: %s\n",
+		      slconn->sladdr, tptr);
+	}
+      
+      /* Check for CAPABILITIES command support */
+      if ( strstr(capptr, "CAP") )
+	capflag = 1;
+    }
+  
+  /* Send CAPABILITIES flags if supported by server */
+  if ( capflag )
     {
       int bytesread = 0;
       char readbuf[100];
       
       char *term1, *term2;
-      char *ereplyptr = 0;
+      char *extreply = 0;
       
       /* Current capabilities:
-       *   V30 :: SeedLink protocol version >= 3.0
-       *   EREPLY :: Extended reply handling
+       *   SLPROTO:3.0 = SeedLink protocol version 3.0
+       *   CAP         = CAPABILITIES command support
+       *   EXTREPLY    = Extended reply message handling
+       *   NSWILDCARD  = Network and station code wildcard support
        */
-      sprintf (sendstr, "CAPABILITIES V30 EREPLY\r");
+      sprintf (sendstr, "CAPABILITIES SLPROTO:3.0 CAP EXTREPLY NSWILDCARD\r");
       
       /* Send CAPABILITIES and recv response */
       sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
@@ -895,27 +942,26 @@ sl_sayhello (SLCD * slconn)
 	}
       
       /* Search for 2nd "\r" indicating extended reply message present */
+      extreply = 0;
       if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
 	{
 	  if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
 	    {
 	      *term2 = '\0';
-	      ereplyptr = term1+1;
+	      extreply = term1+1;
 	    }
 	}
-      else
-	ereplyptr = 0;
       
       /* Check response to CAPABILITIES */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] capabilities OK %s%s%s\n", slconn->sladdr,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	}
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] CAPABILITIES not accepted %s%s%s\n", slconn->sladdr,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");	  
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");	  
 	  return -1;
 	}
       else
@@ -1146,6 +1192,9 @@ sl_recvdata (SLCD * slconn, void *buffer, size_t maxbytes,
  * for. 'ident' is a string to be included in error messages for
  * identification, usually the address of the remote server.
  *
+ * It should not be assumed that the populated buffer contains a
+ * terminated string.
+ *
  * Returns -1 on error/EOF and the number of bytes read on success.
  ***************************************************************************/
 int
@@ -1162,6 +1211,9 @@ sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
     {
       return -1;
     }
+  
+  /* Clear the receiving buffer */
+  memset (buffer, 0, maxbytes);
   
   /* Recv a byte at a time and wait up to 30 seconds for a response */
   while ( bytesread < maxbytes )
