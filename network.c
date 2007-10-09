@@ -337,7 +337,7 @@ sl_negotiate_multi (SLCD * slconn)
 	}
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
-	  sl_log_r (slconn, 2, 0, "[%s] station not accepted, skipping %s%s%s\n", slring,
+	  sl_log_r (slconn, 2, 0, "[%s] station not accepted %s%s%s\n", slring,
 		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
 	  /* Increment the loop control and skip to the next stream */
 	  curstream = curstream->next;
@@ -396,7 +396,7 @@ sl_negotiate_multi (SLCD * slconn)
 			}
 		    }
 		  else
-		    ereplyptr = "";
+		    ereplyptr = 0;
 
 		  /* Check response to SELECT */
 		  if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -533,7 +533,7 @@ sl_negotiate_multi (SLCD * slconn)
 	    }
 	}
       else
-	ereplyptr = "";
+	ereplyptr = 0;
 
       /* Check response to DATA/FETCH/TIME request */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -876,7 +876,7 @@ sl_sayhello (SLCD * slconn)
       char readbuf[100];
       
       char *term1, *term2;
-      char *ereplyptr = "";
+      char *ereplyptr = 0;
       
       /* Current capabilities:
        *   V30 :: SeedLink protocol version >= 3.0
@@ -904,7 +904,7 @@ sl_sayhello (SLCD * slconn)
 	    }
 	}
       else
-	ereplyptr = "";
+	ereplyptr = 0;
       
       /* Check response to CAPABILITIES */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -915,8 +915,7 @@ sl_sayhello (SLCD * slconn)
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] CAPABILITIES not accepted %s%s%s\n", slconn->sladdr,
-		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");
-	  
+		    (ereplyptr)?"{":"", (ereplyptr)?ereplyptr:"", (ereplyptr)?"}":"");	  
 	  return -1;
 	}
       else
