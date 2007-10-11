@@ -943,9 +943,9 @@ sl_sayhello (SLCD * slconn)
       
       /* Search for 2nd "\r" indicating extended reply message present */
       extreply = 0;
-      if ( (term1 = strnstr (readbuf, "\r", bytesread)) )
+      if ( (term1 = memchr (readbuf, '\r', bytesread)) )
 	{
-	  if ( (term2 = strnstr (term1+1, "\r", bytesread-(readbuf-term1)-1)) )
+	  if ( (term2 = memchr (term1+1, '\r', bytesread-(readbuf-term1)-1)) )
 	    {
 	      *term2 = '\0';
 	      extreply = term1+1;
