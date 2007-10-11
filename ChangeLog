@@ -1,4 +1,4 @@
-2007.284: version 2.0 (no change)
+2007.284: version 2.0 (no version change)
 	- Use memchr() instead of strnstr() in network.c for portability.
 
 2007.282: version 2.0
