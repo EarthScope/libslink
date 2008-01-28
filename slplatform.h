@@ -18,7 +18,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2005.103
+ * modified: 2008.028
  ***************************************************************************/
 
 #ifndef SLPLATFORM_H
@@ -81,6 +81,10 @@ extern "C" {
   #include <stdarg.h>
   #include <winsock.h>
 
+  #define open _open
+  #define close _close
+  #define read _read
+  #define write _write
   #define snprintf _snprintf
   #define vsnprintf _vsnprintf
   #define strncasecmp _strnicmp
@@ -127,6 +131,7 @@ extern int slp_socknoblock (int sock);
 extern int slp_noblockcheck (void);
 extern int slp_getaddrinfo (char * nodename, char * nodeport, 
 			    struct sockaddr * addr, size_t * addrlen);
+extern int slp_openfile (const char *filename, char perm);
 extern const char *slp_strerror(void);
 extern double slp_dtime(void);
 extern void slp_usleep(unsigned long int useconds);
