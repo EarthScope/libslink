@@ -17,7 +17,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2008.028
+ * modified: 2008.029
  ***************************************************************************/
 
 #include <fcntl.h>
@@ -26,6 +26,8 @@
 #include <time.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/stat.h>
 
 #include "libslink.h"
 
