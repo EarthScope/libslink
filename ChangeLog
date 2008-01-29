@@ -3,7 +3,6 @@
 	- Add sl_readline() to genutils.c to read and return a line, defined
 	by newline characters, from unbuffered IO, i.e. a file descriptor.
 	- Add slp_openfile() to slplatform.[ch] to portably open files.
-	- Add defines for WIN32 platform to use _open, _close, _read & _write.
 	- Change Makefile and src/Makefile to use user defined CC and CFLAGS.
 	
 2007.284: version 2.0 (no version change)

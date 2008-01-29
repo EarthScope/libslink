@@ -81,10 +81,6 @@ extern "C" {
   #include <stdarg.h>
   #include <winsock.h>
 
-  #define open _open
-  #define close _close
-  #define read _read
-  #define write _write
   #define snprintf _snprintf
   #define vsnprintf _vsnprintf
   #define strncasecmp _strnicmp
