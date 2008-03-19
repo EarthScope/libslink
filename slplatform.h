@@ -18,7 +18,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2008.028
+ * modified: 2008.078
  ***************************************************************************/
 
 #ifndef SLPLATFORM_H
@@ -80,6 +80,7 @@ extern "C" {
   #include <windows.h>
   #include <stdarg.h>
   #include <winsock.h>
+  #include <io.h>
 
   #define snprintf _snprintf
   #define vsnprintf _vsnprintf

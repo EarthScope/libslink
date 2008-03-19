@@ -1,3 +1,6 @@
+2008.078: version 2.2
+	- Use io.h header instead of unistd.h on Win32.
+
 2008.028: version 2.1
 	- Convert all buffered IO file operations to unbuffered IO routines.
 	- Add sl_readline() to genutils.c to read and return a line, defined
