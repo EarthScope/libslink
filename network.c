@@ -11,7 +11,7 @@
  * Originally based on the SeedLink interface of the modified Comserv in
  * SeisComP written by Andres Heinloo
  *
- * Version: 2007.284
+ * Version: 2008.233
  ***************************************************************************/
 
 #include <stdio.h>
@@ -175,10 +175,49 @@ sl_negotiate_uni (SLCD * slconn)
 	}
     }				/* End of selector processing */
 
-  /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
-     optionally, stop time) takes precedence over the resumption from any
-     previous sequence number. */
-  if (slconn->begin_time != NULL)
+  /* Issue the DATA, FETCH or TIME action commands.  If a current
+     sequence number is known and resumption is turned on the
+     connection will be resumed.  Otherwise if a specified start (and
+     optionally, stop) time are specified a TIME command will be
+     submitted.  If neither of those cases are true data flow will
+     start with the next arriving data. */
+  if (curstream->seqnum != -1 && slconn->resume)
+    {
+      char cmd[10];
+      
+      if ( slconn->dialup )
+	{
+	  sprintf (cmd, "FETCH");
+	}
+      else
+	{
+	  sprintf (cmd, "DATA");
+	}
+      
+      /* Append the last packet time if the feature is enabled and server is >= 2.93 */
+      if (slconn->lastpkttime &&
+	  sl_checkversion (slconn, (float)2.93) >= 0 &&
+	  strlen (curstream->timestamp))
+	{
+	  /* Increment sequence number by 1 */
+	  sprintf (sendstr, "%s %06X %.25s\r", cmd,
+		   (curstream->seqnum + 1) & 0xffffff, curstream->timestamp);
+	  
+	  sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
+		    slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
+		    (curstream->seqnum + 1), curstream->timestamp);
+	}
+      else
+	{
+	  /* Increment sequence number by 1 */
+	  sprintf (sendstr, "%s %06X\r", cmd, (curstream->seqnum + 1) & 0xffffff);
+	  
+	  sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d)\n",
+		    slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
+		    (curstream->seqnum + 1));
+	}
+    }
+  else if (slconn->begin_time != NULL)
     {
       if (sl_checkversion (slconn, (float)2.92) >= 0)
 	{
@@ -199,42 +238,6 @@ sl_negotiate_uni (SLCD * slconn)
 	  sl_log_r (slconn, 2, 0,
 		    "[%s] detected SeedLink version (%.3f) does not support TIME windows\n",
 		    slconn->sladdr, slconn->protocol_ver);
-	}
-    }
-  else if (curstream->seqnum != -1 && slconn->resume )
-    {
-      char cmd[10];
-
-      if ( slconn->dialup )
-	{
-	  sprintf (cmd, "FETCH");
-	}
-      else
-	{
-	  sprintf (cmd, "DATA");
-	}
-
-      /* Append the last packet time if the feature is enabled and server is >= 2.93 */
-      if (slconn->lastpkttime &&
-	  sl_checkversion (slconn, (float)2.93) >= 0 &&
-	  strlen (curstream->timestamp))
-	{
-	  /* Increment sequence number by 1 */
-	  sprintf (sendstr, "%s %06X %.25s\r", cmd,
-		   (curstream->seqnum + 1) & 0xffffff, curstream->timestamp);
-
-	  sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
-		    slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
-		    (curstream->seqnum + 1), curstream->timestamp);
-	}
-      else
-	{
-	  /* Increment sequence number by 1 */
-	  sprintf (sendstr, "%s %06X\r", cmd, (curstream->seqnum + 1) & 0xffffff);
-
-	  sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d)\n",
-		    slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
-		    (curstream->seqnum + 1));
 	}
     }
   else
@@ -433,34 +436,14 @@ sl_negotiate_multi (SLCD * slconn)
 	  acceptsel = 0;	/* Reset the accepted selector count */
 
 	}			/* End of selector processing */
-
-      /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
-	 optionally, stop time) takes precedence over the resumption from any
-	 previous sequence number. */
-      if (slconn->begin_time != NULL)
-	{
-	  if (sl_checkversion (slconn, (float)2.92) >= 0)
-	    {
-	      if (slconn->end_time == NULL)
-		{
-		  sprintf (sendstr, "TIME %.25s\r", slconn->begin_time);
-		}
-	      else
-		{
-		  sprintf (sendstr, "TIME %.25s %.25s\r", slconn->begin_time,
-			   slconn->end_time);
-		}
-	      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-			slring);
-	    }
-	  else
-	    {
-	      sl_log_r (slconn, 2, 0,
-			"[%s] detected SeedLink version (%.3f) does not support TIME windows\n",
-			slring, slconn->protocol_ver);
-	    }
-	}
-      else if (curstream->seqnum != -1 && slconn->resume )
+      
+      /* Issue the DATA, FETCH or TIME action commands.  If a current
+	 sequence number is known and resumption is turned on the
+	 connection will be resumed.  Otherwise if a specified start (and
+	 optionally, stop) time are specified a TIME command will be
+	 submitted.  If neither of those cases are true data flow will
+	 start with the next arriving data. */
+      if (curstream->seqnum != -1 && slconn->resume)
 	{
 	  char cmd[10];
 	  
@@ -481,19 +464,42 @@ sl_negotiate_multi (SLCD * slconn)
 	      /* Increment sequence number by 1 */
 	      sprintf (sendstr, "%s %06X %.25s\r", cmd,
 		       (curstream->seqnum + 1) & 0xffffff, curstream->timestamp);
-
+	      
 	      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
 			slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
 			(curstream->seqnum + 1), curstream->timestamp);
-	    }	  
+	    }
 	  else
 	    { /* Increment sequence number by 1 */
 	      sprintf (sendstr, "%s %06X\r", cmd,
 		       (curstream->seqnum + 1) & 0xffffff);
-
+	      
 	      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d)\n", slring,
 			(curstream->seqnum + 1) & 0xffffff,
 			(curstream->seqnum + 1));
+	    }
+	}
+      else if (slconn->begin_time != NULL)
+	{
+	  if (sl_checkversion (slconn, (float)2.92) >= 0)
+	    {
+	      if (slconn->end_time == NULL)
+		{
+		  sprintf (sendstr, "TIME %.25s\r", slconn->begin_time);
+		}
+	      else
+		{
+		  sprintf (sendstr, "TIME %.25s %.25s\r", slconn->begin_time,
+			   slconn->end_time);
+		}
+	      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
+			slring);
+	    }
+	  else
+	    {
+	      sl_log_r (slconn, 2, 0,
+			"[%s] detected SeedLink version (%.3f) does not support TIME windows\n",
+			slring, slconn->protocol_ver);
 	    }
 	}
       else

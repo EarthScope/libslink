@@ -1,3 +1,8 @@
+2008.233: version 2.3
+	- Resume a connection if a previous sequence number is known
+	even when a time window is requested.  This avoids collecting
+	duplicate data when re-connecting a time window request.
+
 2008.078: version 2.2
 	- Use io.h header instead of unistd.h on Win32.
 
