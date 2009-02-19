@@ -32,7 +32,7 @@ extern "C" {
 
 #include "slplatform.h"
 
-#define LIBSLINK_VERSION "2.2"
+#define LIBSLINK_VERSION "2.2b"
 #define LIBSLINK_RELEASE "2008.078"
   
 #define SLRECSIZE           512      /* Mini-SEED record size */
