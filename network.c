@@ -1017,7 +1017,7 @@ sl_batchmode (SLCD * slconn)
       sl_log_r (slconn, 2, 0,
 		"[%s] detected SeedLink version (%.3f) does not support the BATCH command\n",
 		slconn->sladdr, slconn->protocol_ver);
-      ret = -1;
+      return -1;
     }
   
   /* Send BATCH and recv response */
