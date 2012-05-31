@@ -4,6 +4,7 @@
 	the record lengths to expect, by default 512-byte record lengths
 	are used and expected by all SeedLink clients, so this is only
 	useful in particular situations (e.g. low latency data collection).
+	No man documentation of this for now.
 
 2010.075: version 2.3
 	- Add BATCH mode support, patch from Andres Heinloo/GFZ.
