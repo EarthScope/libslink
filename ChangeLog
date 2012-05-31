@@ -1,3 +1,10 @@
+2012.152: version 2.4
+	- Integrate a patch from Jacob Crummey that adds support for data
+	record lengths other than 512-byte.  The client must know apriori
+	the record lengths to expect, by default 512-byte record lengths
+	are used and expected by all SeedLink clients, so this is only
+	useful in particular situations (e.g. low latency data collection).
+
 2010.075: version 2.3
 	- Add BATCH mode support, patch from Andres Heinloo/GFZ.
 	- Add protocol version check for BATCH command >= 3.1.

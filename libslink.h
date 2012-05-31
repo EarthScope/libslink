@@ -19,7 +19,7 @@
  *   ORFEUS/EC-Project MEREDIAN
  *   IRIS Data Management Center
  *
- * modified: 2010.069
+ * modified: 2012.152
  ***************************************************************************/
 
 
@@ -32,11 +32,11 @@ extern "C" {
 
 #include "slplatform.h"
 
-#define LIBSLINK_VERSION "2.3"
-#define LIBSLINK_RELEASE "2010.075"
-  
-#define SLRECSIZE           512      /* Mini-SEED record size */
-#define MAX_HEADER_SIZE     512      /* Max record header size */
+#define LIBSLINK_VERSION "2.4"
+#define LIBSLINK_RELEASE "2012.152"
+
+#define SLRECSIZE           512      /* Default Mini-SEED record size */
+#define MAX_HEADER_SIZE     128      /* Max record header size */
 #define SLHEADSIZE          8        /* SeedLink header size */
 #define SELSIZE             8        /* Maximum selector size */
 #define BUFSIZE             8192     /* Size of receiving buffer */
@@ -229,10 +229,10 @@ typedef struct slcd_s
   SLlog      *log;              /* Logging parameters */
 } SLCD;
 
-
 /* slutils.c */
 extern int    sl_collect (SLCD * slconn, SLpacket ** slpack);
 extern int    sl_collect_nb (SLCD * slconn, SLpacket ** slpack);
+extern int    sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize);
 extern SLCD * sl_newslcd (void);
 extern void   sl_freeslcd (SLCD * slconn);
 extern int    sl_addstream (SLCD * slconn, const char *net, const char *sta,
@@ -318,6 +318,8 @@ extern SLMSrecord* sl_msr_new (void);
 extern void        sl_msr_free (SLMSrecord ** msr);
 extern SLMSrecord* sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord ** msr,
 			         int8_t blktflag, int8_t unpackflag);
+extern SLMSrecord* sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** msr,
+				      int8_t blktflag, int8_t unpackflag, int slrecsize);
 extern int         sl_msr_print (SLlog * log, SLMSrecord * msr, int details);
 extern int         sl_msr_dsamprate (SLMSrecord * msr, double * samprate);
 extern double      sl_msr_dnomsamprate (SLMSrecord * msr);
