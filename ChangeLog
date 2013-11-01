@@ -1,3 +1,8 @@
+2013.305: version 2.4b
+	- sl_read_streamlist(): Allow '!' character in selectors field, this
+	is allowed to negate selector(s).  This routine is only used when
+	parsing selections from a file.
+
 2012.152: version 2.4
 	- Integrate a patch from Jacob Crummey that adds support for data
 	record lengths other than 512-byte.  The client must know apriori

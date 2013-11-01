@@ -32,8 +32,8 @@ extern "C" {
 
 #include "slplatform.h"
 
-#define LIBSLINK_VERSION "2.4"
-#define LIBSLINK_RELEASE "2012.152"
+#define LIBSLINK_VERSION "2.4b"
+#define LIBSLINK_RELEASE "2013.305"
 
 #define SLRECSIZE           512      /* Default Mini-SEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
