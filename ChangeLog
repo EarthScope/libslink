@@ -5,6 +5,7 @@
 	- Switch to simpler SOCKET type defined as needed by platform includes
 	or as int when not set.
 	- Clarify licensing to be LGPLv3.
+	- Cleanup Makefile (remove unused targets) and README, add INSTALL.
 
 2016.287: version 2.5
 	- Support data sample unpacking with byte order specified in Blockette 1000,
