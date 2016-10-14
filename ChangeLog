@@ -1,3 +1,6 @@
+2016.287: version 2.5
+	- Port socket usage to portable SLP_SOCKET type, either int or SOCKET.
+
 2013.305: version 2.4b
 	- sl_read_streamlist(): Allow '!' character in selectors field, this
 	is allowed to negate selector(s).  This routine is only used when
