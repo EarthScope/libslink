@@ -33,8 +33,9 @@ dll: $(OBJS)
 	link.exe /dll /nologo /out:$(DLL) $(OBJS)
 
 .c.obj:
-   $(cc) /nologo $(cflags) $(cdebug) $(cvarsmt) $(tflags) $(INCS) $<
-
+   $(cc) /nologo $(cflags) $(cdebug) $(cvarsmt) $(tflags) $(INCS) \
+   -D_CRT_SECURE_NO_DEPRECATE \
+   -D_CRT_SECURE_NO_WARNINGS $<
 
 # Clean-up directives
 clean:
