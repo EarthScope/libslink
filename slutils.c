@@ -5,7 +5,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2012.152
+ * modified: 2016.287
  ***************************************************************************/
 
 #include <stdlib.h>
@@ -54,7 +54,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
     {
       slconn->stat->query_mode = InfoQuery;
     }
-  
+
   /* If the connection is not up check the SLCD and reset the timing variables */
   if ( slconn->link == -1 )
     {
@@ -77,7 +77,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	    {
 	      slconn->stat->sl_state = SL_DOWN;
 	    }
-	  
+
 	  /* Check for network timeout */
 	  if (slconn->stat->sl_state == SL_DATA && slconn->netto && slconn->stat->netto_trig > 0)
 	    {
@@ -88,13 +88,13 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	      slconn->stat->netto_trig = -1;
 	      slconn->stat->netdly_trig = -1;
 	    }
-	  
+
 	  /* Check if a keepalive packet needs to be sent */
 	  if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info &&
 	      slconn->keepalive && slconn->stat->keepalive_trig > 0)
 	    {
 	      sl_log_r (slconn, 1, 2, "sending keepalive request\n");
-	      
+
 	      if ( sl_send_info (slconn, "ID", 3) != -1 )
 		{
 		  slconn->stat->query_mode = KeepAliveQuery;
@@ -102,7 +102,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		  slconn->stat->keepalive_trig = -1;
 		}
 	    }
-	  
+
 	  /* Check if an in-stream INFO request needs to be sent */
 	  if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info && slconn->info)
 	    {
@@ -115,16 +115,16 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		{
 		  slconn->stat->query_mode = NoQuery;
 		}
-	      
+
 	      slconn->info = NULL;
 	    }
-	  
+
 	  /* Throttle the loop while delaying */
 	  if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig > 0)
 	    {
 	      slp_usleep (500000);
 	    }
-	  
+
 	  /* Connect to remote SeedLink */
 	  if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig == 0)
 	    {
@@ -136,12 +136,12 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	      slconn->stat->netdly_trig = -1;
 	      slconn->stat->keepalive_trig = -1;
 	    }
-	  
+
 	  /* Negotiate/configure the connection */
 	  if (slconn->stat->sl_state == SL_UP)
 	    {
 	      int slconfret = 0;
-	      
+
 	      /* Only send query if a query is set and no streams are defined,
 	       * if streams are defined we'll send the query after configuration.
 	       */
@@ -157,7 +157,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		      slconn->stat->query_mode = NoQuery;
 		      slconn->stat->expect_info = 0;
 		    }
-		  
+
 		  slconn->info = NULL;
 		}
 	      else
@@ -165,7 +165,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		  slconfret = sl_configlink (slconn);
 		  slconn->stat->expect_info = 0;
 		}
-	      
+
 	      if (slconfret != -1)
 		{
 		  slconn->stat->recptr = 0;    /* initialize the data buffer pointers */
@@ -195,19 +195,19 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
                 slconn->link, slconn->stat->sendptr, slconn->stat->recptr,
 		(slconn->stat->recptr - slconn->stat->sendptr) );
       */
-	  
+
       /* Process data in buffer */
       while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + SLRECSIZE)
 	{
 	  retpacket = 1;
-	  
+
 	  /* Check for an INFO packet */
 	  if (!strncmp (&slconn->stat->databuf[slconn->stat->sendptr], INFOSIGNATURE, 6))
 	    {
 	      char terminator;
-	      
+
 	      terminator = (slconn->stat->databuf[slconn->stat->sendptr + SLHEADSIZE - 1] != '*');
-	      
+
 	      if ( !slconn->stat->expect_info )
 		{
 		  sl_log_r (slconn, 2, 0, "unexpected INFO packet received, skipping\n");
@@ -218,12 +218,12 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		    {
 		      slconn->stat->expect_info = 0;
 		    }
-		  
+
 		  /* Keep alive packets are not returned */
 		  if ( slconn->stat->query_mode == KeepAliveQuery )
 		    {
 		      retpacket = 0;
-		      
+
 		      if ( !terminator )
 			{
 			  sl_log_r (slconn, 2, 0, "non-terminated keep-alive packet received!?!\n");
@@ -234,7 +234,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 			}
 		    }
 		}
-	      
+
 	      if ( slconn->stat->query_mode != NoQuery )
 		{
 		  slconn->stat->query_mode = NoQuery;
@@ -248,10 +248,10 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 		  retpacket = 0;
 		}
 	    }
-	  
+
 	  /* Increment the send pointer */
 	  slconn->stat->sendptr += (SLHEADSIZE + SLRECSIZE);
-	  
+
 	  /* Return packet */
 	  if ( retpacket )
 	    {
@@ -259,24 +259,24 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	      return SLPACKET;
 	    }
 	}
-      
+
       /* A trap door for terminating, all complete data packets from the buffer
 	 have been sent to the caller */
       if ( slconn->terminate ) {
 	return SLTERMINATE;
       }
-      
+
       /* After processing the packet buffer shift the data */
       if ( slconn->stat->sendptr )
 	    {
 	      memmove (slconn->stat->databuf,
 		       &slconn->stat->databuf[slconn->stat->sendptr],
 		       slconn->stat->recptr - slconn->stat->sendptr);
-	      
+
 	      slconn->stat->recptr -= slconn->stat->sendptr;
 	      slconn->stat->sendptr = 0;
 	    }
-      
+
       /* Catch cases where the data stream stopped */
       if ((slconn->stat->recptr - slconn->stat->sendptr) == 7 &&
 	  !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "ERROR\r\n", 7))
@@ -285,7 +285,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	  slconn->link = sl_disconnect (slconn);
 	  return SLTERMINATE;
 	}
-      
+
       if ((slconn->stat->recptr - slconn->stat->sendptr) == 3 &&
 	  !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "END", 3))
 	{
@@ -293,7 +293,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	  slconn->link = sl_disconnect (slconn);
 	  return SLTERMINATE;
 	}
-      
+
       /* Read incoming data if connection is up */
       if (slconn->stat->sl_state == SL_DATA)
 	{
@@ -362,7 +362,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	      slconn->stat->netto_trig = 1;
 	    }
 	}
-      
+
       /* Keepalive/heartbeat interval timing logic */
       if (slconn->keepalive)
 	{
@@ -377,7 +377,7 @@ sl_collect (SLCD * slconn, SLpacket ** slpack)
 	      slconn->stat->keepalive_trig = 1;
 	    }
 	}
-      
+
       /* Network delay timing logic */
       if (slconn->netdly)
 	{
@@ -424,7 +424,7 @@ sl_collect_nb (SLCD * slconn, SLpacket ** slpack)
  * have been received, slpack is set to NULL.  When the connection was
  * closed by the server or the termination sequence completed
  * SLTERMINATE is returned and the slpack pointer is set to NULL.
- * 
+ *
  * 6 Apr 2012 - Jacob Crummey:
  * Added sl_collect_nb_size() to allow for selecting SeedLink record
  * packet size.  Possible values for slrecsize are 128, 256, 512.
@@ -445,7 +445,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
     {
       slconn->stat->query_mode = InfoQuery;
     }
-  
+
   /* If the connection is not up check the SLCD and reset the timing variables */
   if ( slconn->link == -1 )
     {
@@ -466,7 +466,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	{
 	  slconn->stat->sl_state = SL_DOWN;
 	}
-      
+
       /* Check for network timeout */
       if (slconn->stat->sl_state == SL_DATA &&
 	  slconn->netto && slconn->stat->netto_trig > 0)
@@ -478,13 +478,13 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  slconn->stat->netto_trig = -1;
 	  slconn->stat->netdly_trig = -1;
 	}
-      
+
       /* Check if a keepalive packet needs to be sent */
       if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info &&
 	  slconn->keepalive && slconn->stat->keepalive_trig > 0)
 	{
 	  sl_log_r (slconn, 1, 2, "sending keepalive request\n");
-	  
+
 	  if ( sl_send_info (slconn, "ID", 3) != -1 )
 	    {
 	      slconn->stat->query_mode = KeepAliveQuery;
@@ -492,7 +492,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	      slconn->stat->keepalive_trig = -1;
 	    }
 	}
-      
+
       /* Check if an in-stream INFO request needs to be sent */
       if (slconn->stat->sl_state == SL_DATA &&
 	  !slconn->stat->expect_info && slconn->info)
@@ -506,16 +506,16 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	    {
 	      slconn->stat->query_mode = NoQuery;
 	    }
-	  
+
 	  slconn->info = NULL;
 	}
-      
+
       /* Throttle the loop while delaying */
       if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig > 0)
 	{
 	  slp_usleep (500000);
 	}
-      
+
       /* Connect to remote SeedLink */
       if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig == 0)
 	{
@@ -527,12 +527,12 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  slconn->stat->netdly_trig = -1;
 	  slconn->stat->keepalive_trig = -1;
 	}
-      
+
       /* Negotiate/configure the connection */
       if (slconn->stat->sl_state == SL_UP)
 	{
 	  int slconfret = 0;
-	  
+
 	  /* Only send query if a query is set and no streams are defined,
 	   * if streams are defined we'll send the query after configuration.
 	   */
@@ -548,7 +548,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 		  slconn->stat->query_mode = NoQuery;
 		  slconn->stat->expect_info = 0;
 		}
-	      
+
 	      slconn->info = NULL;
 	    }
 	  else
@@ -556,7 +556,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	      slconfret = sl_configlink (slconn);
 	      slconn->stat->expect_info = 0;
 	    }
-	  
+
 	  if (slconfret != -1)
 	    {
 	      slconn->stat->recptr   = 0;	/* initialize the data buffer pointers */
@@ -586,19 +586,19 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
      slconn->link, slconn->stat->sendptr, slconn->stat->recptr,
      (slconn->stat->recptr - slconn->stat->sendptr) );
   */
-        
+
   /* Process data in buffer */
   while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + slrecsize)
     {
       retpacket = 1;
-      
+
       /* Check for an INFO packet */
       if (!strncmp (&slconn->stat->databuf[slconn->stat->sendptr], INFOSIGNATURE, 6))
 	{
 	  char terminator;
-	  
+
 	  terminator = (slconn->stat->databuf[slconn->stat->sendptr + SLHEADSIZE - 1] != '*');
-	  
+
 	  if ( !slconn->stat->expect_info )
 	    {
 	      sl_log_r (slconn, 2, 0, "unexpected INFO packet received, skipping\n");
@@ -609,12 +609,12 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 		{
 		  slconn->stat->expect_info = 0;
 		}
-	      
+
 	      /* Keep alive packets are not returned */
 	      if ( slconn->stat->query_mode == KeepAliveQuery )
 		{
 		  retpacket = 0;
-		  
+
 		  if ( !terminator )
 		    {
 		      sl_log_r (slconn, 2, 0, "non-terminated keep-alive packet received!?!\n");
@@ -625,7 +625,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 		    }
 		}
 	    }
-	  
+
 	  if ( slconn->stat->query_mode != NoQuery )
 	    {
 	      slconn->stat->query_mode = NoQuery;
@@ -639,10 +639,10 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	      retpacket = 0;
 	    }
 	}
-      
+
       /* Increment the send pointer */
       slconn->stat->sendptr += (SLHEADSIZE + slrecsize);
-      
+
       /* Return packet */
       if ( retpacket )
 	{
@@ -650,24 +650,24 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  return SLPACKET;
 	}
     }
-  
+
   /* A trap door for terminating, all complete data packets from the buffer
      have been sent to the caller */
   if ( slconn->terminate ) {
     return SLTERMINATE;
   }
-  
+
   /* After processing the packet buffer shift the data */
   if ( slconn->stat->sendptr )
     {
       memmove (slconn->stat->databuf,
 	       &slconn->stat->databuf[slconn->stat->sendptr],
 	       slconn->stat->recptr - slconn->stat->sendptr);
-      
+
       slconn->stat->recptr -= slconn->stat->sendptr;
       slconn->stat->sendptr = 0;
     }
-  
+
   /* Catch cases where the data stream stopped */
   if ((slconn->stat->recptr - slconn->stat->sendptr) == 7 &&
       !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "ERROR\r\n", 7))
@@ -676,7 +676,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
       slconn->link = sl_disconnect (slconn);
       return SLTERMINATE;
     }
-  
+
   if ((slconn->stat->recptr - slconn->stat->sendptr) == 3 &&
       !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "END", 3))
     {
@@ -684,16 +684,16 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
       slconn->link = sl_disconnect (slconn);
       return SLTERMINATE;
     }
-  
+
   /* Process data in our buffer and then read incoming data */
   if (slconn->stat->sl_state == SL_DATA)
     {
       /* Check for more available data from the socket */
       bytesread = 0;
-      
+
       bytesread = sl_recvdata (slconn, (void *) &slconn->stat->databuf[slconn->stat->recptr],
 			       BUFSIZE - slconn->stat->recptr, slconn->sladdr);
-      
+
       if (bytesread < 0 && ! slconn->terminate)            /* read() failed */
 	{
 	  slconn->link = sl_disconnect (slconn);
@@ -702,13 +702,13 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
       else if (bytesread > 0)	/* Data is here, process it */
 	{
 	  slconn->stat->recptr += bytesread;
-	  
+
 	  /* Reset the timeout and keepalive timers */
 	  slconn->stat->netto_trig     = -1;
 	  slconn->stat->keepalive_trig = -1;
 	}
     }
-  
+
   /* Update timing variables */
   current_time = sl_dtime ();
 
@@ -726,7 +726,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  slconn->stat->netto_trig = 1;
 	}
     }
-  
+
   /* Keepalive/heartbeat interval timing logic */
   if (slconn->keepalive)
     {
@@ -741,7 +741,7 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  slconn->stat->keepalive_trig = 1;
 	}
     }
-  
+
   /* Network delay timing logic */
   if (slconn->netdly)
     {
@@ -756,10 +756,10 @@ sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize)
 	  slconn->stat->netdly_trig = 0;
 	}
     }
-  
+
   /* Non-blocking and no data was returned */
   return SLNOPACKET;
-  
+
 }  /* End of sl_collect_nb() */
 
 
@@ -781,36 +781,36 @@ update_stream (SLCD * slconn, SLpacket * slpack)
   int updates = 0;
   char net[3];
   char sta[6];
-  
+
   if ( (seqnum = sl_sequence (slpack)) == -1 )
     {
       sl_log_r (slconn, 2, 0, "update_stream(): could not determine sequence number\n");
       return -1;
     }
-  
+
   /* Copy fixed header */
   memcpy (&fsdh, &slpack->msrecord, sizeof(struct sl_fsdh_s));
-  
+
   /* Check to see if byte swapping is needed (bogus year makes good test) */
   if ((fsdh.start_time.year < 1900) || (fsdh.start_time.year > 2050))
     swapflag = 1;
-  
+
   /* Change byte order? */
   if ( swapflag )
     {
       sl_gswap2 (&fsdh.start_time.year);
       sl_gswap2 (&fsdh.start_time.day);
     }
-  
+
   curstream = slconn->streams;
-  
+
   /* Generate some "clean" net and sta strings */
   if ( curstream != NULL )
     {
       sl_strncpclean (net, fsdh.network, 2);
       sl_strncpclean (sta, fsdh.station, 5);
     }
-  
+
   /* For uni-station mode */
   if ( curstream != NULL )
     {
@@ -819,13 +819,13 @@ update_stream (SLCD * slconn, SLpacket * slpack)
 	{
 	  int month = 0;
 	  int mday = 0;
-	  
+
 	  sl_doy2md (fsdh.start_time.year,
 		     fsdh.start_time.day,
 		     &month, &mday);
-	  
+
 	  curstream->seqnum = seqnum;
-	  
+
 	  snprintf (curstream->timestamp, 20,
 		    "%04d,%02d,%02d,%02d,%02d,%02d",
 		    fsdh.start_time.year,
@@ -834,11 +834,11 @@ update_stream (SLCD * slconn, SLpacket * slpack)
 		    fsdh.start_time.hour,
 		    fsdh.start_time.min,
 		    fsdh.start_time.sec);
-	  
+
 	  return 0;
 	}
     }
-  
+
   /* For multi-station mode, search the stream chain and update all matching entries */
   while ( curstream != NULL )
     {
@@ -848,13 +848,13 @@ update_stream (SLCD * slconn, SLpacket * slpack)
         {
 	  int month = 0;
 	  int mday = 0;
-	  
+
 	  sl_doy2md (fsdh.start_time.year,
 		     fsdh.start_time.day,
 		     &month, &mday);
-	  
+
 	  curstream->seqnum = seqnum;
-	  
+
 	  snprintf (curstream->timestamp, 20,
 		    "%04d,%02d,%02d,%02d,%02d,%02d",
 		    fsdh.start_time.year,
@@ -863,17 +863,17 @@ update_stream (SLCD * slconn, SLpacket * slpack)
 		    fsdh.start_time.hour,
 		    fsdh.start_time.min,
 		    fsdh.start_time.sec);
-	  
+
 	  updates++;
         }
-      
+
       curstream = curstream->next;
     }
-  
+
   /* If no updates then no match was found */
   if ( updates == 0 )
     sl_log_r (slconn, 2, 0, "unexpected data received: %.2s %.6s\n", net, sta);
-  
+
   return (updates == 0) ? -1 : 0;
 }  /* End of update_stream() */
 
@@ -908,20 +908,20 @@ sl_newslcd (void)
   slconn->multistation   = 0;
   slconn->dialup         = 0;
   slconn->batchmode      = 0;
-  slconn->lastpkttime    = 0;
+  slconn->lastpkttime    = 1;
   slconn->terminate      = 0;
-  
+
   slconn->keepalive      = 0;
   slconn->netto          = 600;
   slconn->netdly         = 30;
-  
+
   slconn->link           = -1;
   slconn->info           = NULL;
   slconn->protocol_ver   = 0.0;
 
   /* Allocate the associated persistent state struct */
   slconn->stat = (SLstat *) malloc (sizeof(SLstat));
-  
+
   if ( slconn->stat == NULL )
     {
       sl_log_r (NULL, 2, 0, "new_slconn(): error allocating memory\n");
@@ -953,7 +953,7 @@ sl_newslcd (void)
 /***************************************************************************
  * sl_freeslcd:
  *
- * Free all memory associated with a SLCD struct including the 
+ * Free all memory associated with a SLCD struct including the
  * associated stream chain and persistent connection state.
  *
  ***************************************************************************/
@@ -992,7 +992,7 @@ sl_freeslcd (SLCD * slconn)
   if ( slconn->log != NULL )
     free (slconn->log);
 
-  free (slconn);  
+  free (slconn);
 }  /* End of sl_freeslcd() */
 
 
@@ -1016,9 +1016,9 @@ sl_addstream (SLCD * slconn, const char * net, const char * sta,
   SLstream *curstream;
   SLstream *newstream;
   SLstream *laststream = NULL;
-  
+
   curstream = slconn->streams;
-  
+
   /* Sanity, check for a uni-station mode entry */
   if ( curstream )
     {
@@ -1029,22 +1029,22 @@ sl_addstream (SLCD * slconn, const char * net, const char * sta,
 	  return -1;
 	}
     }
-  
+
   /* Search the stream chain */
   while ( curstream != NULL )
     {
       laststream = curstream;
       curstream = curstream->next;
     }
-  
+
   newstream = (SLstream *) malloc (sizeof(SLstream));
-  
+
   if ( newstream == NULL )
     {
       sl_log_r (slconn, 2, 0, "sl_addstream(): error allocating memory\n");
       return -1;
     }
-  
+
   newstream->net = strdup(net);
   newstream->sta = strdup(sta);
 
@@ -1061,7 +1061,7 @@ sl_addstream (SLCD * slconn, const char * net, const char * sta,
     strncpy(newstream->timestamp, timestamp, 20);
 
   newstream->next = NULL;
-  
+
   if ( slconn->streams == NULL )
     {
       slconn->streams = newstream;
@@ -1069,7 +1069,7 @@ sl_addstream (SLCD * slconn, const char * net, const char * sta,
   else if ( laststream )
     {
       laststream->next = newstream;
-    }  
+    }
 
   slconn->multistation = 1;
 
@@ -1132,9 +1132,9 @@ sl_setuniparams (SLCD * slconn, const char * selectors,
     strncpy(newstream->timestamp, timestamp, 20);
 
   newstream->next = NULL;
-  
+
   slconn->streams = newstream;
-  
+
   slconn->multistation = 0;
 
   return 0;
@@ -1228,13 +1228,13 @@ sl_packettype (const SLpacket * slpack)
 	return SLINFT;
       else
 	return SLINF;
-    }  
+    }
 
   num_samples     = (uint16_t) ntohs(fsdh->num_samples);
   samprate_fact   = (int16_t)  ntohs(fsdh->samprate_fact);
   begin_blockette = (int16_t)  ntohs(fsdh->begin_blockette);
 
-  p = (const struct sl_blkt_head_s *) ((const char *) fsdh + 
+  p = (const struct sl_blkt_head_s *) ((const char *) fsdh +
 				       begin_blockette);
 
   blkt_type       = (uint16_t) ntohs(p->blkt_type);
@@ -1259,7 +1259,7 @@ sl_packettype (const SLpacket * slpack)
 
       p = (const struct sl_blkt_head_s *) ((const char *) fsdh +
 				    next_blkt);
-      
+
       blkt_type       = (uint16_t) ntohs(p->blkt_type);
       next_blkt       = (uint16_t) ntohs(p->next_blkt);
     }

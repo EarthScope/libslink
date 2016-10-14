@@ -2,6 +2,7 @@
 	- Support data sample unpacking with byte order specified in Blockette 1000,
 	specifically allows little endian decoding.  Thanks to patch by Yen Soon.
 	- Port socket usage to portable SLP_SOCKET type, either int or SOCKET.
+	- Change default use of lastpkttime to true (1) in sl_newslcd().
 	- Quiet some MSVC warnings with defines suggested by Kevin Frechette.
 
 2013.305: version 2.4b

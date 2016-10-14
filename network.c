@@ -474,7 +474,7 @@ sl_negotiate_multi (SLCD * slconn)
 	      sprintf (cmd, "DATA");
 	    }
 
-	  /* Append the last packet time if the feature is enabled and server is >= 2.93 */
+          /* Append the last packet time if the feature is enabled and server is >= 2.93 */
 	  if (slconn->lastpkttime &&
 	      sl_checkversion (slconn, (float)2.93) >= 0 &&
 	      strlen (curstream->timestamp))
