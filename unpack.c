@@ -52,13 +52,13 @@ static int decodedebug = 0;
 int
 sl_msr_unpack (SLlog *log, SLMSrecord *msr, int swapflag)
 {
-  const char *dbuf;  /* Encoded data buffer */
-  char srcname[50];  /* Source name, "Net_Sta_Loc_Chan[_Qual] */
-  int blksize;       /* byte size of Mini-SEED record */
-  int format;        /* SEED data encoding */
-  int datasize;      /* byte size of data samples in record */
-  int nsamples;      /* number of samples unpacked */
-  int unpacksize;    /* byte size of unpacked samples */
+  const char *dbuf; /* Encoded data buffer */
+  char srcname[50]; /* Source name, "Net_Sta_Loc_Chan[_Qual] */
+  int blksize;      /* byte size of Mini-SEED record */
+  int format;       /* SEED data encoding */
+  int datasize;     /* byte size of data samples in record */
+  int nsamples;     /* number of samples unpacked */
+  int unpacksize;   /* byte size of unpacked samples */
   int i;
 
   /* Reset the error flag */
