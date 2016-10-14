@@ -19,7 +19,7 @@
  *   ORFEUS/EC-Project MEREDIAN
  *   IRIS Data Management Center
  *
- * modified: 2012.152
+ * modified: 2016.287
  ***************************************************************************/
 
 
@@ -224,7 +224,7 @@ typedef struct slcd_s
 
   float       protocol_ver;     /* Version of the SeedLink protocol in use */
   const char *info;             /* INFO level to request */
-  int         link;		/* The network socket descriptor */
+  SLP_SOCKET  link;		/* The network socket descriptor */
   SLstat     *stat;             /* Persistent state information */
   SLlog      *log;              /* Logging parameters */
 } SLCD;
@@ -258,7 +258,7 @@ extern int    sl_send_info (SLCD * slconn, const char * info_level,
 extern int    sl_connect (SLCD * slconn, int sayhello);
 extern int    sl_disconnect (SLCD * slconn);
 extern int    sl_ping (SLCD * slconn, char *serverid, char *site);
-extern int    sl_checksock (int sock, int tosec, int tousec);
+extern int    sl_checksock (SLP_SOCKET sock, int tosec, int tousec);
 extern int    sl_senddata (SLCD * slconn, void *buffer, size_t buflen,
 			   const char *ident, void *resp, int resplen);
 extern int    sl_recvdata (SLCD * slconn, void *buffer, size_t maxbytes,

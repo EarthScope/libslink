@@ -1,6 +1,6 @@
 /***************************************************************************
  * slplatform.h:
- * 
+ *
  * Platform specific headers.  This file provides a basic level of platform
  * portability.
  *
@@ -18,7 +18,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2008.078
+ * modified: 2016.287
  ***************************************************************************/
 
 #ifndef SLPLATFORM_H
@@ -28,28 +28,16 @@
 extern "C" {
 #endif
 
-
-  /* Portability to the XScale (ARM) architecture
-   * requires a packed attribute in certain places
-   * but this only works with GCC for now.
-   */
-
+/* Portability to the XScale (ARM) architecture requires a packed
+ * attribute in certain places but this only works with GCC for now. */
 #if defined (__GNUC__)
   #define SLP_PACKED __attribute__ ((packed))
 #else
   #define SLP_PACKED
-#endif  
-
-  /* Make some guesses about the system libraries based
-   * on the architecture.  Currently the assumptions are:
-   * Linux => glibc2 (SLP_GLIBC2)
-   * Sun => Solaris (SLP_SOLARIS)
-   * WIN32 => WIN32 and Windows Sockets 2 (SLP_WIN32)
-   * Apple => Mac OS X (SLP_DARWIN)
-   */
+#endif
 
 #if defined(__linux__) || defined(__linux)
-  #define SLP_GLIBC2 1
+  #define SLP_LINUX 1
 
   #include <stdlib.h>
   #include <unistd.h>
@@ -59,7 +47,7 @@ extern "C" {
   #include <netinet/in.h>
   #include <netdb.h>
   #include <sys/time.h>
-   
+
 #elif defined(__sun__) || defined(__sun)
   #define SLP_SOLARIS 1
 
@@ -122,12 +110,19 @@ extern "C" {
 
 #endif
 
+/* Define a portable network socket type */
+#if defined (SLP_WIN32)
+  #define SLP_SOCKET SOCKET
+#else
+  #define SLP_SOCKET int
+#endif
+
 extern int slp_sockstartup (void);
-extern int slp_sockconnect (int sock, struct sockaddr * inetaddr, int addrlen);
-extern int slp_sockclose (int sock);
-extern int slp_socknoblock (int sock);
+extern int slp_sockconnect (SLP_SOCKET sock, struct sockaddr * inetaddr, int addrlen);
+extern int slp_sockclose (SLP_SOCKET sock);
+extern int slp_socknoblock (SLP_SOCKET sock);
 extern int slp_noblockcheck (void);
-extern int slp_getaddrinfo (char * nodename, char * nodeport, 
+extern int slp_getaddrinfo (char * nodename, char * nodeport,
 			    struct sockaddr * addr, size_t * addrlen);
 extern int slp_openfile (const char *filename, char perm);
 extern const char *slp_strerror(void);
@@ -137,5 +132,5 @@ extern void slp_usleep(unsigned long int useconds);
 #ifdef __cplusplus
 }
 #endif
- 
+
 #endif /* SLPLATFORM_H */

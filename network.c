@@ -4,14 +4,14 @@
  *
  * Network communication routines for SeedLink
  *
- * Written by Chad Trabant, 
+ * Written by Chad Trabant,
  *   ORFEUS/EC-Project MEREDIAN (previously)
  *   IRIS Data Management Center
  *
  * Originally based on the SeedLink interface of the modified Comserv in
  * SeisComP written by Andres Heinloo
  *
- * Version: 2010.075
+ * Version: 2016.287
  ***************************************************************************/
 
 #include <stdio.h>
@@ -90,12 +90,12 @@ sl_negotiate_uni (SLCD * slconn)
   char sendstr[100];		/* A buffer for command strings */
   char readbuf[100];		/* A buffer for responses */
   SLstream *curstream;
-  
+
   /* Point to the stream chain */
   curstream = slconn->streams;
 
   selptr = curstream->selectors;
-  
+
   /* Send the selector(s) and check the response(s) */
   if (curstream->selectors != 0)
     {
@@ -116,7 +116,7 @@ sl_negotiate_uni (SLCD * slconn)
 	    }
 	  else
 	    {
-	      
+
 	      /* Build SELECT command, send it and receive response */
 	      sprintf (sendstr, "SELECT %.*s\r", sellen, selptr);
 	      sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n", slconn->sladdr,
@@ -128,7 +128,7 @@ sl_negotiate_uni (SLCD * slconn)
 		{		/* Error from sl_senddata() */
 		  return -1;
 		}
-	      
+
 	      /* Search for 2nd "\r" indicating extended reply message present */
 	      extreply = 0;
 	      if ( (term1 = memchr (readbuf, '\r', bytesread)) )
@@ -139,7 +139,7 @@ sl_negotiate_uni (SLCD * slconn)
 		      extreply = term1+1;
 		    }
 		}
-	      
+
 	      /* Check response to SELECT */
 	      if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 		{
@@ -161,7 +161,7 @@ sl_negotiate_uni (SLCD * slconn)
 		}
 	    }
 	}
-      
+
       /* Fail if none of the given selectors were accepted */
       if (!acceptsel)
 	{
@@ -266,7 +266,7 @@ sl_negotiate_uni (SLCD * slconn)
 /***************************************************************************
  * sl_negotiate_multi:
  *
- * Negotiate a SeedLink connection using multi-station mode and 
+ * Negotiate a SeedLink connection using multi-station mode and
  * issue the END action command.  This is compatible with SeedLink
  * Protocol version 3, multi-station mode.
  *
@@ -315,7 +315,7 @@ sl_negotiate_multi (SLCD * slconn)
 	{
 	  return -1;
 	}
-      
+
       /* Search for 2nd "\r" indicating extended reply message present */
       extreply = 0;
       if ( (term1 = memchr (readbuf, '\r', bytesread)) )
@@ -326,7 +326,7 @@ sl_negotiate_multi (SLCD * slconn)
 	      extreply = term1+1;
 	    }
 	}
-      
+
       /* Check the response */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
@@ -384,7 +384,7 @@ sl_negotiate_multi (SLCD * slconn)
 		    {		/* Error from sl_senddata() */
 		      return -1;
 		    }
-		  
+
 		  /* Search for 2nd "\r" indicating extended reply message present */
 		  extreply = 0;
 		  if ( (term1 = memchr (readbuf, '\r', bytesread)) )
@@ -395,7 +395,7 @@ sl_negotiate_multi (SLCD * slconn)
 			  extreply = term1+1;
 			}
 		    }
-		  
+
 		  /* Check response to SELECT */
 		  if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 		    {
@@ -464,7 +464,7 @@ sl_negotiate_multi (SLCD * slconn)
       else if (curstream->seqnum != -1 && slconn->resume )
 	{
 	  char cmd[10];
-	  
+
 	  if ( slconn->dialup )
 	    {
 	      sprintf (cmd, "FETCH");
@@ -473,7 +473,7 @@ sl_negotiate_multi (SLCD * slconn)
 	    {
 	      sprintf (cmd, "DATA");
 	    }
-	  
+
 	  /* Append the last packet time if the feature is enabled and server is >= 2.93 */
 	  if (slconn->lastpkttime &&
 	      sl_checkversion (slconn, (float)2.93) >= 0 &&
@@ -486,7 +486,7 @@ sl_negotiate_multi (SLCD * slconn)
 	      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
 			slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
 			(curstream->seqnum + 1), curstream->timestamp);
-	    }	  
+	    }
 	  else
 	    { /* Increment sequence number by 1 */
 	      sprintf (sendstr, "%s %06X\r", cmd,
@@ -507,7 +507,7 @@ sl_negotiate_multi (SLCD * slconn)
 	    {
 	      sprintf (sendstr, "DATA\r");
 	    }
-	  
+
 	  sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n", slring);
 	}
 
@@ -520,7 +520,7 @@ sl_negotiate_multi (SLCD * slconn)
 	  sl_log_r (slconn, 2, 0, "[%s] error with DATA/FETCH/TIME request\n", slring);
 	  return -1;
 	}
-      
+
       /* Search for 2nd "\r" indicating extended reply message present */
       extreply = 0;
       if ( (term1 = memchr (readbuf, '\r', bytesread)) )
@@ -533,7 +533,7 @@ sl_negotiate_multi (SLCD * slconn)
 	      extreply = term1+1;
 	    }
 	}
-      
+
       /* Check response to DATA/FETCH/TIME request */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
@@ -551,12 +551,12 @@ sl_negotiate_multi (SLCD * slconn)
 		    slring, bytesread, readbuf);
 	  return -1;
 	}
-      
+
       /* Point to the next stream */
       curstream = curstream->next;
 
     }  /* End of stream and selector config (end of stream chain). */
-  
+
   /* Fail if no stations were accepted */
   if (!acceptsta)
     {
@@ -615,7 +615,7 @@ sl_send_info (SLCD * slconn, const char * info_level, int verbose)
     {
       sl_log_r (slconn, 2, 0,
 		"[%s] detected SeedLink version (%.3f) does not support INFO requests\n",
-		slconn->sladdr, slconn->protocol_ver);   
+		slconn->sladdr, slconn->protocol_ver);
       return -1;
     }
 
@@ -648,7 +648,7 @@ sl_send_info (SLCD * slconn, const char * info_level, int verbose)
 int
 sl_connect (SLCD * slconn, int sayhello)
 {
-  int sock;
+  SLP_SOCKET sock;
   int on = 1;
   int sockstat;
   long int nport;
@@ -662,7 +662,7 @@ sl_connect (SLCD * slconn, int sayhello)
     sl_log_r (slconn, 2, 0, "could not initialize network sockets\n");
     return -1;
   }
-  
+
   /* Check server address string and use defaults if needed:
    * If only ':' is specified neither host nor port specified
    * If no ':' is included no port was specified
@@ -689,7 +689,7 @@ sl_connect (SLCD * slconn, int sayhello)
 	  strncpy (nodename, slconn->sladdr, (ptr - slconn->sladdr));
 	  nodename[(ptr - slconn->sladdr)] = '\0';
 	}
-      
+
       strcpy (nodeport, ptr+1);
 
       /* Sanity test the port number */
@@ -701,7 +701,7 @@ sl_connect (SLCD * slconn, int sayhello)
 	  return -1;
 	}
     }
-  
+
   if ( slp_getaddrinfo (nodename, nodeport, &addr, &addrlen) )
     {
       sl_log_r (slconn, 2, 0, "cannot resolve hostname %s\n", nodename );
@@ -727,7 +727,7 @@ sl_connect (SLCD * slconn, int sayhello)
       slp_sockclose (sock);
       return -1;
     }
-  
+
   /* Wait up to 10 seconds for the socket to be connected */
   if ((sockstat = sl_checksock (sock, 10, 0)) <= 0)
     {
@@ -747,18 +747,17 @@ sl_connect (SLCD * slconn, int sayhello)
   else if ( ! slconn->terminate )
     {				/* socket connected */
       sl_log_r (slconn, 1, 1, "[%s] network socket opened\n", slconn->sladdr);
-      
+
       /* Set the SO_KEEPALIVE socket option, although not really useful */
-      if (setsockopt
-	  (sock, SOL_SOCKET, SO_KEEPALIVE, (char *) &on, sizeof (on)) < 0)
+      if (setsockopt(sock, SOL_SOCKET, SO_KEEPALIVE, (char *) &on, sizeof (on)) < 0)
 	sl_log_r (slconn, 1, 1, "[%s] cannot set SO_KEEPALIVE socket option\n",
 		  slconn->sladdr);
-      
+
       slconn->link = sock;
 
       if ( slconn->batchmode )
 	  slconn->batchmode = 1;
-      
+
       /* Everything should be connected, say hello if requested */
       if ( sayhello )
 	{
@@ -768,7 +767,7 @@ sl_connect (SLCD * slconn, int sayhello)
 	      return -1;
 	    }
 	}
-      
+
       /* Try to enter batch mode if requested */
       if ( slconn->batchmode )
         {
@@ -778,10 +777,10 @@ sl_connect (SLCD * slconn, int sayhello)
 	      return -1;
 	    }
 	}
-      
+
       return sock;
     }
-  
+
   return -1;
 }  /* End of sl_connect() */
 
@@ -800,10 +799,10 @@ sl_disconnect (SLCD * slconn)
     {
       slp_sockclose (slconn->link);
       slconn->link = -1;
-      
+
       sl_log_r (slconn, 1, 1, "[%s] network socket closed\n", slconn->sladdr);
     }
-  
+
   return -1;
 }  /* End of sl_disconnect() */
 
@@ -828,7 +827,7 @@ sl_sayhello (SLCD * slconn)
   char servstr[200];		/* The remote server ident */
   char sitestr[100];		/* The site/data center ident */
   char servid[100];		/* Server ID string, i.e. 'SeedLink' */
-  char *capptr;                 /* Pointer to capabilities flags */  
+  char *capptr;                 /* Pointer to capabilities flags */
   char capflag = 0;             /* Capabilities are supported by server */
 
   /* Send HELLO */
@@ -836,20 +835,20 @@ sl_sayhello (SLCD * slconn)
   sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
   sl_senddata (slconn, (void *) sendstr, strlen (sendstr), slconn->sladdr,
 	       NULL, 0);
-  
+
   /* Recv the two lines of response: server ID and site installation ID */
   if ( sl_recvresp (slconn, (void *) servstr, (size_t) sizeof (servstr),
 		    sendstr, slconn->sladdr) < 0 )
     {
       return -1;
     }
-  
+
   if ( sl_recvresp (slconn, (void *) sitestr, (size_t) sizeof (sitestr),
 		    sendstr, slconn->sladdr) < 0 )
     {
       return -1;
     }
-  
+
   /* Terminate on first "\r" character or at one character before end of buffer */
   servcnt = strcspn (servstr, "\r");
   if ( servcnt > (sizeof(servstr)-2) )
@@ -857,14 +856,14 @@ sl_sayhello (SLCD * slconn)
       servcnt = (sizeof(servstr)-2);
     }
   servstr[servcnt] = '\0';
-  
+
   sitecnt = strcspn (sitestr, "\r");
   if ( sitecnt > (sizeof(sitestr)-2) )
     {
       sitecnt = (sizeof(sitestr)-2);
     }
   sitestr[sitecnt] = '\0';
-  
+
   /* Search for capabilities flags in server ID by looking for "::"
    * The expected format of the complete server ID is:
    * "seedlink v#.# <optional text> <:: optional capability flags>"
@@ -877,18 +876,18 @@ sl_sayhello (SLCD * slconn)
 
       /* Move pointer to beginning of flags */
       capptr += 2;
-      
+
       /* Move capptr up to first non-space character */
       while ( *capptr == ' ' )
 	capptr++;
     }
-  
+
   /* Report received IDs */
   sl_log_r (slconn, 1, 1, "[%s] connected to: %s\n", slconn->sladdr, servstr);
   if ( capptr )
     sl_log_r (slconn, 1, 1, "[%s] capabilities: %s\n", slconn->sladdr, capptr);
   sl_log_r (slconn, 1, 1, "[%s] organization: %s\n", slconn->sladdr, sitestr);
-  
+
   /* Parse old-school server ID and version from the returned string.
    * The expected format at this point is:
    * "seedlink v#.# <optional text>"
@@ -897,7 +896,7 @@ sl_sayhello (SLCD * slconn)
   /* Add a space to the end to allowing parsing when the optionals are not present */
   servstr[servcnt] = ' '; servstr[servcnt+1] = '\0';
   ret = sscanf (servstr, "%s v%f ", &servid[0], &slconn->protocol_ver);
-  
+
   if ( ret != 2 || strncasecmp (servid, "SEEDLINK", 8) )
     {
       sl_log_r (slconn, 1, 1,
@@ -905,38 +904,38 @@ sl_sayhello (SLCD * slconn)
                 slconn->sladdr);
       slconn->protocol_ver = 0.0;
     }
-  
+
   /* Check capabilities flags */
   if ( capptr )
     {
       char *tptr;
-      
+
       /* Parse protocol version flag: "SLPROTO:<#.#>" if present */
       if ( (tptr = strstr(capptr, "SLPROTO")) )
 	{
 	  /* This protocol specification overrides that from earlier in the server ID */
 	  ret = sscanf (tptr, "SLPROTO:%f", &slconn->protocol_ver);
-	  
+
 	  if ( ret != 1 )
 	    sl_log_r (slconn, 1, 1,
 		      "[%s] could not parse protocol version from SLPROTO flag: %s\n",
 		      slconn->sladdr, tptr);
 	}
-      
+
       /* Check for CAPABILITIES command support */
       if ( strstr(capptr, "CAP") )
 	capflag = 1;
     }
-  
+
   /* Send CAPABILITIES flags if supported by server */
   if ( capflag )
     {
       int bytesread = 0;
       char readbuf[100];
-      
+
       char *term1, *term2;
       char *extreply = 0;
-      
+
       /* Current capabilities:
        *   SLPROTO:3.1 = SeedLink protocol version
        *   CAP         = CAPABILITIES command support
@@ -945,17 +944,17 @@ sl_sayhello (SLCD * slconn)
        *   BATCH       = BATCH command mode support
        */
       sprintf (sendstr, "CAPABILITIES SLPROTO:3.1 CAP EXTREPLY NSWILDCARD BATCH\r");
-      
+
       /* Send CAPABILITIES and recv response */
       sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
       bytesread = sl_senddata (slconn, (void *) sendstr, strlen (sendstr), slconn->sladdr,
 			       readbuf, sizeof (readbuf));
-      
+
       if ( bytesread < 0 )
 	{		/* Error from sl_senddata() */
 	  return -1;
 	}
-      
+
       /* Search for 2nd "\r" indicating extended reply message present */
       extreply = 0;
       if ( (term1 = memchr (readbuf, '\r', bytesread)) )
@@ -966,7 +965,7 @@ sl_sayhello (SLCD * slconn)
 	      extreply = term1+1;
 	    }
 	}
-      
+
       /* Check response to CAPABILITIES */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
 	{
@@ -976,7 +975,7 @@ sl_sayhello (SLCD * slconn)
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
 	{
 	  sl_log_r (slconn, 1, 2, "[%s] CAPABILITIES not accepted %s%s%s\n", slconn->sladdr,
-		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");	  
+		    (extreply)?"{":"", (extreply)?extreply:"", (extreply)?"}":"");
 	  return -1;
 	}
       else
@@ -987,7 +986,7 @@ sl_sayhello (SLCD * slconn)
 	  return -1;
 	}
     }
-  
+
   return 0;
 }  /* End of sl_sayhello() */
 
@@ -1008,10 +1007,10 @@ sl_batchmode (SLCD * slconn)
   char sendstr[100];    /* A buffer for command strings */
   char readbuf[100];    /* A buffer for server reply */
   int bytesread = 0;
-  
+
   if ( ! slconn )
     return -1;
-  
+
   if (sl_checkversion (slconn, 3.1) < 0)
     {
       sl_log_r (slconn, 2, 0,
@@ -1019,18 +1018,18 @@ sl_batchmode (SLCD * slconn)
 		slconn->sladdr, slconn->protocol_ver);
       return -1;
     }
-  
+
   /* Send BATCH and recv response */
   sprintf (sendstr, "BATCH\r");
   sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
   bytesread = sl_senddata (slconn, (void *) sendstr, strlen (sendstr), slconn->sladdr,
 			   readbuf, sizeof (readbuf));
-  
+
   if ( bytesread < 0 )
     {		/* Error from sl_senddata() */
       return -1;
     }
-  
+
   /* Check response to BATCH */
   if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
     {
@@ -1048,7 +1047,7 @@ sl_batchmode (SLCD * slconn)
 		slconn->sladdr, bytesread, readbuf);
       return -1;
     }
-  
+
   return 0;
 }  /* End of sl_batchmode() */
 
@@ -1074,53 +1073,53 @@ sl_ping (SLCD * slconn, char *serverid, char *site)
   char sendstr[100];		/* A buffer for command strings */
   char servstr[100];		/* The remote server ident */
   char sitestr[100];		/* The site/data center ident */
-  
+
   /* Open network connection to server */
   if ( sl_connect (slconn, 0) == -1 )
     {
       sl_log_r (slconn, 2, 1, "Could not connect to server\n");
       return -2;
     }
-  
+
   /* Send HELLO */
   sprintf (sendstr, "HELLO\r");
   sl_log_r (slconn, 1, 2, "[%s] sending: HELLO\n", slconn->sladdr);
   sl_senddata (slconn, (void *) sendstr, strlen (sendstr), slconn->sladdr,
 	       NULL, 0);
-  
+
   /* Recv the two lines of response */
-  if ( sl_recvresp (slconn, (void *) servstr, (size_t) sizeof (servstr), 
+  if ( sl_recvresp (slconn, (void *) servstr, (size_t) sizeof (servstr),
 		    sendstr, slconn->sladdr) < 0 )
     {
       return -1;
     }
-  
+
   if ( sl_recvresp (slconn, (void *) sitestr, (size_t) sizeof (sitestr),
 		    sendstr, slconn->sladdr) < 0 )
     {
       return -1;
     }
-  
+
   servcnt = strcspn (servstr, "\r");
   if ( servcnt > 90 )
     {
       servcnt = 90;
     }
   servstr[servcnt] = '\0';
-  
+
   sitecnt = strcspn (sitestr, "\r");
   if ( sitecnt > 90 )
     {
       sitecnt = 90;
     }
   sitestr[sitecnt] = '\0';
-  
+
   /* Copy the response strings into the supplied strings */
   strncpy (serverid, servstr, sizeof(servstr));
   strncpy (site, sitestr, sizeof(sitestr));
-  
+
   slconn->link = sl_disconnect (slconn);
-  
+
   return 0;
 }  /* End of sl_ping() */
 
@@ -1138,7 +1137,7 @@ sl_ping (SLCD * slconn, char *serverid, char *site)
  * -1 = errors
  ***************************************************************************/
 int
-sl_checksock (int sock, int tosec, int tousec)
+sl_checksock (SLP_SOCKET sock, int tosec, int tousec)
 {
   int sret;
   int ret = -1;			/* default is failure */
@@ -1147,7 +1146,7 @@ sl_checksock (int sock, int tosec, int tousec)
   struct timeval to;
 
   FD_ZERO (&checkset);
-  FD_SET ((unsigned int)sock, &checkset);
+  FD_SET (sock, &checkset);
 
   to.tv_sec = tosec;
   to.tv_usec = tousec;
@@ -1188,22 +1187,22 @@ int
 sl_senddata (SLCD * slconn, void *buffer, size_t buflen,
 	     const char *ident, void *resp, int resplen)
 {
-  
+
   int bytesread = 0;		/* bytes read into resp */
-  
+
   if ( send (slconn->link, buffer, buflen, 0) < 0 )
     {
       sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n", ident,
 		strcspn ((char *) buffer, "\r\n"), (char *) buffer);
       return -1;
     }
-  
+
   /* If requested collect the response */
   if ( resp != NULL )
     {
       /* Clear response buffer */
       memset (resp, 0, resplen);
-      
+
       if ( slconn->batchmode == 2 )
         {
 	  /* Fake OK response */
@@ -1215,7 +1214,7 @@ sl_senddata (SLCD * slconn, void *buffer, size_t buflen,
           bytesread = sl_recvresp (slconn, resp, resplen, buffer, ident);
 	}
     }
-  
+
   return bytesread;
 }  /* End of sl_senddata() */
 
@@ -1235,14 +1234,14 @@ sl_recvdata (SLCD * slconn, void *buffer, size_t maxbytes,
 	     const char *ident)
 {
   int bytesread = 0;
-  
+
   if ( buffer == NULL )
     {
       return -1;
     }
-  
+
   bytesread = recv (slconn->link, buffer, maxbytes, 0);
-  
+
   if ( bytesread == 0 )		/* should indicate TCP FIN or EOF */
     {
       sl_log_r (slconn, 1, 1, "[%s] recv():%d TCP FIN or EOF received\n",
@@ -1286,31 +1285,31 @@ int
 sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
 	     const char *command, const char *ident)
 {
-  
+
   int bytesread = 0;		/* total bytes read */
   int recvret   = 0;            /* return from sl_recvdata */
   int ackcnt    = 0;		/* counter for the read loop */
   int ackpoll   = 50000;	/* poll at 0.05 seconds for reading */
-  
+
   if ( buffer == NULL )
     {
       return -1;
     }
-  
+
   /* Clear the receiving buffer */
   memset (buffer, 0, maxbytes);
-  
+
   /* Recv a byte at a time and wait up to 30 seconds for a response */
   while ( bytesread < maxbytes )
     {
       recvret = sl_recvdata (slconn, (char *)buffer + bytesread, 1, ident);
-      
+
       /* Trap door for termination */
       if ( slconn->terminate )
 	{
 	  return -1;
 	}
-      
+
       if ( recvret > 0 )
 	{
 	  bytesread += recvret;
@@ -1322,7 +1321,7 @@ sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
 		    (char *) command);
 	  return -1;
 	}
-      
+
       /* Trap door if '\r\n' is recv'd */
       if ( bytesread >= 2 &&
 	   *(char *)((char *)buffer + bytesread - 2) == '\r' &&
@@ -1330,7 +1329,7 @@ sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
 	{
 	  return bytesread;
 	}
-      
+
       /* Trap door if 30 seconds has elapsed, (ackpoll x 600) */
       if ( ackcnt > 600 )
         {
@@ -1339,7 +1338,7 @@ sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
 		    (char *) command);
 	  return -1;
 	}
-      
+
       /* Delay if no data received */
       if ( recvret == 0 )
 	{
@@ -1347,6 +1346,6 @@ sl_recvresp (SLCD * slconn, void *buffer, size_t maxbytes,
 	  ackcnt++;
 	}
     }
-  
+
   return bytesread;
 }  /* End of sl_recvresp() */

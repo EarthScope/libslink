@@ -1,6 +1,6 @@
 /***************************************************************************
  * slplatform.c:
- * 
+ *
  * Platform portability routines.
  *
  * This library is free software; you can redistribute it and/or
@@ -17,7 +17,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2008.029
+ * modified: 2016.287
  ***************************************************************************/
 
 #include <fcntl.h>
@@ -66,7 +66,7 @@ slp_sockstartup (void)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_sockconnect (int sock, struct sockaddr * inetaddr, int addrlen)
+slp_sockconnect (SLP_SOCKET sock, struct sockaddr * inetaddr, int addrlen)
 {
 #if defined(SLP_WIN32)
   if ((connect (sock, inetaddr, addrlen)) == SOCKET_ERROR)
@@ -94,7 +94,7 @@ slp_sockconnect (int sock, struct sockaddr * inetaddr, int addrlen)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_sockclose (int sock)
+slp_sockclose (SLP_SOCKET sock)
 {
 #if defined(SLP_WIN32)
   return closesocket (sock);
@@ -112,7 +112,7 @@ slp_sockclose (int sock)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_socknoblock (int sock)
+slp_socknoblock (SLP_SOCKET sock)
 {
 #if defined(SLP_WIN32)
   u_long flag = 1;
@@ -193,7 +193,7 @@ slp_getaddrinfo (char * nodename, char * nodeport,
   inet_addr.sin_family = AF_INET;
   inet_addr.sin_port = htons ((unsigned short int)nport);
   inet_addr.sin_addr = *(struct in_addr *) result->h_addr_list[0];
-  
+
   *addr = *((struct sockaddr *) &inet_addr);
   *addrlen = sizeof(inet_addr);
 
