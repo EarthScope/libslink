@@ -63,12 +63,12 @@ extern "C" {
   #include <netdb.h>
   #include <sys/time.h>
 
-#elif defined(WIN32)
+#elif defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
   #define SLP_WIN32 1
 
+  #include <winsock2.h>
   #include <windows.h>
   #include <stdarg.h>
-  #include <winsock.h>
   #include <io.h>
 
   #define snprintf _snprintf
