@@ -4,6 +4,7 @@
 	- Add sl_msr_srcname() function to generate "Net_Sta_Loc_Chan[_Qual]".
 	- Switch to simpler SOCKET type defined as needed by platform includes
 	or as int when not set.
+	- Clarify licensing to be LGPLv3.
 
 2016.287: version 2.5
 	- Support data sample unpacking with byte order specified in Blockette 1000,

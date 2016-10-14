@@ -55,6 +55,24 @@ condition that each connection descriptor (SLCD) is handled by a
 single thread.  Thread independent logging schemes are possible.
 Under WIN32 the library is not thread-safe.
 
+-- Licensing --
+
+Copyright (C) 2016 Chad Trabant, IRIS Data Management Center
+
+This library is free software; you can redistribute it and/or modify
+it under the terms of the GNU Lesser General Public License as
+published by the Free Software Foundation; either version 3 of the
+License, or (at your option) any later version.
+
+This library is distributed in the hope that it will be useful, but
+WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
+Lesser General Public License (GNU-LGPL) for more details.
+
+You should have received a copy of the GNU Lesser General Public
+License along with this software.
+If not, see <https://www.gnu.org/licenses/>.
+
 -- Pronunciation --
 
 lib = 'l' + [eye] + 'b'  (as in library, long 'i')
@@ -63,23 +81,11 @@ link = link   (rhymes with the color pink)
 
 all together: 'l' [eye] 'b' [es] link
 
--- Licensing --
+-- Acknowlegements --
 
-This library is free software; you can redistribute it and/or
-modify it under the terms of the GNU Library General Public License
-as published by the Free Software Foundation; either version 2 of
-the License, or (at your option) any later version.
+Numerous improvements have been incorporated based on feedback and
+patches submitted by others.  Individual acknowlegements are included
+in the ChangeLog.
 
-This library is distributed in the hope that it will be useful, but
-WITHOUT ANY WARRANTY; without even the implied warranty of
-MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
-Library General Public License (GNU-LGPL) for more details.  The
-GNU-LGPL and further information can be found here:
-http://www.gnu.org/
-
--- Author --
-
-Chad Trabant
 Initial development at the ORFEUS Data Center/EC MEREDIAN Project
 Continuing maintenance at the IRIS Data Management Center
-
