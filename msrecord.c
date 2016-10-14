@@ -14,7 +14,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2012.152
+ * modified: 2016.287
  ***************************************************************************/
 
 #include <stdio.h>
@@ -25,7 +25,9 @@
 #include "libslink.h"
 #include "unpack.h"
 
-/* Delcare routines only used in this source file */
+#define SL_ISVALIDYEARDAY(Y,D) (Y >= 1900 && Y <= 2100 && D >= 1 && D <= 366)
+
+/* Declare routines only used in this source file */
 void encoding_hash (char enc, char *encstr);
 double host_latency (SLMSrecord * msr);
 
@@ -42,9 +44,9 @@ SLMSrecord *
 sl_msr_new ( void )
 {
   SLMSrecord * msr;
-  
+
   msr = (SLMSrecord *) malloc (sizeof(SLMSrecord));
-  
+
   if ( msr == NULL )
     {
       sl_log_rl (NULL, 2, 0, "sl_msr_new(): error allocating memory\n");
@@ -75,16 +77,16 @@ sl_msr_new ( void )
   msr->fsdh.time_correct       = 0;
   msr->fsdh.begin_data         = 0;
   msr->fsdh.begin_blockette    = 0;
-  
+
   msr->Blkt100     = NULL;
   msr->Blkt1000    = NULL;
   msr->Blkt1001    = NULL;
-  
+
   msr->msrecord    = NULL;
   msr->datasamples = NULL;
   msr->numsamples  = -1;
   msr->unpackerr   = MSD_NOERROR;
-  
+
   return msr;
 }  /* End of sl_msr_new() */
 
@@ -108,16 +110,33 @@ sl_msr_free ( SLMSrecord ** msr )
 	free((*msr)->datasamples);
 
       free(*msr);
-      
+
       *msr = NULL;
     }
 }  /* End of sl_msr_free() */
 
 
 /***************************************************************************
+ * sl_littleendianhost:
+ *
+ * Determine the byte order of the host machine.  Due to the lack of
+ * portable defines to determine host byte order this run-time test is
+ * provided.  This function originated from a similar function in libmseed.
+ *
+ * Returns 1 if the host is little endian, otherwise 0.
+ ***************************************************************************/
+static uint8_t
+sl_littleendianhost (void)
+{
+  uint16_t host = 1;
+  return *((uint8_t *)(&host));
+}  /* End of sl_littleendianhost() */
+
+
+/***************************************************************************
  * sl_msr_parse:
  *
- * A wrapper for sl_msr_parse_size() 
+ * A wrapper for sl_msr_parse_size()
  ***************************************************************************/
 SLMSrecord *
 sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
@@ -164,8 +183,8 @@ SLMSrecord *
 sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
 		   int8_t blktflag, int8_t unpackflag, int slrecsize)
 {
-  int swapflag = 0;		        /* is swapping needed? */
-  uint16_t begin_blockette;	        /* byte offset for next blockette */
+  uint8_t headerswapflag = 0;           /* is swapping needed? */
+  uint8_t dataswapflag = 0;
   SLMSrecord * msr = NULL;
 
   if ( ppmsr == NULL )
@@ -227,13 +246,12 @@ sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
       return NULL;
     }
 
-  /* Check to see if byte swapping is needed (bogus year makes good test) */
-  if ((msr->fsdh.start_time.year < 1900) ||
-      (msr->fsdh.start_time.year > 2050))
-    swapflag = 1;
-  
+  /* Check to see if byte swapping is needed by testing the year and day */
+  if ( ! SL_ISVALIDYEARDAY (msr->fsdh.start_time.year, msr->fsdh.start_time.day) )
+    headerswapflag = dataswapflag = 1;
+
   /* Change byte order? */
-  if ( swapflag )
+  if ( headerswapflag )
     {
       SL_SWAPBTIME (&msr->fsdh.start_time);
       sl_gswap2 (&msr->fsdh.num_samples);
@@ -252,7 +270,8 @@ sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
       struct sl_blkt_100_s   *blkt_100;
       struct sl_blkt_1000_s  *blkt_1000;
       struct sl_blkt_1001_s  *blkt_1001;
-      
+      uint16_t begin_blockette;         /* byte offset for next blockette */
+
       /* Initialize the blockette structures */
       blkt_head = (struct sl_blkt_head_s *) malloc (sizeof (struct sl_blkt_head_s));
       blkt_100  = NULL;
@@ -261,14 +280,14 @@ sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
 
       /* loop through blockettes as long as number is non-zero and viable */
       begin_blockette = msr->fsdh.begin_blockette;
-      
+
       while ((begin_blockette != 0) &&
 	     (begin_blockette <= slrecsize))
 	{
-	  
+
 	  memcpy ((void *) blkt_head, msrecord + begin_blockette,
 		  sizeof (struct sl_blkt_head_s));
-	  if ( swapflag )
+	  if ( headerswapflag )
 	    {
 	      sl_gswap2 (&blkt_head->blkt_type);
 	      sl_gswap2 (&blkt_head->next_blkt);
@@ -279,63 +298,72 @@ sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
 	      blkt_100 = (struct sl_blkt_100_s *) malloc (sizeof (struct sl_blkt_100_s));
 	      memcpy ((void *) blkt_100, msrecord + begin_blockette,
 		      sizeof (struct sl_blkt_100_s));
-	      
-	      if ( swapflag )
+
+	      if ( headerswapflag )
 		{
 		  sl_gswap4 (&blkt_100->sample_rate);
 		}
-	      
+
 	      blkt_100->blkt_type = blkt_head->blkt_type;
 	      blkt_100->next_blkt = blkt_head->next_blkt;
-	      
+
 	      msr->Blkt100 = blkt_100;
 	    }
-	  
+
 	  if (blkt_head->blkt_type == 1000)
-	    
+
 	    {			/* found the 1000 blockette */
 	      blkt_1000 =
 		(struct sl_blkt_1000_s *) malloc (sizeof (struct sl_blkt_1000_s));
 	      memcpy ((void *) blkt_1000, msrecord + begin_blockette,
 		      sizeof (struct sl_blkt_1000_s));
-	      
+
 	      blkt_1000->blkt_type = blkt_head->blkt_type;
 	      blkt_1000->next_blkt = blkt_head->next_blkt;
-	      
+
 	      msr->Blkt1000 = blkt_1000;
 	    }
-	  
+
 	  if (blkt_head->blkt_type == 1001)
 	    {			/* found a 1001 blockette */
 	      blkt_1001 =
 		(struct sl_blkt_1001_s *) malloc (sizeof (struct sl_blkt_1001_s));
 	      memcpy ((void *) blkt_1001, msrecord + begin_blockette,
 		      sizeof (struct sl_blkt_1001_s));
-	      
+
 	      blkt_1001->blkt_type = blkt_head->blkt_type;
 	      blkt_1001->next_blkt = blkt_head->next_blkt;
-	      
+
 	      msr->Blkt1001 = blkt_1001;
 	    }
-	  
+
 	  /* Point to the next blockette */
 	  begin_blockette = blkt_head->next_blkt;
 	}				/* End of while looping through blockettes */
-      
+
       if (blkt_1000 == NULL)
 	{
 	  sl_log_rl (log, 1, 0, "1000 blockette was NOT found for %s.%s.%s.%s!",
 		     msr->fsdh.network, msr->fsdh.station,
 		     msr->fsdh.location, msr->fsdh.channel);
 	}
-      
+      else
+	{
+	  /* no byte swapping of data if little-endian host and little-endian data */
+	  if ( sl_littleendianhost() && blkt_1000->word_swap == 0 )
+	    dataswapflag = 0;
+	  /* no byte swapping of data if big-endian host and big-endian data */
+	  else if ( !sl_littleendianhost() && blkt_1000->word_swap == 1 )
+	    dataswapflag = 0;
+	}
+
       free (blkt_head);
     }
 
   /* Unpack the data samples if requested */
   if ( unpackflag )
     {
-      msr->numsamples = sl_msr_unpack (log, msr, swapflag);
+      msr->numsamples = sl_msr_unpack (log, msr, dataswapflag);
     }
   else {
     msr->numsamples = -1;
@@ -344,7 +372,7 @@ sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** ppmsr,
   /* Re-direct the original pointer and return the new */
   *ppmsr = msr;
   return msr;
-}  /* End of sl_msr_parse() */
+}  /* End of sl_msr_parse_size() */
 
 
 /***************************************************************************
@@ -384,11 +412,11 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
   sprintf (sourcename, "%.3s%.6s%.3s%.3s", prtnet, prtsta, prtloc, prtchan);
 
   usec = msr->fsdh.start_time.fract * 100;
-  
+
   if ( msr->Blkt1001 )
     {
       usec += msr->Blkt1001->usec;
-      
+
       if ( usec > 1000000 || usec < 0 )
 	{
 	  sl_log_rl (log, 1, 0, "Cannot apply microsecond offset\n");
@@ -401,10 +429,10 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 	    msr->fsdh.start_time.year, msr->fsdh.start_time.day,
 	    msr->fsdh.start_time.hour, msr->fsdh.start_time.min,
 	    msr->fsdh.start_time.sec, usec);
-  
+
   /* Calculate the latency */
   latency = host_latency (msr);
-  
+
   /* Report information in the fixed header */
   if (details > 0)
     {
@@ -443,7 +471,7 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 	  sl_log_rl (log, 0, 0, "                       flags: %d\n",
 		     msr->Blkt100->flags);
 	}
-      
+
       if ( msr->Blkt1000 != NULL )
 	{
 	  int reclen;
@@ -451,10 +479,10 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 	  char encstr[100];
 
 	  encoding_hash (msr->Blkt1000->encoding, &encstr[0]);
-	  
+
 	  /* Calculate record size in bytes as 2^(Blkt1000->rec_len) */
 	  reclen = (unsigned int) 1 << msr->Blkt1000->rec_len;
-	  
+
 	  /* Big or little endian reported by the 1000 blockette? */
 	  if (msr->Blkt1000->word_swap == 0)
 	    strncpy (order, "Little endian (Intel/VAX)", sizeof(order)-1);
@@ -462,7 +490,7 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 	    strncpy (order, "Big endian (SPARC/Motorola)", sizeof(order)-1);
 	  else
 	    strncpy (order, "Unknown value", sizeof(order)-1);
-	  
+
 	  sl_log_rl (log, 0, 0, "         BLOCKETTE 1000:\n");
 	  sl_log_rl (log, 0, 0, "              next blockette: %d\n",
 		     msr->Blkt1000->next_blkt);
@@ -473,7 +501,7 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 	  sl_log_rl (log, 0, 0, "                    reserved: %d\n",
 		     msr->Blkt1000->reserved);
 	}
-      
+
       if ( msr->Blkt1001 != NULL )
 	{
 	  sl_log_rl (log, 0, 0, "         BLOCKETTE 1001:\n");
@@ -489,7 +517,7 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 		     msr->Blkt1001->frame_cnt);
 	}
     }
-  
+
   return 1;
 }  /* End of sl_msr_print() */
 
@@ -521,10 +549,10 @@ sl_msr_dsamprate (SLMSrecord * msr, double * samprate)
   else
     {
       *samprate = sl_msr_dnomsamprate(msr);
-      
+
       if ( *samprate == -1.0 )
 	return 0;
-      
+
       return 2;
     }
 }  /* End of sl_msr_dsamprate() */
@@ -545,24 +573,24 @@ sl_msr_dnomsamprate (SLMSrecord * msr)
   double srcalc = 0.0;
   int factor;
   int multiplier;
-  
+
   if ( ! msr )
     return -1.0;
-  
-  /* Calculate the nominal sample rate */  
+
+  /* Calculate the nominal sample rate */
   factor = msr->fsdh.samprate_fact;
   multiplier = msr->fsdh.samprate_mult;
-  
+
   if ( factor > 0 )
     srcalc = (double) factor;
   else if ( factor < 0 )
     srcalc = -1.0 / (double) factor;
-  
+
   if ( multiplier > 0 )
     srcalc = srcalc * (double) multiplier;
   else if ( multiplier < 0 )
     srcalc = -1.0 * (srcalc / (double) multiplier);
-  
+
   return srcalc;
 }  /* End of sl_msr_dnomsamprate() */
 
@@ -581,12 +609,12 @@ sl_msr_depochstime (SLMSrecord * msr)
 {
   struct sl_btime_s *btime;
   double dtime;
-  
+
   if ( ! msr )
     return 0;
-  
+
   btime = &msr->fsdh.start_time;
-  
+
   dtime = (double) (btime->year - 1970) * 31536000 +
                    ((btime->year - 1969) / 4) * 86400 +
                    (btime->day - 1) * 86400 +
@@ -599,7 +627,7 @@ sl_msr_depochstime (SLMSrecord * msr)
     {
       dtime += msr->Blkt1001->usec / 1000000;
     }
-  
+
   return dtime;
 }  /* End of sl_msr_depochstime() */
 
@@ -701,17 +729,17 @@ host_latency (SLMSrecord *msr)
   double latency = 0.0;
 
   sl_msr_dsamprate (msr, &dsamprate);
-    
+
   /* Calculate the time covered by the samples */
   if ( dsamprate )
     span = (double) msr->fsdh.num_samples * (1.0 / dsamprate);
-  
+
   /* Grab UTC time according to the system clock */
   epoch = sl_dtime();
-  
+
   /* Now calculate the latency */
   sepoch = sl_msr_depochstime(msr);
   latency = epoch - sepoch - span;
-  
+
   return latency;
 }  /* End of host_latency() */
