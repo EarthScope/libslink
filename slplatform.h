@@ -18,7 +18,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2016.287
+ * modified: 2016.288
  ***************************************************************************/
 
 #ifndef SLPLATFORM_H
@@ -110,17 +110,15 @@ extern "C" {
 
 #endif
 
-/* Define a portable network socket type */
-#if defined (SLP_WIN32)
-  #define SLP_SOCKET SOCKET
-#else
-  #define SLP_SOCKET int
+/* Use int for SOCKET if platform includes have not defined it */
+#ifndef SOCKET
+  #define SOCKET int
 #endif
 
 extern int slp_sockstartup (void);
-extern int slp_sockconnect (SLP_SOCKET sock, struct sockaddr * inetaddr, int addrlen);
-extern int slp_sockclose (SLP_SOCKET sock);
-extern int slp_socknoblock (SLP_SOCKET sock);
+extern int slp_sockconnect (SOCKET sock, struct sockaddr * inetaddr, int addrlen);
+extern int slp_sockclose (SOCKET sock);
+extern int slp_socknoblock (SOCKET sock);
 extern int slp_noblockcheck (void);
 extern int slp_getaddrinfo (char * nodename, char * nodeport,
 			    struct sockaddr * addr, size_t * addrlen);

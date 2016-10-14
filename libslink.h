@@ -19,9 +19,8 @@
  *   ORFEUS/EC-Project MEREDIAN
  *   IRIS Data Management Center
  *
- * modified: 2016.287
+ * modified: 2016.288
  ***************************************************************************/
-
 
 #ifndef LIBSLINK_H
 #define LIBSLINK_H 1
@@ -32,8 +31,8 @@ extern "C" {
 
 #include "slplatform.h"
 
-#define LIBSLINK_VERSION "2.5"
-#define LIBSLINK_RELEASE "2016.287"
+#define LIBSLINK_VERSION "2.6"
+#define LIBSLINK_RELEASE "2016.288"
 
 #define SLRECSIZE           512      /* Default Mini-SEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
@@ -224,7 +223,7 @@ typedef struct slcd_s
 
   float       protocol_ver;     /* Version of the SeedLink protocol in use */
   const char *info;             /* INFO level to request */
-  SLP_SOCKET  link;		/* The network socket descriptor */
+  SOCKET      link;		/* The network socket descriptor */
   SLstat     *stat;             /* Persistent state information */
   SLlog      *log;              /* Logging parameters */
 } SLCD;
@@ -255,10 +254,10 @@ extern int   sl_parse_streamlist (SLCD *slconn, const char *streamlist,
 extern int    sl_configlink (SLCD * slconn);
 extern int    sl_send_info (SLCD * slconn, const char * info_level,
 			    int verbose);
-extern int    sl_connect (SLCD * slconn, int sayhello);
+extern SOCKET sl_connect (SLCD * slconn, int sayhello);
 extern int    sl_disconnect (SLCD * slconn);
 extern int    sl_ping (SLCD * slconn, char *serverid, char *site);
-extern int    sl_checksock (SLP_SOCKET sock, int tosec, int tousec);
+extern int    sl_checksock (SOCKET sock, int tosec, int tousec);
 extern int    sl_senddata (SLCD * slconn, void *buffer, size_t buflen,
 			   const char *ident, void *resp, int resplen);
 extern int    sl_recvdata (SLCD * slconn, void *buffer, size_t maxbytes,

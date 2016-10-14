@@ -11,7 +11,7 @@
  * Originally based on the SeedLink interface of the modified Comserv in
  * SeisComP written by Andres Heinloo
  *
- * Version: 2016.287
+ * Version: 2016.288
  ***************************************************************************/
 
 #include <stdio.h>
@@ -645,10 +645,10 @@ sl_send_info (SLCD * slconn, const char * info_level, int verbose)
  *
  * Returns -1 on errors otherwise the socket descriptor created.
  ***************************************************************************/
-int
+SOCKET
 sl_connect (SLCD * slconn, int sayhello)
 {
-  SLP_SOCKET sock;
+  SOCKET sock;
   int on = 1;
   int sockstat;
   long int nport;
@@ -1137,7 +1137,7 @@ sl_ping (SLCD * slconn, char *serverid, char *site)
  * -1 = errors
  ***************************************************************************/
 int
-sl_checksock (SLP_SOCKET sock, int tosec, int tousec)
+sl_checksock (SOCKET sock, int tosec, int tousec)
 {
   int sret;
   int ret = -1;			/* default is failure */

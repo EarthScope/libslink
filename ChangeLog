@@ -1,3 +1,7 @@
+2016.288:
+	- Switch to simpler SOCKET type defined as needed by platform includes
+	or as int when not set.
+
 2016.287: version 2.5
 	- Support data sample unpacking with byte order specified in Blockette 1000,
 	specifically allows little endian decoding.  Thanks to patch by Yen Soon.

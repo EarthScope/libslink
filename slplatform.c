@@ -17,7 +17,7 @@
  *
  * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
  *
- * modified: 2016.287
+ * modified: 2016.288
  ***************************************************************************/
 
 #include <fcntl.h>
@@ -66,7 +66,7 @@ slp_sockstartup (void)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_sockconnect (SLP_SOCKET sock, struct sockaddr * inetaddr, int addrlen)
+slp_sockconnect (SOCKET sock, struct sockaddr * inetaddr, int addrlen)
 {
 #if defined(SLP_WIN32)
   if ((connect (sock, inetaddr, addrlen)) == SOCKET_ERROR)
@@ -94,7 +94,7 @@ slp_sockconnect (SLP_SOCKET sock, struct sockaddr * inetaddr, int addrlen)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_sockclose (SLP_SOCKET sock)
+slp_sockclose (SOCKET sock)
 {
 #if defined(SLP_WIN32)
   return closesocket (sock);
@@ -112,7 +112,7 @@ slp_sockclose (SLP_SOCKET sock)
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
-slp_socknoblock (SLP_SOCKET sock)
+slp_socknoblock (SOCKET sock)
 {
 #if defined(SLP_WIN32)
   u_long flag = 1;
