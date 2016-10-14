@@ -18,7 +18,7 @@ slclient: $(OBJS)
 	link.exe /nologo /out:$(BIN) $(LIBS) $(OBJS)
 
 .c.obj:
-   $(CC) /nologo $(CFLAGS) $(INCS) $(OPTS) /c $<
+	$(CC) /nologo $(CFLAGS) $(INCS) $(OPTS) /c $<
 
 # Clean-up directives
 clean:

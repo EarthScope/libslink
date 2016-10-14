@@ -303,7 +303,7 @@ extern int   sl_savestate (SLCD *slconn, const char *statefile);
 
 typedef struct SLMSrecord_s {
   const char            *msrecord;    /* Pointer to original record */
-  struct sl_fsdh_s       fsdh;        /* Fixed Section of Data Header */ 
+  struct sl_fsdh_s       fsdh;        /* Fixed Section of Data Header */
   struct sl_blkt_100_s  *Blkt100;     /* Blockette 100, if present */
   struct sl_blkt_1000_s *Blkt1000;    /* Blockette 1000, if present */
   struct sl_blkt_1001_s *Blkt1001;    /* Blockette 1001, if present */
@@ -320,6 +320,7 @@ extern SLMSrecord* sl_msr_parse (SLlog * log, const char * msrecord, SLMSrecord 
 extern SLMSrecord* sl_msr_parse_size (SLlog * log, const char * msrecord, SLMSrecord ** msr,
 				      int8_t blktflag, int8_t unpackflag, int slrecsize);
 extern int         sl_msr_print (SLlog * log, SLMSrecord * msr, int details);
+extern char*       sl_msr_srcname (SLMSrecord * msr, char * srcname, int8_t quality);
 extern int         sl_msr_dsamprate (SLMSrecord * msr, double * samprate);
 extern double      sl_msr_dnomsamprate (SLMSrecord * msr);
 extern double      sl_msr_depochstime (SLMSrecord * msr);

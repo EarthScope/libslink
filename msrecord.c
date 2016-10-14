@@ -12,9 +12,9 @@
  *
  * Some ideas and structures were used from seedsniff 2.0
  *
- * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
+ * Written by Chad Trabant, IRIS Data Managment Center
  *
- * modified: 2016.287
+ * modified: 2016.288
  ***************************************************************************/
 
 #include <stdio.h>
@@ -388,28 +388,13 @@ int
 sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
 {
   char sourcename[50];
-  char prtnet[4], prtsta[7];
-  char prtloc[4], prtchan[5];
   char stime[25];
   double latency;
   double dsamprate = 0.0;
   int usec;
 
-  /* Generate clean identifier strings */
-  sl_strncpclean (prtnet, msr->fsdh.network, 2);
-  sl_strncpclean (prtsta, msr->fsdh.station, 5);
-  sl_strncpclean (prtloc, msr->fsdh.location, 2);
-  sl_strncpclean (prtchan, msr->fsdh.channel, 3);
-
-  if (prtnet[0] != '\0')
-    strcat (prtnet, "_");
-  if (prtsta[0] != '\0')
-    strcat (prtsta, "_");
-  if (prtloc[0] != '\0')
-    strcat (prtloc, "_");
-
   /* Build the source name string */
-  sprintf (sourcename, "%.3s%.6s%.3s%.3s", prtnet, prtsta, prtloc, prtchan);
+  sl_msr_srcname (msr, sourcename, 0);
 
   usec = msr->fsdh.start_time.fract * 100;
 
@@ -521,6 +506,43 @@ sl_msr_print (SLlog * log, SLMSrecord * msr, int details)
   return 1;
 }  /* End of sl_msr_print() */
 
+/***************************************************************************
+ * sl_ms_srcname:
+ *
+ * Generate a source name string for a specified raw data record in
+ * the format: 'NET_STA_LOC_CHAN' or, if the quality flag is true:
+ * 'NET_STA_LOC_CHAN_QUAL'.  The passed srcname must have enough room
+ * for the resulting string.
+ *
+ * Returns a pointer to the resulting string or NULL on error.
+ ***************************************************************************/
+char *
+sl_msr_srcname (SLMSrecord *msr, char *srcname, int8_t quality)
+{
+  char network[8];
+  char station[8];
+  char location[8];
+  char channel[8];
+
+  if (!msr)
+    return NULL;
+
+  sl_strncpclean (network, msr->fsdh.network, 2);
+  sl_strncpclean (station, msr->fsdh.station, 5);
+  sl_strncpclean (location, msr->fsdh.location, 2);
+  sl_strncpclean (channel, msr->fsdh.channel, 3);
+
+  /* Build the source name string including the quality indicator*/
+  if (quality)
+    sprintf (srcname, "%s_%s_%s_%s_%c",
+             network, station, location, channel, msr->fsdh.dhq_indicator);
+
+  /* Build the source name string without the quality indicator*/
+  else
+    sprintf (srcname, "%s_%s_%s_%s", network, station, location, channel);
+
+  return srcname;
+} /* End of sl_msr_srcname() */
 
 /***************************************************************************
  * sl_msr_dsamprate:

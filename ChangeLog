@@ -1,4 +1,7 @@
 2016.288:
+	- Replace data sample unpacking routines from qlib2 with new routines
+	developed from scratch in libmseed.  All code is now LGPL licensed.
+	- Add sl_msr_srcname() function to generate "Net_Sta_Loc_Chan[_Qual]".
 	- Switch to simpler SOCKET type defined as needed by platform includes
 	or as int when not set.
 
