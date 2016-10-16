@@ -1,6 +1,5 @@
 #
-#
-# Nmake File For libslink - MS Visual C++ version
+# Nmake file For libslink - MS Visual C/C++
 # Use 'nmake -f Makefile.win'
 
 NODEBUG=1

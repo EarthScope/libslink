@@ -1,5 +1,4 @@
 #
-#
 # Nmake file for libslink example client - Windows version
 # Use 'nmake -f Makefile.win'
 
