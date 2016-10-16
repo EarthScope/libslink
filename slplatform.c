@@ -3,7 +3,7 @@
  *
  * Platform portability routines.
  *
- * modified: 2016.288
+ * modified: 2016.290
  ***************************************************************************/
 
 #include <errno.h>
@@ -20,14 +20,14 @@
  * slp_sockstartup:
  *
  * Startup the network socket layer.  At the moment this is only meaningful
- * for the WIN32 platform.
+ * for the WIN platform.
  *
  * Returns -1 on errors and 0 on success.
  ***************************************************************************/
 int
 slp_sockstartup (void)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   WORD wVersionRequested;
   WSADATA wsaData;
 
@@ -52,7 +52,7 @@ slp_sockstartup (void)
 int
 slp_sockconnect (SOCKET sock, struct sockaddr *inetaddr, int addrlen)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   if ((connect (sock, inetaddr, addrlen)) == SOCKET_ERROR)
   {
     if (WSAGetLastError () != WSAEWOULDBLOCK)
@@ -79,7 +79,7 @@ slp_sockconnect (SOCKET sock, struct sockaddr *inetaddr, int addrlen)
 int
 slp_sockclose (SOCKET sock)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   return closesocket (sock);
 #else
   return close (sock);
@@ -96,7 +96,7 @@ slp_sockclose (SOCKET sock)
 int
 slp_socknoblock (SOCKET sock)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   u_long flag = 1;
 
   if (ioctlsocket (sock, FIONBIO, &flag) == -1)
@@ -123,7 +123,7 @@ slp_socknoblock (SOCKET sock)
 int
 slp_noblockcheck (void)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   if (WSAGetLastError () != WSAEWOULDBLOCK)
     return -1;
 
@@ -141,22 +141,25 @@ slp_noblockcheck (void)
  * slp_getaddrinfo:
  *
  * Resolve IP addresses and provide parameters needed for connect().
- * On Win32 this will use gethostbyname() for portability (only newer
- * Windows platforms support getaddrinfo).  On Linux (glibc2) and
- * Solaris the reentrant gethostbyname_r() is used.
  *
- * The real solution to name resolution is to use POSIX 1003.1g
- * getaddrinfo() because it is standardized, thread-safe and protocol
- * independent (i.e. IPv4, IPv6, etc.).  Unfortunately it is not
- * supported on many older platforms.
+ * On WIN this will use the older gethostbyname() for consistent
+ * compatibility with older OS versions.  In the future we should be
+ * able to use getaddrinfo() even on Windows.
  *
- * Return 0 on success and non-zero on error.
+ * On all other platforms use POSIX 1003.1g getaddrinfo() because it
+ * is standardized, thread-safe and protocol independent (i.e. IPv4,
+ * IPv6, etc.) and has broad support.
+ *
+ * Currently, this routine is limited to IPv4 addresses.
+ *
+ * Return 0 on success and non-zero on error.  On everything but WIN
+ * an error value is the return value of getaddrinfo().
  ***************************************************************************/
 int
 slp_getaddrinfo (char *nodename, char *nodeport,
                  struct sockaddr *addr, size_t *addrlen)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   struct hostent *result;
   struct sockaddr_in inet_addr;
   long int nport;
@@ -174,64 +177,34 @@ slp_getaddrinfo (char *nodename, char *nodeport,
   inet_addr.sin_port   = htons ((unsigned short int)nport);
   inet_addr.sin_addr   = *(struct in_addr *)result->h_addr_list[0];
 
-  *addr    = *((struct sockaddr *)&inet_addr);
+  memcpy (addr, &inet_addr, sizeof (struct sockaddr));
   *addrlen = sizeof (inet_addr);
 
-#elif defined(SLP_GLIBC2) || defined(SLP_SOLARIS)
-  /* 1024 bytes should be enough for the vast majority of cases.  If
-     not (e.g. the node has a lot of aliases) this call will fail. */
-
-  char buffer[1024];
-  struct hostent *result;
-  struct hostent result_buffer;
-  struct sockaddr_in inet_addr;
-  int my_error;
-  long int nport;
-  char *tail;
-
-#if defined(SLP_GLIBC2)
-  gethostbyname_r (nodename, &result_buffer,
-                   buffer, sizeof (buffer) - 1,
-                   &result, &my_error);
-#endif
-
-#if defined(SLP_SOLARIS)
-  result = gethostbyname_r (nodename, &result_buffer,
-                            buffer, sizeof (buffer) - 1,
-                            &my_error);
-#endif
-
-  if (!result)
-    return my_error;
-
-  nport = strtoul (nodeport, &tail, 0);
-
-  memset (&inet_addr, 0, sizeof (inet_addr));
-  inet_addr.sin_family = AF_INET;
-  inet_addr.sin_port   = htons ((unsigned short int)nport);
-  inet_addr.sin_addr   = *(struct in_addr *)result->h_addr_list[0];
-
-  *addr       = *((struct sockaddr *)&inet_addr);
-  *addrlen    = sizeof (inet_addr);
-
 #else
-  /* This will be used by all others, it is not properly supported
-     by some but this is the future of name resolution. */
-
-  struct addrinfo *result;
+  /* getaddrinfo() will be used by all others */
+  struct addrinfo *ptr    = NULL;
+  struct addrinfo *result = NULL;
   struct addrinfo hints;
+  int rv;
 
   memset (&hints, 0, sizeof (hints));
-  hints.ai_family   = PF_INET;
+  hints.ai_family   = AF_INET;
   hints.ai_socktype = SOCK_STREAM;
 
-  if (getaddrinfo (nodename, nodeport, &hints, &result))
+  if ((rv = getaddrinfo (nodename, nodeport, &hints, &result)))
   {
-    return -1;
+    return rv;
   }
 
-  *addr    = *(result->ai_addr);
-  *addrlen = result->ai_addrlen;
+  for (ptr = result; ptr != NULL; ptr = ptr->ai_next)
+  {
+    if (ptr->ai_family == AF_INET)
+    {
+      memcpy (addr, ptr->ai_addr, sizeof (struct sockaddr));
+      *addrlen = (size_t)ptr->ai_addrlen;
+      break;
+    }
+  }
 
   freeaddrinfo (result);
 
@@ -256,7 +229,7 @@ slp_getaddrinfo (char *nodename, char *nodeport,
 int
 slp_openfile (const char *filename, char perm)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   int flags = (perm == 'w') ? (_O_RDWR | _O_CREAT | _O_BINARY) : (_O_RDONLY | _O_BINARY);
   int mode  = (_S_IREAD | _S_IWRITE);
 #else
@@ -276,7 +249,7 @@ slp_openfile (const char *filename, char perm)
 const char *
 slp_strerror (void)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
   static char errorstr[100];
 
   snprintf (errorstr, sizeof (errorstr), "%d", WSAGetLastError ());
@@ -292,7 +265,7 @@ slp_strerror (void)
  * slp_dtime:
  *
  * Get the current time from the system as Unix/POSIX epoch time with double
- * precision.  On the WIN32 platform this function has millisecond
+ * precision.  On the WIN platform this function has millisecond
  * resulution, on *nix platforms this function has microsecond resolution.
  *
  * Return a double precision Unix/POSIX epoch time.
@@ -300,7 +273,7 @@ slp_strerror (void)
 double
 slp_dtime (void)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
 
   static const __int64 SECS_BETWEEN_EPOCHS = 11644473600;
   static const __int64 SECS_TO_100NS       = 10000000; /* 10^7 */
@@ -350,7 +323,7 @@ slp_dtime (void)
 void
 slp_usleep (unsigned long int useconds)
 {
-#if defined(SLP_WIN32)
+#if defined(SLP_WIN)
 
   SleepEx ((useconds / 1000), 1);
 

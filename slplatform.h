@@ -38,67 +38,87 @@ extern "C" {
   #define SLP_PACKED
 #endif
 
-#if defined(__linux__) || defined(__linux)
-  #define SLP_LINUX 1
+/* C99 standard headers */
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <time.h>
+#include <string.h>
+#include <ctype.h>
 
-  #include <stdlib.h>
+#if defined(__linux__) || defined(__linux) || defined(__CYGWIN__)
+  #define SLP_LINUX 1
+  #define SLP_GLIBC2 1 /* Deprecated */
+
   #include <unistd.h>
-  #include <stdarg.h>
   #include <inttypes.h>
+  #include <sys/time.h>
+  #include <sys/socket.h>
+  #include <netinet/in.h>
+  #include <errno.h>
+  #include <netdb.h>
+
+#elif defined(__APPLE__) || defined(__FreeBSD__) || defined(__OpenBSD__) || defined(__NetBSD__)
+  #define SLP_BSD
+  #define SLP_DARWIN 1 /* Deprecated */
+
+  #include <unistd.h>
+  #include <inttypes.h>
+  #include <sys/time.h>
+  #include <errno.h>
+  #include <sys/types.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <netdb.h>
-  #include <sys/time.h>
 
 #elif defined(__sun__) || defined(__sun)
   #define SLP_SOLARIS 1
 
-  #include <stdlib.h>
   #include <unistd.h>
-  #include <stdarg.h>
   #include <inttypes.h>
+  #include <sys/time.h>
   #include <errno.h>
   #include <sys/types.h>
   #include <sys/stat.h>
   #include <sys/socket.h>
   #include <netinet/in.h>
   #include <netdb.h>
-  #include <sys/time.h>
 
 #elif defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
-  #define SLP_WIN32 1
+  #define SLP_WIN 1
+  #define SLP_WIN32 1 /* Deprecated */
 
   #include <winsock2.h>
+  #include <ws2tcpip.h>
   #include <windows.h>
-  #include <stdarg.h>
   #include <io.h>
+
+  /* For MSVC 2012 and earlier define standard int types, otherwise use inttypes.h */
+  #if defined(_MSC_VER) && _MSC_VER <= 1700
+    typedef signed char int8_t;
+    typedef unsigned char uint8_t;
+    typedef signed short int int16_t;
+    typedef unsigned short int uint16_t;
+    typedef signed int int32_t;
+    typedef unsigned int uint32_t;
+    typedef signed __int64 int64_t;
+    typedef unsigned __int64 uint64_t;
+  #else
+    #include <inttypes.h>
+  #endif
+
+  #if defined(_MSC_VER)
+    #if !defined(PRId64)
+      #define PRId64 "I64d"
+    #endif
+    #if !defined(SCNd64)
+      #define SCNd64 "I64d"
+    #endif
+  #endif
 
   #define snprintf _snprintf
   #define vsnprintf _vsnprintf
   #define strncasecmp _strnicmp
-
-  typedef signed char int8_t;
-  typedef unsigned char uint8_t;
-  typedef signed short int int16_t;
-  typedef unsigned short int uint16_t;
-  typedef signed int int32_t;
-  typedef unsigned int uint32_t;
-  typedef signed __int64 int64_t;
-  typedef unsigned __int64 uint64_t;
-
-#elif defined(__APPLE__)
-  #define SLP_DARWIN 1
-
-  #include <stdlib.h>
-  #include <unistd.h>
-  #include <stdarg.h>
-  #include <inttypes.h>
-  #include <errno.h>
-  #include <sys/types.h>
-  #include <sys/socket.h>
-  #include <netinet/in.h>
-  #include <netdb.h>
-  #include <sys/time.h>
 
 #else
   typedef signed char int8_t;

@@ -48,7 +48,6 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   int fields;
   int count;
   int stacount;
-  int addret;
 
   net[0]       = '\0';
   sta[0]       = '\0';
@@ -96,7 +95,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     }
     else
     {
-      addret = sl_addstream (slconn, net, sta, defselect, -1, NULL);
+      sl_addstream (slconn, net, sta, defselect, -1, NULL);
       stacount++;
     }
 
