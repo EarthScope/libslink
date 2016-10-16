@@ -9,8 +9,6 @@ BIN = slclient.exe
 
 OBJS =	slclient.obj
 
-cflags = $(cflags) -DWIN32
-
 all: slclient
 
 slclient: $(OBJS)

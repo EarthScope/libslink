@@ -1,3 +1,9 @@
+2016.290:
+	- Change host name resolution to use getaddrinfo() on all platforms
+	except Windows.  Support is now nearly ubiquitous.  Still limited to
+	IPv4 addresses.
+	- Add Cygwin target to platforms and cleanup platform support.
+
 2016.288:
 	- Replace data sample unpacking routines from qlib2 with new routines
 	developed from scratch in libmseed.  All code is now LGPL licensed.
