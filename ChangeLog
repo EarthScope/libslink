@@ -1,4 +1,4 @@
-2016.290:
+2016.290: version 2.6
 	- Change host name resolution to use getaddrinfo() on all platforms
 	except Windows.  Support is now nearly ubiquitous.  Still limited to
 	IPv4 addresses.
