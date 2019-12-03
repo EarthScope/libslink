@@ -196,7 +196,8 @@ sl_collect (SLCD *slconn, SLpacket **slpack)
       */
 
     /* Process data in buffer */
-    while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + SLRECSIZE)
+    while (slconn->stat->recptr - slconn->stat->sendptr >=
+           SLHEADSIZE + sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], SLRECSIZE))
     {
       retpacket = 1;
 
@@ -248,14 +249,20 @@ sl_collect (SLCD *slconn, SLpacket **slpack)
         }
       }
 
-      /* Increment the send pointer */
-      slconn->stat->sendptr += (SLHEADSIZE + SLRECSIZE);
-
       /* Return packet */
       if (retpacket)
       {
-        *slpack = (SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr - (SLHEADSIZE + SLRECSIZE)];
+        *slpack = (SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr];
+        /* Increment the send pointer */
+        slconn->stat->sendptr += SLHEADSIZE +
+                                 sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], SLRECSIZE);
         return SLPACKET;
+      }
+      else
+      {
+        /* Increment the send pointer */
+        slconn->stat->sendptr += SLHEADSIZE +
+                                 sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], SLRECSIZE);
       }
     }
 
@@ -586,7 +593,8 @@ sl_collect_nb_size (SLCD *slconn, SLpacket **slpack, int slrecsize)
   */
 
   /* Process data in buffer */
-  while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + slrecsize)
+  while (slconn->stat->recptr - slconn->stat->sendptr >=
+         SLHEADSIZE + sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], slrecsize))
   {
     retpacket = 1;
 
@@ -638,14 +646,20 @@ sl_collect_nb_size (SLCD *slconn, SLpacket **slpack, int slrecsize)
       }
     }
 
-    /* Increment the send pointer */
-    slconn->stat->sendptr += (SLHEADSIZE + slrecsize);
-
     /* Return packet */
     if (retpacket)
     {
-      *slpack = (SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr - (SLHEADSIZE + slrecsize)];
+      *slpack = (SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr];
+      /* Increment the send pointer */
+      slconn->stat->sendptr += SLHEADSIZE +
+                               sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], slrecsize);
       return SLPACKET;
+    }
+    else
+    {
+      /* Increment the send pointer */
+      slconn->stat->sendptr += SLHEADSIZE +
+                               sl_recsize((SLpacket *)&slconn->stat->databuf[slconn->stat->sendptr], slrecsize);
     }
   }
 
@@ -1265,6 +1279,66 @@ sl_packettype (const SLpacket *slpack)
 
   return SLDATA;
 } /* End of sl_packettype() */
+
+/***************************************************************************
+ * sl_recsize:
+ *
+ * Check the miniSEED record size of packet.  If Blockette 1000 is present,
+ * then the miniSEED record size is specified by the Data Record Length
+ * field of Blockette 1000.
+ *
+ * Returns the miniSEED record size
+ ***************************************************************************/
+int
+sl_recsize (const SLpacket *slpack, int slrecsize)
+{
+  uint8_t b1000_rec_len = 0;
+
+  int16_t begin_blockette;
+  uint16_t blkt_type;
+  uint16_t next_blkt;
+
+  const struct sl_blkt_head_s *p;
+  const struct sl_fsdh_s * const fsdh = (const struct sl_fsdh_s *)&slpack->msrecord;
+
+  begin_blockette = (int16_t)ntohs (fsdh->begin_blockette);
+
+  p = (const struct sl_blkt_head_s *)((const char *)fsdh +
+                                      begin_blockette);
+
+  blkt_type = (uint16_t)ntohs (p->blkt_type);
+  next_blkt = (uint16_t)ntohs (p->next_blkt);
+
+  do
+  {
+    if (((const char *)p) - ((const char *)fsdh) >
+        MAX_HEADER_SIZE)
+    {
+      break;
+    }
+
+    if (blkt_type == 1000)
+      b1000_rec_len = ((const struct sl_blkt_1000_s *) p)->rec_len;
+
+    p = (const struct sl_blkt_head_s *)((const char *)fsdh +
+                                        next_blkt);
+
+    blkt_type = (uint16_t)ntohs (p->blkt_type);
+    next_blkt = (uint16_t)ntohs (p->next_blkt);
+  } while ((const struct sl_fsdh_s *)p != fsdh);
+
+  if ((b1000_rec_len < SLRECSIZEMIN_SHIFT) ||
+      (b1000_rec_len > SLRECSIZEMAX_SHIFT)   )
+  {
+    /* just return slrecsize if record size is unknown or too small or too big */
+    return slrecsize;
+  }
+  else
+  {
+    /* adhere to the Data Record Length field of Blockette 1000 */
+    return (1 << b1000_rec_len);
+  }
+} /* End of sl_recsize() */
 
 /***************************************************************************
  * sl_terminate:
