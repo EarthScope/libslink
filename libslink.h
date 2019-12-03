@@ -34,6 +34,10 @@ extern "C" {
 #define LIBSLINK_VERSION "2.6"
 #define LIBSLINK_RELEASE "2016.290"
 
+#define SLRECSIZEMIN_SHIFT  7        /* Min supported miniSEED record size */
+#define SLRECSIZEMIN        (1 << SLRECSIZEMIN_SHIFT)
+#define SLRECSIZEMAX_SHIFT  12       /* Max supported miniSEED record size */
+#define SLRECSIZEMAX        (1 << SLRECSIZEMAX_SHIFT)
 #define SLRECSIZE           512      /* Default Mini-SEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
 #define SLHEADSIZE          8        /* SeedLink header size */
@@ -148,7 +152,7 @@ struct sl_fsdh_s
 typedef struct slpacket_s
 {
   char    slhead[SLHEADSIZE];   /* SeedLink header */
-  char    msrecord[SLRECSIZE];  /* Mini-SEED record */
+  char    msrecord[SLRECSIZEMAX]; /* enough space for the max supported miniSEED record size */
 } SLP_PACKED SLpacket;
 
 /* Stream information */
@@ -242,6 +246,7 @@ extern int    sl_setuniparams (SLCD * slconn, const char *selectors,
 extern int    sl_request_info (SLCD * slconn, const char * infostr);
 extern int    sl_sequence (const SLpacket *);
 extern int    sl_packettype (const SLpacket *);
+extern int    sl_recsize (const SLpacket *, int slrecsize);
 extern void   sl_terminate (SLCD * slconn);
 
 /* config.c */
