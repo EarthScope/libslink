@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "libslink.h"
+#include "slplatform.h"
 
 /***************************************************************************
  * sl_read_streamlist:

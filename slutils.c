@@ -27,7 +27,7 @@
 #include <string.h>
 
 #include "libslink.h"
-
+#include "slplatform.h"
 #include "globmatch.h"
 
 /* Function(s) only used in this source file */

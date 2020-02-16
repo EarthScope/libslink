@@ -29,6 +29,7 @@
 #include <string.h>
 
 #include "libslink.h"
+#include "slplatform.h"
 
 /* Functions only used in this source file */
 int sl_sayhello (SLCD *slconn);
