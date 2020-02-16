@@ -57,7 +57,7 @@ sl_doy2md (int year, int jday, int *month, int *mday)
   /* Sanity check for the supplied year */
   if (year < 1900 || year > 2100)
   {
-    sl_log_r (NULL, 2, 0, "sl_doy2md(): year (%d) is out of range\n", year);
+    sl_log_r (NULL, 2, 0, "%s(): year (%d) is out of range\n", __func__, year);
     return -1;
   }
 
@@ -70,7 +70,7 @@ sl_doy2md (int year, int jday, int *month, int *mday)
 
   if (jday > 365 + leap || jday <= 0)
   {
-    sl_log_r (NULL, 2, 0, "sl_doy2md(): day-of-year (%d) is out of range\n", jday);
+    sl_log_r (NULL, 2, 0, "%s(): day-of-year (%d) is out of range\n", __func__, jday);
     return -1;
   }
 
@@ -130,7 +130,7 @@ sl_checkslcd (const SLCD *slconn)
 
   if (slconn->streams == NULL && slconn->info == NULL)
   {
-    sl_log_r (slconn, 2, 0, "sl_checkslconn(): stream chain AND info type are empty\n");
+    sl_log_r (slconn, 2, 0, "%s(): stream chain AND info type are empty\n", __func__);
     retval = -1;
   }
 

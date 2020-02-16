@@ -1194,8 +1194,10 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
 
   if (send (slconn->link, buffer, buflen, 0) < 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n", ident,
-              strcspn ((char *)buffer, "\r\n"), (char *)buffer);
+    sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n",
+              ident,
+              (int)strcspn ((char *)buffer, "\r\n"),
+              (char *)buffer);
     return -1;
   }
 
@@ -1317,8 +1319,9 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     else if (recvret < 0)
     {
       sl_log_r (slconn, 2, 0, "[%s] bad response to '%.*s'\n",
-                ident, strcspn ((char *)command, "\r\n"),
-                (char *)command);
+                ident,
+                (int)strcspn (command, "\r\n"),
+                command);
       return -1;
     }
 
@@ -1334,8 +1337,9 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     if (ackcnt > 600)
     {
       sl_log_r (slconn, 2, 0, "[%s] timeout waiting for response to '%.*s'\n",
-                ident, strcspn ((char *)command, "\r\n"),
-                (char *)command);
+                ident,
+                (int)strcspn (command, "\r\n"),
+                command);
       return -1;
     }
 

@@ -59,7 +59,7 @@ sl_msr_new (void)
 
   if (msr == NULL)
   {
-    sl_log_rl (NULL, 2, 0, "sl_msr_new(): error allocating memory\n");
+    sl_log_rl (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
     return NULL;
   }
 
@@ -195,7 +195,7 @@ sl_msr_parse_size (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
 
   if (ppmsr == NULL)
   {
-    sl_log_rl (log, 2, 1, "msr_parse(): pointer to SLMSrecord cannot be NULL\n");
+    sl_log_rl (log, 2, 1, "%s(): pointer to SLMSrecord cannot be NULL\n", __func__);
     *ppmsr = NULL;
     return NULL;
   }
@@ -437,7 +437,7 @@ sl_msr_print (SLlog *log, SLMSrecord *msr, int details)
                msr->fsdh.samprate_mult, dsamprate);
     sl_log_rl (log, 0, 0, "     num. of blockettes: %d\n",
                msr->fsdh.num_blockettes);
-    sl_log_rl (log, 0, 0, "        time correction: %ld\n",
+    sl_log_rl (log, 0, 0, "        time correction: %d\n",
                msr->fsdh.time_correct);
     sl_log_rl (log, 0, 0, "      begin data offset: %d\n", msr->fsdh.begin_data);
     sl_log_rl (log, 0, 0, "  fist blockette offset: %d\n",

@@ -795,7 +795,7 @@ update_stream (SLCD *slconn, SLpacket *slpack)
 
   if ((seqnum = sl_sequence (slpack)) == -1)
   {
-    sl_log_r (slconn, 2, 0, "update_stream(): could not determine sequence number\n");
+    sl_log_r (slconn, 2, 0, "%s(): could not determine sequence number\n", __func__);
     return -1;
   }
 
@@ -904,7 +904,7 @@ sl_newslcd (void)
 
   if (slconn == NULL)
   {
-    sl_log_r (NULL, 2, 0, "new_slconn(): error allocating memory\n");
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
     return NULL;
   }
 
@@ -934,7 +934,7 @@ sl_newslcd (void)
 
   if (slconn->stat == NULL)
   {
-    sl_log_r (NULL, 2, 0, "new_slconn(): error allocating memory\n");
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
     free (slconn);
     return NULL;
   }
@@ -1033,7 +1033,7 @@ sl_addstream (SLCD *slconn, const char *net, const char *sta,
     if (strcmp (curstream->net, UNINETWORK) == 0 &&
         strcmp (curstream->sta, UNISTATION) == 0)
     {
-      sl_log_r (slconn, 2, 0, "sl_addstream(): uni-station mode already configured!\n");
+      sl_log_r (slconn, 2, 0, "%s(): uni-station mode already configured!\n", __func__);
       return -1;
     }
   }
@@ -1049,7 +1049,7 @@ sl_addstream (SLCD *slconn, const char *net, const char *sta,
 
   if (newstream == NULL)
   {
-    sl_log_r (slconn, 2, 0, "sl_addstream(): error allocating memory\n");
+    sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
     return -1;
   }
 
@@ -1112,14 +1112,14 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
 
     if (newstream == NULL)
     {
-      sl_log_r (slconn, 2, 0, "sl_setuniparams(): error allocating memory\n");
+      sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
       return -1;
     }
   }
   else if (strcmp (newstream->net, UNINETWORK) != 0 ||
            strcmp (newstream->sta, UNISTATION) != 0)
   {
-    sl_log_r (slconn, 2, 0, "sl_setuniparams(): multi-station mode already configured!\n");
+    sl_log_r (slconn, 2, 0, "%s(): multi-station mode already configured!\n", __func__);
     return -1;
   }
 

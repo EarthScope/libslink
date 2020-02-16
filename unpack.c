@@ -88,7 +88,7 @@ sl_msr_unpack (SLlog *log, SLMSrecord *msr, int swapflag)
   }
   else
   {
-    sl_log_rl (log, 2, 0, "msr_unpack(): No Blockette 1000 found!\n");
+    sl_log_rl (log, 2, 0, "%s(): No Blockette 1000 found!\n", __func__);
     return (-1);
   }
 

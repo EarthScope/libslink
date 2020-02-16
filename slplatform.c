@@ -312,7 +312,7 @@ slp_dtime (void)
 
   if ((double)UnixTime != UnixTime)
   {
-    sl_log_r (NULL, 2, 0, "slp_dtime(): resulting value is too big for a double value\n");
+    sl_log_r (NULL, 2, 0, "%s(): resulting value is too big for a double value\n", __func__);
   }
 
   depoch = (double)UnixTime + ((double)SystemTime.wMilliseconds / 1000.0);

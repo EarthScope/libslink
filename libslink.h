@@ -374,9 +374,18 @@ extern int    sl_checkslcd (const SLCD * slconn);
 extern int    sl_readline (int fd, char *buffer, int buflen);
 
 /* logging.c */
-extern int    sl_log (int level, int verb, ...);
-extern int    sl_log_r (const SLCD * slconn, int level, int verb, ...);
-extern int    sl_log_rl (SLlog * log, int level, int verb, ...);
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((__format__ (__printf__, 3, 4)))
+#endif
+extern int    sl_log (int level, int verb, const char *format, ...);
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((__format__ (__printf__, 4, 5)))
+#endif
+extern int    sl_log_r (const SLCD * slconn, int level, int verb, const char *format, ...);
+#if defined(__GNUC__) || defined(__clang__)
+__attribute__((__format__ (__printf__, 4, 5)))
+#endif
+extern int    sl_log_rl (SLlog * log, int level, int verb, const char *format, ...);
 extern void   sl_loginit (int verbosity,
 			  void (*log_print)(const char*), const char * logprefix,
 			  void (*diag_print)(const char*), const char * errprefix);
