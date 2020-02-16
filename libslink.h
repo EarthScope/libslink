@@ -28,8 +28,8 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_VERSION "2.6"
-#define LIBSLINK_RELEASE "2016.290"
+#define LIBSLINK_VERSION "2.7.0"       /**< libslink version */
+#define LIBSLINK_RELEASE "2020.046"    /**< libslink release date */
 
 /* Portability to the XScale (ARM) architecture requires a packed
  * attribute in certain places but this only works with GCC for now. */
