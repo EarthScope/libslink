@@ -36,8 +36,7 @@ extern int slp_sockconnect (SOCKET sock, struct sockaddr * inetaddr, int addrlen
 extern int slp_sockclose (SOCKET sock);
 extern int slp_socknoblock (SOCKET sock);
 extern int slp_noblockcheck (void);
-extern int slp_getaddrinfo (char * nodename, char * nodeport,
-			    struct sockaddr * addr, size_t * addrlen);
+extern int slp_setsocktimeo (SOCKET socket, int timeout);
 extern int slp_openfile (const char *filename, char perm);
 extern const char *slp_strerror(void);
 extern double slp_dtime(void);

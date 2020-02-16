@@ -1,3 +1,9 @@
+2020.047:
+	- Support for IPv6 connections, conversion to pure getaddrinfo() usage.
+	- Allow host and port to be separated with '@', e.g. host@port to
+	allow for numeric IPv6 address usage.
+	- Include socket level timeout that defaults to 60 seconds.
+
 2020.046:
 	- Incorporate platform-specific declarations into libslink.h
 	- Remove support for Watcom-related wmake files.

@@ -52,11 +52,11 @@ extern "C" {
 #define PRIsize_t "zu"
 
 #if defined(WIN32) || defined(_WIN32) || defined(WIN64) || defined(_WIN64)
-  #define DLP_WIN 1
+  #define SLP_WIN 1
 #endif
 
 /* Set platform specific features, Windows, Solaris, then everything else */
-#if defined(DLP_WIN)
+#if defined(SLP_WIN)
   #include <winsock2.h>
   #include <ws2tcpip.h>
   #include <windows.h>
@@ -134,6 +134,9 @@ extern "C" {
 #ifndef SOCKET
   #define SOCKET int
 #endif
+
+#define SL_DEFAULT_HOST "localhost"  /**< Default host for libmseed */
+#define SL_DEFAULT_PORT "18000"      /**< Default port for libmseed */
 
 #define SLRECSIZE           512      /* Default Mini-SEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
@@ -290,7 +293,7 @@ typedef struct stat_s
       NoQuery, InfoQuery, KeepAliveQuery
     }
   query_mode;
-    
+
 } SLstat;
 
 /* Logging parameters */
@@ -319,6 +322,7 @@ typedef struct slcd_s
   int8_t      terminate;        /* Boolean flag to control connection termination */
 
   int         keepalive;        /* Interval to send keepalive/heartbeat (secs) */
+  int         iotimeout;        /**< Timeout for network I/O operations (seconds) */
   int         netto;            /* Network timeout (secs) */
   int         netdly;           /* Network reconnect delay (secs) */
 
@@ -358,7 +362,6 @@ extern int    sl_send_info (SLCD * slconn, const char * info_level,
 extern SOCKET sl_connect (SLCD * slconn, int sayhello);
 extern int    sl_disconnect (SLCD * slconn);
 extern int    sl_ping (SLCD * slconn, char *serverid, char *site);
-extern int    sl_checksock (SOCKET sock, int tosec, int tousec);
 extern int    sl_senddata (SLCD * slconn, void *buffer, size_t buflen,
 			   const char *ident, void *resp, int resplen);
 extern int    sl_recvdata (SLCD * slconn, void *buffer, size_t maxbytes,
@@ -470,5 +473,5 @@ extern void   sl_gswap8a ( void *data8 );
 #ifdef __cplusplus
 }
 #endif
- 
+
 #endif /* LIBSLINK_H */
