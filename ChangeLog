@@ -1,4 +1,6 @@
 2020.046:
+	- Incorporate platform-specific declarations into libslink.h
+	- Remove support for Watcom-related wmake files.
 	- Change licensing to Apache License 2.
 
 2016.290: version 2.6
