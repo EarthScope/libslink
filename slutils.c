@@ -26,9 +26,9 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "globmatch.h"
 #include "libslink.h"
 #include "slplatform.h"
-#include "globmatch.h"
 
 /* Function(s) only used in this source file */
 int update_stream (SLCD *slconn, SLpacket *slpack);
@@ -921,10 +921,10 @@ sl_newslcd (void)
   slconn->lastpkttime  = 1;
   slconn->terminate    = 0;
 
-  slconn->keepalive    = 0;
-  slconn->iotimeout    = 60;
-  slconn->netto        = 600;
-  slconn->netdly       = 30;
+  slconn->keepalive = 0;
+  slconn->iotimeout = 60;
+  slconn->netto     = 600;
+  slconn->netdly    = 30;
 
   slconn->link         = -1;
   slconn->info         = NULL;

@@ -64,7 +64,7 @@ SOCKET
 sl_connect (SLCD *slconn, int sayhello)
 {
   struct addrinfo *addr0 = NULL;
-  struct addrinfo *addr = NULL;
+  struct addrinfo *addr  = NULL;
   struct addrinfo hints;
   SOCKET sock;
   int on = 1;
@@ -93,7 +93,7 @@ sl_connect (SLCD *slconn, int sayhello)
   /* If address begins with the separator */
   if (slconn->sladdr == ptr)
   {
-    if (slconn->sladdr[1] == '\0')  /* Only a separator */
+    if (slconn->sladdr[1] == '\0') /* Only a separator */
     {
       strcpy (nodename, SL_DEFAULT_HOST);
       strcpy (nodeport, SL_DEFAULT_PORT);
@@ -181,7 +181,7 @@ sl_connect (SLCD *slconn, int sayhello)
     return -1;
   }
 
-  freeaddrinfo(addr0);
+  freeaddrinfo (addr0);
 
   if (slconn->iotimeout < 0)
   {
@@ -251,7 +251,6 @@ sl_connect (SLCD *slconn, int sayhello)
   return -1;
 } /* End of sl_connect() */
 
-
 /***************************************************************************
  * sl_configlink:
  *
@@ -286,7 +285,6 @@ sl_configlink (SLCD *slconn)
 
   return ret;
 } /* End of sl_configlink() */
-
 
 /***************************************************************************
  * sl_send_info:
@@ -327,7 +325,6 @@ sl_send_info (SLCD *slconn, const char *info_level, int verbose)
   return slconn->link;
 } /* End of sl_send_info() */
 
-
 /***************************************************************************
  * sl_disconnect:
  *
@@ -348,7 +345,6 @@ sl_disconnect (SLCD *slconn)
 
   return -1;
 } /* End of sl_disconnect() */
-
 
 /***************************************************************************
  * sl_ping:
@@ -1364,7 +1360,6 @@ negotiate_multi_int (SLCD *slconn)
 
   return slconn->link;
 } /* End of negotiate_multi_int() */
-
 
 /***************************************************************************
  * checksock_int:
