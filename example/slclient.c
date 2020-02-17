@@ -125,8 +125,9 @@ packet_handler (char *msrecord, int packet_type, int seqnum, int packet_size)
   double dtime;			/* Epoch time */
   double secfrac;		/* Fractional part of epoch time */
   time_t itime;			/* Integer part of epoch time */
-  char timestamp[20];
+  char timestamp[30] = {0};
   struct tm *timep;
+  int printed;
 
   /* The following is dependent on the packet type values in libslink.h */
   char *type[]  = { "Data", "Detection", "Calibration", "Timing",
@@ -135,12 +136,18 @@ packet_handler (char *msrecord, int packet_type, int seqnum, int packet_size)
 
   /* Build a current local time string */
   dtime   = sl_dtime ();
-  secfrac = (double) ((double)dtime - (int)dtime);
-  itime   = (time_t) dtime;
+  secfrac = (double)((double)dtime - (int)dtime);
+  itime   = (time_t)dtime;
   timep   = localtime (&itime);
-  snprintf (timestamp, 20, "%04d.%03d.%02d:%02d:%02d.%01.0f",
-	    timep->tm_year + 1900, timep->tm_yday + 1, timep->tm_hour,
-	    timep->tm_min, timep->tm_sec, secfrac);
+
+  printed = snprintf (timestamp, sizeof (timestamp), "%04d.%03d.%02d:%02d:%02d.%01.0f",
+                      timep->tm_year + 1900, timep->tm_yday + 1, timep->tm_hour,
+                      timep->tm_min, timep->tm_sec, secfrac);
+
+  if (printed >= sizeof (timestamp))
+  {
+    sl_log (1, 0, "%s() Time string overflow\n", __func__);
+  }
 
   /* Process waveform data */
   if ( packet_type == SLDATA )

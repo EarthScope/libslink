@@ -394,10 +394,11 @@ int
 sl_msr_print (SLlog *log, SLMSrecord *msr, int details)
 {
   char sourcename[50];
-  char stime[25];
+  char stime[30];
   double latency;
   double dsamprate = 0.0;
   int usec;
+  int printed;
 
   if (!msr)
     return 0;
@@ -419,10 +420,15 @@ sl_msr_print (SLlog *log, SLMSrecord *msr, int details)
   }
 
   /* Build a start time string */
-  snprintf (stime, sizeof (stime), "%04d,%03d,%02d:%02d:%02d.%06d",
-            msr->fsdh.start_time.year, msr->fsdh.start_time.day,
-            msr->fsdh.start_time.hour, msr->fsdh.start_time.min,
-            msr->fsdh.start_time.sec, usec);
+  printed = snprintf (stime, sizeof (stime), "%04d,%03d,%02d:%02d:%02d.%06d",
+                      msr->fsdh.start_time.year, msr->fsdh.start_time.day,
+                      msr->fsdh.start_time.hour, msr->fsdh.start_time.min,
+                      msr->fsdh.start_time.sec, usec);
+
+  if (printed >= sizeof(stime))
+  {
+    sl_log_rl (log, 1, 0, "%s() Time string overflow\n", __func__);
+  }
 
   /* Calculate the latency */
   latency = host_latency (msr);

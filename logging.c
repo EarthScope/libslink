@@ -328,11 +328,13 @@ sl_log_main (SLlog *logp, int level, int verb, const char *format, va_list *varl
     {
       if (logp->errprefix != NULL)
       {
-        strncpy (message, logp->errprefix, MAX_LOG_MSG_LENGTH);
+        strncpy (message, logp->errprefix, MAX_LOG_MSG_LENGTH - 1);
+        message[MAX_LOG_MSG_LENGTH - 1] = '\0';
       }
       else
       {
-        strncpy (message, "error: ", MAX_LOG_MSG_LENGTH);
+        strncpy (message, "error: ", MAX_LOG_MSG_LENGTH - 1);
+        message[MAX_LOG_MSG_LENGTH - 1] = '\0';
       }
 
       presize  = strlen (message);
@@ -355,7 +357,8 @@ sl_log_main (SLlog *logp, int level, int verb, const char *format, va_list *varl
     {
       if (logp->logprefix != NULL)
       {
-        strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH);
+        strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH - 1);
+        message[MAX_LOG_MSG_LENGTH - 1] = '\0';
       }
 
       presize  = strlen (message);
@@ -378,7 +381,8 @@ sl_log_main (SLlog *logp, int level, int verb, const char *format, va_list *varl
     {
       if (logp->logprefix != NULL)
       {
-        strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH);
+        strncpy (message, logp->logprefix, MAX_LOG_MSG_LENGTH - 1);
+        message[MAX_LOG_MSG_LENGTH - 1] = '\0';
       }
 
       presize  = strlen (message);

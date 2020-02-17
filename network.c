@@ -70,11 +70,10 @@ sl_connect (SLCD *slconn, int sayhello)
   int on = 1;
   int sockstat;
   long int nport;
-  char nodename[300];
-  char nodeport[100];
+  char nodename[300] = {0};
+  char nodeport[100] = {0};
   char *ptr, *tail;
   int timeout;
-  int socket_family = -1;
 
   if (slp_sockstartup ())
   {
@@ -101,13 +100,13 @@ sl_connect (SLCD *slconn, int sayhello)
     else /* Only a port */
     {
       strcpy (nodename, SL_DEFAULT_HOST);
-      strncpy (nodeport, slconn->sladdr + 1, sizeof (nodeport));
+      strncpy (nodeport, slconn->sladdr + 1, sizeof (nodeport) - 1);
     }
   }
   /* Otherwise if no separator, use default port */
   else if (ptr == NULL)
   {
-    strncpy (nodename, slconn->sladdr, sizeof (nodename));
+    strncpy (nodename, slconn->sladdr, sizeof (nodename) - 1);
     strcpy (nodeport, SL_DEFAULT_PORT);
   }
   /* Otherwise separate host and port */
@@ -115,7 +114,7 @@ sl_connect (SLCD *slconn, int sayhello)
   {
     strncpy (nodename, slconn->sladdr, (ptr - slconn->sladdr));
     nodename[(ptr - slconn->sladdr)] = '\0';
-    strncpy (nodeport, ptr + 1, sizeof (nodeport));
+    strncpy (nodeport, ptr + 1, sizeof (nodeport) - 1);
   }
 
   /* Sanity test the port number */
@@ -169,7 +168,6 @@ sl_connect (SLCD *slconn, int sayhello)
       continue;
     }
 
-    socket_family = addr->ai_family;
     break;
   }
 
@@ -364,9 +362,9 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
 {
   int servcnt = 0;
   int sitecnt = 0;
-  char sendstr[100]; /* A buffer for command strings */
-  char servstr[100]; /* The remote server ident */
-  char sitestr[100]; /* The site/data center ident */
+  char sendstr[100] = {0}; /* A buffer for command strings */
+  char servstr[100] = {0}; /* The remote server ident */
+  char sitestr[100] = {0}; /* The site/data center ident */
 
   /* Open network connection to server */
   if (sl_connect (slconn, 0) == -1)
@@ -395,22 +393,22 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   }
 
   servcnt = strcspn (servstr, "\r");
-  if (servcnt > 90)
+  if (servcnt > 99)
   {
-    servcnt = 90;
+    servcnt = 99;
   }
   servstr[servcnt] = '\0';
 
   sitecnt = strcspn (sitestr, "\r");
-  if (sitecnt > 90)
+  if (sitecnt > 99)
   {
-    sitecnt = 90;
+    sitecnt = 99;
   }
   sitestr[sitecnt] = '\0';
 
   /* Copy the response strings into the supplied strings */
-  strncpy (serverid, servstr, sizeof (servstr));
-  strncpy (site, sitestr, sizeof (sitestr));
+  strcpy (serverid, servstr);
+  strcpy (site, sitestr);
 
   slconn->link = sl_disconnect (slconn);
 
@@ -434,7 +432,6 @@ int
 sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
              const char *ident, void *resp, int resplen)
 {
-
   int bytesread = 0; /* bytes read into resp */
 
   if (send (slconn->link, buffer, buflen, 0) < 0)
@@ -965,11 +962,11 @@ negotiate_uni_int (SLCD *slconn)
     {
       if (slconn->end_time == NULL)
       {
-        sprintf (sendstr, "TIME %.25s\r", slconn->begin_time);
+        sprintf (sendstr, "TIME %.30s\r", slconn->begin_time);
       }
       else
       {
-        sprintf (sendstr, "TIME %.25s %.25s\r", slconn->begin_time,
+        sprintf (sendstr, "TIME %.30s %.30s\r", slconn->begin_time,
                  slconn->end_time);
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
@@ -1001,10 +998,10 @@ negotiate_uni_int (SLCD *slconn)
         strlen (curstream->timestamp))
     {
       /* Increment sequence number by 1 */
-      sprintf (sendstr, "%s %06X %.25s\r", cmd,
+      sprintf (sendstr, "%s %06X %.30s\r", cmd,
                (curstream->seqnum + 1) & 0xffffff, curstream->timestamp);
 
-      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
+      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.30s\n",
                 slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
                 (curstream->seqnum + 1), curstream->timestamp);
     }
@@ -1223,11 +1220,11 @@ negotiate_multi_int (SLCD *slconn)
       {
         if (slconn->end_time == NULL)
         {
-          sprintf (sendstr, "TIME %.25s\r", slconn->begin_time);
+          sprintf (sendstr, "TIME %.30s\r", slconn->begin_time);
         }
         else
         {
-          sprintf (sendstr, "TIME %.25s %.25s\r", slconn->begin_time,
+          sprintf (sendstr, "TIME %.30s %.30s\r", slconn->begin_time,
                    slconn->end_time);
         }
         sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
@@ -1259,10 +1256,10 @@ negotiate_multi_int (SLCD *slconn)
           strlen (curstream->timestamp))
       {
         /* Increment sequence number by 1 */
-        sprintf (sendstr, "%s %06X %.25s\r", cmd,
+        sprintf (sendstr, "%s %06X %.30s\r", cmd,
                  (curstream->seqnum + 1) & 0xffffff, curstream->timestamp);
 
-        sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.25s\n",
+        sl_log_r (slconn, 1, 1, "[%s] resuming data from %06X (Dec %d) at %.30s\n",
                   slconn->sladdr, (curstream->seqnum + 1) & 0xffffff,
                   (curstream->seqnum + 1), curstream->timestamp);
       }

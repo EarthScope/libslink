@@ -266,7 +266,7 @@ typedef struct slstream_s
   char   *sta;      	        /* The station code */
   char   *selectors;	        /* SeedLink style selectors for this station */
   int     seqnum;	        /* SeedLink sequence number for this station */
-  char    timestamp[20];        /* Time stamp of last packet received */
+  char    timestamp[30];        /* Time stamp of last packet received */
   struct  slstream_s *next;     /* The next station in the chain */
 } SLstream;
 

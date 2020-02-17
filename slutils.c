@@ -872,7 +872,7 @@ update_stream (SLCD *slconn, const SLpacket *slpack)
 
       curstream->seqnum = seqnum;
 
-      snprintf (curstream->timestamp, 20,
+      snprintf (curstream->timestamp, sizeof(curstream->timestamp),
                 "%04d,%02d,%02d,%02d,%02d,%02d",
                 fsdh.start_time.year,
                 month,
@@ -901,7 +901,7 @@ update_stream (SLCD *slconn, const SLpacket *slpack)
 
       curstream->seqnum = seqnum;
 
-      snprintf (curstream->timestamp, 20,
+      snprintf (curstream->timestamp, sizeof(curstream->timestamp),
                 "%04d,%02d,%02d,%02d,%02d,%02d",
                 fsdh.start_time.year,
                 month,
