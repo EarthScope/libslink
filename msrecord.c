@@ -35,6 +35,7 @@
 
 #include "libslink.h"
 #include "unpack.h"
+#include "mseedformat.h"
 
 #define SL_ISVALIDYEARDAY(Y, D) (Y >= 1900 && Y <= 2100 && D >= 1 && D <= 366)
 
@@ -241,9 +242,8 @@ sl_msr_parse_size (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
   memcpy ((void *)&msr->fsdh, msrecord, 48);
 
   /* Sanity check for msr/quality indicator */
-  if (msr->fsdh.dhq_indicator != 'D' &&
-      msr->fsdh.dhq_indicator != 'R' &&
-      msr->fsdh.dhq_indicator != 'Q')
+
+  if (!MS2_ISDATAINDICATOR(msr->fsdh.dhq_indicator))
   {
     sl_log_rl (log, 2, 0, "record header/quality indicator unrecognized: %c\n",
                msr->fsdh.dhq_indicator);
@@ -399,6 +399,9 @@ sl_msr_print (SLlog *log, SLMSrecord *msr, int details)
   double dsamprate = 0.0;
   int usec;
 
+  if (!msr)
+    return 0;
+
   /* Build the source name string */
   sl_msr_srcname (msr, sourcename, 0);
 
@@ -410,7 +413,7 @@ sl_msr_print (SLlog *log, SLMSrecord *msr, int details)
 
     if (usec > 1000000 || usec < 0)
     {
-      sl_log_rl (log, 1, 0, "Cannot apply microsecond offset\n");
+      sl_log_rl (log, 1, 0, "%s() Cannot apply negative microsecond offset\n", __func__);
       usec -= msr->Blkt1001->usec;
     }
   }
