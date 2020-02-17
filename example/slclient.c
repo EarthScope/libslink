@@ -6,9 +6,22 @@
  * uni or multi-station mode and collects data.  Detailed information about
  * the data received can be printed.
  *
- * Written by Chad Trabant, ORFEUS/EC-Project MEREDIAN
+ * This file is part of the SeedLink Library.
  *
- * modified 2008.028
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ *
+ * Copyright (C) 2020:
+ * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
 #include <stdio.h>
@@ -75,14 +88,14 @@ main (int argc, char **argv)
       fprintf(stderr, "Try '-h' for detailed help\n");
       return -1;
     }
-  
+
   /* Loop with the connection manager */
   while ( sl_collect (slconn, &slpack) )
     {
       ptype  = sl_packettype (slpack);
       seqnum = sl_sequence (slpack);
 
-      packet_handler ((char *) &slpack->msrecord, ptype, seqnum, SLRECSIZE);
+      packet_handler (slpack->msrecord, ptype, seqnum, slpack->reclen);
 
       /* It would be possible to send an in-line INFO request
 	 here with sl_request_info().
@@ -132,8 +145,8 @@ packet_handler (char *msrecord, int packet_type, int seqnum, int packet_size)
   /* Process waveform data */
   if ( packet_type == SLDATA )
     {
-      sl_log (0, 1, "%s, seq %d, Received %s blockette:\n",
-	      timestamp, seqnum, type[packet_type]);
+      sl_log (0, 1, "%s, seq %d, Received %s blockette of %d bytes:\n",
+	      timestamp, seqnum, type[packet_type], packet_size);
 
       sl_msr_parse (slconn->log, msrecord, &msr, 1, 0);
 
@@ -164,7 +177,7 @@ parameter_proc (int argcount, char **argvec)
 {
   int optind;
   int error = 0;
-  
+
   char *streamfile  = 0;	/* stream list file for configuring streams */
   char *multiselect = 0;
   char *selectors   = 0;
@@ -250,10 +263,10 @@ parameter_proc (int argcount, char **argvec)
 
   /* Initialize the verbosity for the sl_log function */
   sl_loginit (verbose, NULL, NULL, NULL, NULL);
-  
+
   /* Report the program version */
   sl_log (0, 1, "%s version: %s\n", PACKAGE, VERSION);
-  
+
   /* If errors then report the usage message and quit */
   if (error)
     {
@@ -264,11 +277,11 @@ parameter_proc (int argcount, char **argvec)
   /* If verbosity is 2 or greater print detailed packet infor */
   if ( verbose >= 2 )
     ppackets = 1;
-  
+
   /* Load the stream list from a file if specified */
   if ( streamfile )
     sl_read_streamlist (slconn, streamfile, selectors);
-  
+
   /* Parse the 'multiselect' string following '-S' */
   if ( multiselect )
     {
@@ -279,7 +292,7 @@ parameter_proc (int argcount, char **argvec)
     {			 /* No 'streams' array, assuming uni-station mode */
       sl_setuniparams (slconn, selectors, -1, 0);
     }
-  
+
   /* Attempt to recover sequence numbers from state file */
   if (statefile)
     {
@@ -288,7 +301,7 @@ parameter_proc (int argcount, char **argvec)
 	  sl_log (2, 0, "state recovery failed\n");
 	}
     }
-  
+
   return 0;
 }				/* End of parameter_proc() */
 
@@ -324,13 +337,13 @@ usage (void)
 	   " [host][:port]  Address of the SeedLink server in host:port format\n"
 	   "                  if host is omitted (i.e. ':18000'), localhost is assumed\n"
 	   "                  if :port is omitted (i.e. 'localhost'), 18000 is assumed\n\n");
-  
+
 }				/* End of usage() */
 
 #ifndef WIN32
 /***************************************************************************
  * term_handler:
- * Signal handler routine. 
+ * Signal handler routine.
  ***************************************************************************/
 static void
 term_handler (int sig)
@@ -338,4 +351,3 @@ term_handler (int sig)
   sl_terminate (slconn);
 }
 #endif
-

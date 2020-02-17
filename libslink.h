@@ -135,10 +135,13 @@ extern "C" {
   #define SOCKET int
 #endif
 
-#define SL_DEFAULT_HOST "localhost"  /**< Default host for libmseed */
-#define SL_DEFAULT_PORT "18000"      /**< Default port for libmseed */
+#define SL_DEFAULT_HOST "localhost"  /**< Default host for libslink */
+#define SL_DEFAULT_PORT "18000"      /**< Default port for libslink */
 
-#define SLRECSIZE           512      /* Default Mini-SEED record size */
+
+#define SLRECSIZEMIN        48       /* Min supported miniSEED record size */
+#define SLRECSIZEMAX        4096     /* Max supported miniSEED record size */
+#define SLRECSIZE           512      /* Default miniSEED record size */
 #define MAX_HEADER_SIZE     128      /* Max record header size */
 #define SLHEADSIZE          8        /* SeedLink header size */
 #define SELSIZE             8        /* Maximum selector size */
@@ -251,9 +254,10 @@ struct sl_fsdh_s
 /* SeedLink packet, sequence number followed by miniSEED record */
 typedef struct slpacket_s
 {
-  char    slhead[SLHEADSIZE];   /* SeedLink header */
-  char    msrecord[SLRECSIZE];  /* Mini-SEED record */
-} SLP_PACKED SLpacket;
+  char    *slhead;              /* SeedLink header */
+  char    *msrecord;            /* miniSEED record */
+  int      reclen;              /* miniSEED record length */
+} SLpacket;
 
 /* Stream information */
 typedef struct slstream_s
@@ -272,6 +276,7 @@ typedef struct stat_s
   char    databuf[BUFSIZE];     /* Data buffer for received packets */
   int     recptr;               /* Receive pointer for databuf */
   int     sendptr;              /* Send pointer for databuf */
+  SLpacket slpack;              /**< Transient, client-specific SLPacket pointers */
   int8_t  expect_info;          /* Do we expect an INFO response? */
 
   int8_t  netto_trig;           /* Network timeout trigger */
@@ -336,7 +341,7 @@ typedef struct slcd_s
 /* slutils.c */
 extern int    sl_collect (SLCD * slconn, SLpacket ** slpack);
 extern int    sl_collect_nb (SLCD * slconn, SLpacket ** slpack);
-extern int    sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int slrecsize);
+extern int    sl_collect_nb_size (SLCD * slconn, SLpacket ** slpack, int maxrecsize);
 extern SLCD * sl_newslcd (void);
 extern void   sl_freeslcd (SLCD * slconn);
 extern int    sl_addstream (SLCD * slconn, const char *net, const char *sta,
