@@ -1,3 +1,7 @@
+2020.048:
+	- Support M SEED quality code.
+	- Fix segfault in sl_msr_print() when no record passed.
+
 2020.047:
 	- Determine received record length automatically, a pre-determined
 	record length is no longer needed.
