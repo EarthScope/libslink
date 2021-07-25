@@ -824,7 +824,7 @@ sayhello_int (SLCD *slconn)
       if (slconn->caparray)
         free (slconn->caparray);
 
-      slconn->capabilities = strdup(capptr);
+      slconn->capabilities = strdup(readbuf);
       slconn->caparray = NULL;
     }
 
