@@ -18,7 +18,6 @@ OBJS=	gswap.obj	\
 	network.obj	\
 	statefile.obj	\
 	config.obj	\
-	slplatform.obj	\
 	slutils.obj	\
 	globmatch.obj
 

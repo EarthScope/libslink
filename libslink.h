@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
+ * Copyright (C) 2021:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
@@ -28,8 +28,8 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_VERSION "2.7.0"       /**< libslink version */
-#define LIBSLINK_RELEASE "2020.046"    /**< libslink release date */
+#define LIBSLINK_VERSION "3.0.0DEV"    /**< libslink version */
+#define LIBSLINK_RELEASE "2021.191"    /**< libslink release date */
 
 /** @defgroup seedlink-connection SeedLink Connection */
 /** @defgroup connection-state Connection State */
@@ -110,6 +110,7 @@ extern "C" {
   #include <sys/time.h>
   #include <sys/utsname.h>
   #include <pwd.h>
+  #include <sys/ioctl.h>
 
 #else
   #include <unistd.h>
@@ -121,6 +122,7 @@ extern "C" {
   #include <sys/time.h>
   #include <sys/utsname.h>
   #include <pwd.h>
+  #include <sys/ioctl.h>
 
 #endif
 
@@ -176,49 +178,79 @@ typedef struct SLlog_s
 #define SL_DEFAULT_HOST "localhost"  /**< Default host for libslink */
 #define SL_DEFAULT_PORT "18000"      /**< Default port for libslink */
 
-#define SLRECSIZEMIN        48       /**< Min supported miniSEED record size */
-#define SLRECSIZEMAX        4096     /**< Max supported miniSEED record size */
-#define SLRECSIZE           512      /**< Default miniSEED record size */
-#define MAX_HEADER_SIZE     128      /**< Max record header size */
-#define SLHEADSIZE          8        /**< SeedLink header size */
-#define SELSIZE             8        /**< Maximum selector size */
-#define BUFSIZE             8192     /**< Size of receiving buffer */
-#define SIGNATURE           "SL"     /**< SeedLink header signature */
+#define SL_PROTO_MAJOR  4            /**< Maximum major version of protocol supported */
+#define SL_PROTO_MINOR  0            /**< Maximum minor version of protocol supported */
+
+#define SLHEADSIZE          8        /**< V3 Standard SeedLink header size */
+#define SLHEADSIZE_EXT      16       /**< V4 Extended SeedLink header size */
+#define SIGNATURE           "SL"     /**< Standard SeedLink header signature */
+#define SIGNATURE_EXT       "SE"     /**< Extended SeedLink header signature */
 #define INFOSIGNATURE       "SLINFO" /**< SeedLink INFO packet signature */
 #define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
 
-/* Return values for sl_collect() and sl_collect_nb() */
-#define SLPACKET    1  /**< sl_collect()/sl_collect_nb() return value when SLpacket is returned */
-#define SLTERMINATE 0  /**< sl_collect()/sl_collect_nb() return value on connection termination or error */
-#define SLNOPACKET -1  /**< sl_collect_nb() return value when no packet is available */
+#define SL_MIN_BUFFER       48       /**< Minimum data for payload detection and tracking */
 
-/* SeedLink packet types */
-#define SLDATA 0     /**< SeedLink packet: waveform data record */
-#define SLDET  1     /**< SeedLink packet: detection record */
-#define SLCAL  2     /**< SeedLink packet: calibration record */
-#define SLTIM  3     /**< SeedLink packet: timing record */
-#define SLMSG  4     /**< SeedLink packet: message record */
-#define SLBLK  5     /**< SeedLink packet: general record */
-#define SLNUM  6     /**< SeedLink packet: used as the error indicator (same as SLCHA) */
-#define SLCHA  6     /**< SeedLink packet: for requesting channel info or detectors */
-#define SLINF  7     /**< SeedLink packet: a non-terminating XML formatted message in a miniSEED
-			  log record, used for INFO responses */
-#define SLINFT 8     /**< SeedLink packet: a terminating XML formatted message in a miniSEED log
-			  record, used for INFO responses */
-#define SLKEEP 9     /**< SeedLink packet: an XML formatted message in a miniSEED log
-			  record, used for keepalive/heartbeat responses */
+/** @addtogroup payload-types
+    @brief Packet payload type values
+
+    @{ */
+#define SLPAYLOAD_UNKNOWN        0  //!< Unknown payload
+#define SLPAYLOAD_MSEED2INFO     1  //!< miniSEED 2 with INFO payload
+#define SLPAYLOAD_MSEED2INFOTERM 2  //!< miniSEED 2 with INFO payload (terminated)
+#define SLPAYLOAD_MSEED2        '2' //!< miniSEED 2
+#define SLPAYLOAD_MSEED3        '3' //!< miniSEED 3
+#define SLPAYLOAD_INFO          'I' //!< INFO response in JSON
+/** @} */
+
+/** @addtogroup collect-status
+    @brief Return values for sl_collect()
+
+    @{ */
+#define SLPACKET                 1  //!< Complete packet returned
+#define SLTERMINATE              0  //!< Error or connection termination
+#define SLNOPACKET              -1  //!< No packet available for non-blocking
+#define SLTOOLARGE              -2  //!< Received packet is too large for buffer
+/** @} */
 
 /* The station and network code used for uni-station mode */
 #define UNISTATION  "UNI"  /**< Station code for uni-station mode */
 #define UNINETWORK  "XX"   /**< Network code for uni-station mode */
 
-/** @brief SeedLink packet */
-typedef struct slpacket_s
+/** @def SL_UNSETSEQUENCE
+    @brief Representation for unset sequence values. **/
+#define SL_UNSETSEQUENCE UINT64_MAX
+
+/** @def SLTMODULUS
+    @brief Define the high precision time tick interval as 1/modulus seconds
+    corresponding to **nanoseconds**. **/
+#define SLTMODULUS 1000000000
+
+/** @def SLTERROR
+    @brief Error code for routines that normally return a high precision time.
+    The time value corresponds to '1902-1-1 00:00:00.00000000'. **/
+#define SLTERROR -2145916800000000000LL
+
+/** @def SL_EPOCH2SLTIME
+    @brief macro to convert Unix/POSIX epoch time to high precision epoch time */
+#define SL_EPOCH2SLTIME(X) (X) * (nstime_t) SLTMODULUS
+
+/** @def SL_SLTIME2EPOCH
+    @brief Macro to convert high precision epoch time to Unix/POSIX epoch time */
+#define SL_SLTIME2EPOCH(X) (X) / SLTMODULUS
+
+/** @def sl_dtime
+    @brief Macro to return current time as double epoch, replace legacy function */
+#define sl_dtime(X) SL_SLTIME2EPOCH((double)sl_nstime())
+
+/** @brief SeedLink packet information */
+typedef struct slpacketinfo_s
 {
-  char    *slhead;              /**< SeedLink header */
-  char    *msrecord;            /**< miniSEED record */
-  int      reclen;              /**< miniSEED record length */
-} SLpacket;
+  char  header[SLHEADSIZE_EXT]; /**< Raw packet header */
+  uint64_t seqnum;              /**< Packet sequence number */
+  uint32_t payloadlength;       /**< Packet payload length */
+  uint32_t payloadcollected;    /**< Packet payload collected so far */
+  char     payloadtype;         /**< Packet payload type */
+} SLpacketinfo;
 
 /** @brief Stream information */
 typedef struct slstream_s
@@ -226,39 +258,37 @@ typedef struct slstream_s
   char   *net;      	        /**< The network code */
   char   *sta;      	        /**< The station code */
   char   *selectors;	        /**< SeedLink style selectors for this station */
-  int     seqnum;	        /**< SeedLink sequence number for this station */
-  char    timestamp[30];        /**< Time stamp of last packet received */
+  uint64_t seqnum;              /**< SeedLink sequence number for this station */
+  char    timestamp[31];        /**< Time stamp of last packet received */
   struct  slstream_s *next;     /**< The next station in the chain */
 } SLstream;
 
-/** @brief Persistent connection state information */
+/** @brief Connection state information */
 typedef struct stat_s
 {
-  char    databuf[BUFSIZE];     /**< Data buffer for received packets */
-  int     recptr;               /**< Receive pointer for databuf */
-  int     sendptr;              /**< Send pointer for databuf */
-  SLpacket slpack;              /**< Transient, client-specific SLPacket pointers */
-  int8_t  expect_info;          /**< Do we expect an INFO response? */
+  SLpacketinfo packetinfo;      /**< Client-specific packet tracking */
+  int64_t keepalive_time;       /**< Keepalive time stamp */
+  int64_t netto_time;           /**< Network timeout time stamp */
+  int64_t netdly_time;          /**< Network re-connect delay time stamp */
 
-  int8_t  netto_trig;           /**< Network timeout trigger */
-  int8_t  netdly_trig;          /**< Network re-connect delay trigger */
-  int8_t  keepalive_trig;       /**< Send keepalive trigger */
-
-  double  netto_time;           /**< Network timeout time stamp */
-  double  netdly_time;          /**< Network re-connect delay time stamp */
-  double  keepalive_time;       /**< Keepalive time stamp */
+  char *payload;                /**< Pointer to start of payload buffer */
 
   enum                          /**< Connection state */
-    {
-      SL_DOWN, SL_UP, SL_DATA
-    }
-  sl_state;
+  {
+    DOWN, UP, STREAMING
+  }
+    conn_state;
+
+  enum                          /**< Stream state */
+  {
+   HEADER, PAYLOAD
+  } stream_state;
 
   enum                          /**< INFO query state */
-    {
-      NoQuery, InfoQuery, KeepAliveQuery
-    }
-  query_mode;
+  {
+    NoQuery, InfoQuery, KeepAliveQuery
+  }
+    query_state;
 
 } SLstat;
 
@@ -270,38 +300,50 @@ typedef struct slcd_s
   char       *begin_time;	/**< Beginning of time window */
   char       *end_time;		/**< End of time window */
 
-  int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
-  int8_t      multistation;     /**< Boolean flag to indicate multistation mode */
-  int8_t      dialup;           /**< Boolean flag to indicate dial-up mode */
-  int8_t      batchmode;        /**< Batch mode (1 - requested, 2 - activated) */
-  int8_t      lastpkttime;      /**< Boolean flag to control last packet time usage */
-  int8_t      terminate;        /**< Boolean flag to control connection termination */
-
   int         keepalive;        /**< Interval to send keepalive/heartbeat (secs) */
   int         iotimeout;        /**< Timeout for network I/O operations (seconds) */
-  int         netto;            /**< Network timeout (secs) */
+  int         netto;            /**< Idle network timeout (secs) */
   int         netdly;           /**< Network reconnect delay (secs) */
 
-  float       protocol_ver;     /**< Version of the SeedLink protocol in use */
-  const char *info;             /**< INFO level to request */
+  int8_t      noblock;          /**< Control blocking on collection */
+  int8_t      dialup;           /**< Boolean flag to indicate dial-up mode */
+  int8_t      batchmode;        /**< Batch mode (1 - requested, 2 - activated) */
+
+  int8_t      lastpkttime;      /**< Boolean flag to control last packet time usage */
+  int8_t      terminate;        /**< Boolean flag to control connection termination */
+  int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
+  int8_t      multistation;     /**< Boolean flag to indicate multistation mode */
+
+  uint8_t     proto_major;      /**< Major version of SeedLink protocol in use */
+  uint8_t     proto_minor;      /**< Minor version of SeedLink protocol in use */
+  uint8_t     server_major;     /**< Major version supported by server */
+  uint8_t     server_minor;     /**< Minor version supported by server */
+  char       *capabilities;     /**< Capabilities supported by server */
+  char       *caparray;         /**< Array of capabilities */
+  const char *info;             /**< INFO request to send */
+  char       *clientname;       /**< Client program name */
+  char       *clientversion;    /**< Client program version */
   SOCKET      link;		/**< The network socket descriptor */
-  SLstat     *stat;             /**< Persistent state information */
+  SLstat     *stat;             /**< Connection state information */
   SLlog      *log;              /**< Logging parameters */
 } SLCD;
 
-extern int sl_collect (SLCD *slconn, SLpacket **slpack);
-extern int sl_collect_nb (SLCD *slconn, SLpacket **slpack);
-extern int sl_collect_nb_size (SLCD *slconn, SLpacket **slpack, int maxrecsize);
-extern SLCD *sl_newslcd (void);
+extern int sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
+                       char **plbuffer, uint32_t *plbuffersize,
+                       uint32_t maxbuffersize);
+
+extern const SLpacketinfo *sl_receive (SLCD *slconn, char *plbuffer,
+                                       uint32_t plbufferlength, uint32_t *plbytes);
+extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
+extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
 extern int sl_addstream (SLCD *slconn, const char *net, const char *sta,
-                         const char *selectors, int seqnum,
+                         const char *selectors, uint64_t seqnum,
                          const char *timestamp);
 extern int sl_setuniparams (SLCD *slconn, const char *selectors,
-                            int seqnum, const char *timestamp);
+                            uint64_t seqnum, const char *timestamp);
 extern int sl_request_info (SLCD *slconn, const char *infostr);
-extern int sl_sequence (const SLpacket *);
-extern int sl_packettype (const SLpacket *);
+extern int sl_hascapability (SLCD *slconn, char *capability);
 extern void sl_terminate (SLCD *slconn);
 
 extern int sl_read_streamlist (SLCD *slconn, const char *streamfile,
@@ -317,8 +359,8 @@ extern int sl_disconnect (SLCD *slconn);
 extern int sl_ping (SLCD *slconn, char *serverid, char *site);
 extern int sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
                         const char *ident, void *resp, int resplen);
-extern int sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
-                        const char *ident);
+extern int64_t sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
+                            const char *ident);
 extern int sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
                         const char *command, const char *ident);
 /** @} */
@@ -459,9 +501,7 @@ typedef struct SLMSrecord_s {
 extern SLMSrecord *sl_msr_new (void);
 extern void sl_msr_free (SLMSrecord **msr);
 extern SLMSrecord *sl_msr_parse (SLlog *log, const char *msrecord, SLMSrecord **msr,
-                                 int8_t blktflag, int8_t unpackflag);
-extern SLMSrecord *sl_msr_parse_size (SLlog *log, const char *msrecord, SLMSrecord **msr,
-                                      int8_t blktflag, int8_t unpackflag, int slrecsize);
+                                 int8_t blktflag, int8_t unpackflag, int maxreclen);
 extern int sl_msr_print (SLlog *log, SLMSrecord *msr, int details);
 extern char *sl_msr_srcname (SLMSrecord *msr, char *srcname, int8_t quality);
 extern int sl_msr_dsamprate (SLMSrecord *msr, double *samprate);
@@ -472,13 +512,17 @@ extern double sl_msr_depochstime (SLMSrecord *msr);
 /** @addtogroup utility-functions
     @brief General utilities
 
-    @{ */
+    Utilities and portable wrappers where system differences are present
 
-extern double sl_dtime (void);
+    @{ */
+extern uint8_t sl_littleendianhost (void);
 extern int sl_doy2md (int year, int jday, int *month, int *mday);
-extern int sl_checkversion (const SLCD *slconn, float version);
+extern int sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor);
 extern int sl_checkslcd (const SLCD *slconn);
-extern int sl_readline (int fd, char *buffer, int buflen);
+extern const char *sl_typestr (char type);
+extern const char *sl_strerror(void);
+extern int64_t sl_nstime (void);
+extern void sl_usleep(unsigned long int useconds);
 
 /*@ @brief For a linked list of strings, as filled by strparse() */
 typedef struct SLstrlist_s {

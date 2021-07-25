@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
+ * Copyright (C) 2021:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
@@ -26,7 +26,6 @@
 #include <string.h>
 
 #include "libslink.h"
-#include "slplatform.h"
 
 /***************************************************************************
  * sl_savestate:
@@ -42,14 +41,14 @@ int
 sl_savestate (SLCD *slconn, const char *statefile)
 {
   SLstream *curstream;
-  char line[100];
+  FILE *fp;
+  char line[200];
   int linelen;
-  int statefd;
 
   curstream = slconn->streams;
 
   /* Open the state file */
-  if ((statefd = slp_openfile (statefile, 'w')) < 0)
+  if ((fp = fopen (statefile, "wb")) == NULL)
   {
     sl_log_r (slconn, 2, 0, "cannot open state file for writing\n");
     return -1;
@@ -60,11 +59,16 @@ sl_savestate (SLCD *slconn, const char *statefile)
   /* Traverse stream chain and write sequence numbers */
   while (curstream != NULL)
   {
-    linelen = snprintf (line, sizeof (line), "%s %s %d %s\n",
-                        curstream->net, curstream->sta,
-                        curstream->seqnum, curstream->timestamp);
+    if (curstream->seqnum == SL_UNSETSEQUENCE)
+      linelen = snprintf (line, sizeof (line), "%s %s -1 %s\n",
+                          curstream->net, curstream->sta,
+                          curstream->timestamp);
+    else
+      linelen = snprintf (line, sizeof (line), "%s %s %" PRIu64 " %s\n",
+                          curstream->net, curstream->sta,
+                          curstream->seqnum, curstream->timestamp);
 
-    if (write (statefd, line, linelen) != linelen)
+    if (fputs (line, fp) == EOF)
     {
       sl_log_r (slconn, 2, 0, "cannot write to state file, %s\n", strerror (errno));
       return -1;
@@ -73,7 +77,7 @@ sl_savestate (SLCD *slconn, const char *statefile)
     curstream = curstream->next;
   }
 
-  if (close (statefd))
+  if (fclose (fp))
   {
     sl_log_r (slconn, 2, 0, "cannot close state file, %s\n", strerror (errno));
     return -1;
@@ -97,12 +101,14 @@ int
 sl_recoverstate (SLCD *slconn, const char *statefile)
 {
   SLstream *curstream;
-  int statefd;
+  FILE *fp;
   char net[3];
   char sta[6];
   char timestamp[20];
-  char line[100];
-  int seqnum;
+  char line[200];
+  char seqstr[21];
+  char *endptr = NULL;
+  uint64_t seqnum;
   int fields;
   int count;
 
@@ -111,7 +117,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
   timestamp[0] = '\0';
 
   /* Open the state file */
-  if ((statefd = slp_openfile (statefile, 'r')) < 0)
+  if ((fp = fopen (statefile, "rb")) == NULL)
   {
     if (errno == ENOENT)
     {
@@ -129,10 +135,10 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
 
   count = 1;
 
-  while ((sl_readline (statefd, line, sizeof (line))) >= 0)
+  while (fgets (line, sizeof (line), fp))
   {
-    fields = sscanf (line, "%2s %5s %d %19[0-9,]\n",
-                     net, sta, &seqnum, timestamp);
+    fields = sscanf (line, "%2s %5s %s %19[0-9,]\n",
+                     net, sta, seqstr, timestamp);
 
     if (fields < 0)
       continue;
@@ -140,6 +146,21 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     if (fields < 3)
     {
       sl_log_r (slconn, 2, 0, "could not parse line %d of state file\n", count);
+    }
+
+    if (seqstr[0] == '-' && seqstr[1] == '1')
+    {
+      seqnum = SL_UNSETSEQUENCE;
+    }
+    else
+    {
+      seqnum = (uint64_t) strtoull (seqstr, &endptr, 10);
+
+      if (*endptr)
+      {
+        sl_log_r (slconn, 2, 0, "could not parse sequence number (%s) from line %d of state file\n",
+                  seqstr, count);
+      }
     }
 
     /* Search for a matching NET and STA in the stream chain */
@@ -163,7 +184,12 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     count++;
   }
 
-  if (close (statefd))
+  if (ferror (fp))
+  {
+    sl_log_r (slconn, 2, 0, "file read error for %s\n", statefile);
+  }
+
+  if (fclose (fp))
   {
     sl_log_r (slconn, 2, 0, "could not close state file, %s\n", strerror (errno));
     return -1;

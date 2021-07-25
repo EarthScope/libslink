@@ -16,29 +16,35 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
+ * Copyright (C) 2021:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
+#include <errno.h>
+#include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include "libslink.h"
-#include "slplatform.h"
+
 
 /***************************************************************************
- * sl_dtime:
+ * sl_littleendianhost:
  *
- * Return a double precision version of the current time since the epoch.
- * This is the number of seconds since Jan. 1, 1970 without leap seconds.
+ * Determine the byte order of the host machine.  Due to the lack of
+ * portable defines to determine host byte order this run-time test is
+ * provided.  This function originated from a similar function in libmseed.
+ *
+ * Returns 1 if the host is little endian, otherwise 0.
  ***************************************************************************/
-double
-sl_dtime (void)
+uint8_t
+sl_littleendianhost (void)
 {
-  /* Now just a shell for the portable version */
-  return slp_dtime ();
-} /* End of sl_dtime() */
+  uint16_t host = 1;
+  return *((uint8_t *)(&host));
+} /* End of sl_littleendianhost() */
 
 /***************************************************************************
  * sl_doy2md:
@@ -92,7 +98,7 @@ sl_doy2md (int year, int jday, int *month, int *mday)
 /***************************************************************************
  * sl_checkversion:
  *
- * Check protocol version number against some value
+ * Check protocol version number against specified major and minor values
  *
  * Returns:
  *  1 = version is greater than or equal to value specified
@@ -100,13 +106,14 @@ sl_doy2md (int year, int jday, int *month, int *mday)
  * -1 = version is less than value specified
  ***************************************************************************/
 int
-sl_checkversion (const SLCD *slconn, float version)
+sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor)
 {
-  if (slconn->protocol_ver == 0.0)
+  if (slconn->proto_major == 0)
   {
     return 0;
   }
-  else if (slconn->protocol_ver >= version)
+  else if (slconn->proto_major > major ||
+           (slconn->proto_major == major && slconn->proto_minor >= minor))
   {
     return 1;
   }
@@ -137,45 +144,119 @@ sl_checkslcd (const SLCD *slconn)
   return retval;
 } /* End of sl_checkslconn() */
 
-/***************************************************************************
- * sl_readline:
+/**********************************************************************/ /**
+ * @brief Return human readable description for specified payload type
  *
- * Read characters from a stream (specified as a file descriptor)
- * until a newline character '\n' is read and place them into the
- * supplied buffer.  Reading stops when either a newline character is
- * read or buflen-1 characters have been read.  The buffer will always
- * contain a NULL-terminated string.
- *
- * Returns the number of characters read on success and -1 on error.
+ * @returns Descriptive string for payload type
  ***************************************************************************/
-int
-sl_readline (int fd, char *buffer, int buflen)
+const char *
+sl_typestr (char type)
 {
-  int nread = 0;
-
-  if (!buffer)
-    return -1;
-
-  /* Read data from stream until newline character or max characters */
-  while (nread < (buflen - 1))
+  switch (type)
   {
-    /* Read a single character from the stream */
-    if (read (fd, buffer + nread, 1) != 1)
-    {
-      return -1;
-    }
-
-    /* Trap door for newline character */
-    if (buffer[nread] == '\n')
-    {
-      break;
-    }
-
-    nread++;
+  case SLPAYLOAD_UNKNOWN:
+    return "Unknown";
+    break;
+  case SLPAYLOAD_MSEED2INFO:
+    return "INFO as XML in miniSEED 2";
+    break;
+  case SLPAYLOAD_MSEED2INFOTERM:
+    return "INFO (terminated) as XML in miniSEED 2";
+    break;
+  case SLPAYLOAD_MSEED2:
+    return "miniSEED 2";
+    break;
+  case SLPAYLOAD_MSEED3:
+    return "miniSEED 3";
+    break;
+  case SLPAYLOAD_INFO:
+    return "INFO in JSON";
+    break;
+  default:
+    return "Unrecognized payload type";
   }
+} /* End of sl_typestr() */
 
-  /* Terminate string in buffer */
-  buffer[nread] = '\0';
+/***************************************************************************
+ * sl_strerror:
+ *
+ * Return a description of the last system error, in the case of Win32
+ * this will be the last Windows Sockets error.
+ ***************************************************************************/
+const char *
+sl_strerror (void)
+{
+#if defined(SLP_WIN)
+  static char errorstr[100];
 
-  return nread;
-} /* End of sl_readline() */
+  snprintf (errorstr, sizeof (errorstr), "%d", WSAGetLastError ());
+  return (const char *)errorstr;
+
+#else
+  return (const char *)strerror (errno);
+
+#endif
+} /* End of sl_strerror() */
+
+/**********************************************************************/ /**
+ * @brief Get current time as nanosecond resolution Unix/POSIX time
+ *
+ * Actual resolution depends on system, nanosecond resolution should
+ * not be assumed.
+ *
+ * @returns Current time as nanoseconds since the Unix/POSIX epoch.
+ ***************************************************************************/
+int64_t
+sl_nstime (void)
+{
+#if defined(SLP_WIN)
+
+  uint64 rv;
+  FILETIME FileTime;
+
+  GetSystemTimeAsFileTime(&FileTime);
+
+  /* Full win32 epoch value, in 100ns */
+  rv = (((LONGLONG)FileTime.dwHighDateTime << 32) +
+        (LONGLONG)FileTime.dwLowDateTime);
+
+  rv -= 116444736000000000LL; /* Convert from FileTime to UNIX epoch time */
+  rv *= 100; /* Convert from 100ns to ns */
+
+  return rv;
+
+#else
+
+  struct timeval tv;
+
+  gettimeofday (&tv, NULL);
+  return ((int64_t)tv.tv_sec * 1000000000 +
+          (int64_t)tv.tv_usec * 1000);
+
+#endif
+} /* End of sl_nstime() */
+
+/***************************************************************************
+ * sl_usleep:
+ *
+ * Sleep for a given number of microseconds.  Under Win32 use SleepEx()
+ * and for all others use the POSIX.4 nanosleep().
+ ***************************************************************************/
+void
+sl_usleep (unsigned long int useconds)
+{
+#if defined(SL_WIN)
+
+  SleepEx ((useconds / 1000), 1);
+
+#else
+
+  struct timespec treq, trem;
+
+  treq.tv_sec  = (time_t) (useconds / 1e6);
+  treq.tv_nsec = (long)((useconds * 1e3) - (treq.tv_sec * 1e9));
+
+  nanosleep (&treq, &trem);
+
+#endif
+} /* End of sl_usleep() */

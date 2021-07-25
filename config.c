@@ -18,7 +18,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
+ * Copyright (C) 2021:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
@@ -27,7 +27,6 @@
 #include <string.h>
 
 #include "libslink.h"
-#include "slplatform.h"
 
 /***************************************************************************
  * sl_read_streamlist:
@@ -54,11 +53,11 @@ int
 sl_read_streamlist (SLCD *slconn, const char *streamfile,
                     const char *defselect)
 {
+  FILE *fp;
   char net[3];
   char sta[6];
   char selectors[100];
   char line[100];
-  int streamfd;
   int fields;
   int count;
   int stacount;
@@ -68,7 +67,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   selectors[0] = '\0';
 
   /* Open the stream list file */
-  if ((streamfd = slp_openfile (streamfile, 'r')) < 0)
+  if ((fp = fopen (streamfile, "rb")) == NULL)
   {
     if (errno == ENOENT)
     {
@@ -87,7 +86,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   count    = 1;
   stacount = 0;
 
-  while ((sl_readline (streamfd, line, sizeof (line))) >= 0)
+  while (fgets (line, sizeof (line), fp))
   {
     fields = sscanf (line, "%2s %5s %99[a-zA-Z0-9!?. ]\n",
                      net, sta, selectors);
@@ -116,6 +115,11 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     count++;
   }
 
+  if (ferror (fp))
+  {
+    sl_log_r (slconn, 2, 0, "file read error for %s\n", streamfile);
+  }
+
   if (stacount == 0)
   {
     sl_log_r (slconn, 2, 0, "no streams defined in %s\n", streamfile);
@@ -125,7 +129,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     sl_log_r (slconn, 1, 2, "Read %d streams from %s\n", stacount, streamfile);
   }
 
-  if (close (streamfd))
+  if (fclose (fp))
   {
     sl_log_r (slconn, 2, 0, "closing stream list file, %s\n", strerror (errno));
     return -1;

@@ -126,35 +126,7 @@ sl_msr_free (SLMSrecord **msr)
 } /* End of sl_msr_free() */
 
 /***************************************************************************
- * sl_littleendianhost:
- *
- * Determine the byte order of the host machine.  Due to the lack of
- * portable defines to determine host byte order this run-time test is
- * provided.  This function originated from a similar function in libmseed.
- *
- * Returns 1 if the host is little endian, otherwise 0.
- ***************************************************************************/
-static uint8_t
-sl_littleendianhost (void)
-{
-  uint16_t host = 1;
-  return *((uint8_t *)(&host));
-} /* End of sl_littleendianhost() */
-
-/***************************************************************************
  * sl_msr_parse:
- *
- * A wrapper for sl_msr_parse_size()
- ***************************************************************************/
-SLMSrecord *
-sl_msr_parse (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
-              int8_t blktflag, int8_t unpackflag)
-{
-  return sl_msr_parse_size (log, msrecord, ppmsr, blktflag, unpackflag, SLRECSIZE);
-}
-
-/***************************************************************************
- * sl_msr_parse_size:
  *
  * Parses a SEED record header/blockettes and populates a SLMSrecord struct.
  *
@@ -187,8 +159,8 @@ sl_msr_parse (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
  * checked before passing it to sl_msr_parse_size().
  ***************************************************************************/
 SLMSrecord *
-sl_msr_parse_size (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
-                   int8_t blktflag, int8_t unpackflag, int slrecsize)
+sl_msr_parse (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
+              int8_t blktflag, int8_t unpackflag, int maxreclen)
 {
   uint8_t headerswapflag = 0; /* is swapping needed? */
   uint8_t dataswapflag   = 0;
@@ -288,7 +260,7 @@ sl_msr_parse_size (SLlog *log, const char *msrecord, SLMSrecord **ppmsr,
     begin_blockette = msr->fsdh.begin_blockette;
 
     while ((begin_blockette != 0) &&
-           (begin_blockette <= slrecsize))
+           (begin_blockette <= maxreclen))
     {
 
       memcpy ((void *)blkt_head, msrecord + begin_blockette,

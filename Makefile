@@ -23,7 +23,7 @@ MAN3DIR ?= $(MANDIR)/man3
 
 LIB_SRCS = gswap.c unpack.c msrecord.c genutils.c strutils.c \
            logging.c network.c statefile.c config.c \
-           globmatch.c slplatform.c slutils.c
+           globmatch.c slutils.c
 
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 LIB_LOBJS = $(LIB_SRCS:.c=.lo)

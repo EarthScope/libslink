@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
+ * Copyright (C) 2021:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
@@ -28,861 +28,1018 @@
 
 #include "globmatch.h"
 #include "libslink.h"
-#include "slplatform.h"
 #include "mseedformat.h"
 
 /* Function(s) only used in this source file */
-static int update_stream (SLCD *slconn, const SLpacket *slpack);
-static int detect (const char *record, uint64_t recbuflen, uint8_t *formatversion);
+static int receive_header (SLCD *slconn, int bytesavailable);
+static int64_t receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
+                                  int bytesavailable);
+static int64_t receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
+                                  int bytesavailable);
+static int update_stream (SLCD *slconn, const char *payload);
+static int64_t detect (const char *record, uint64_t recbuflen, char *payloadtype);
+static int recvable (SOCKET sock);
 
-/***************************************************************************
- * sl_collect:
+/**********************************************************************/ /**
+ * @brief Managage a connection to a SeedLink server and collect packets
  *
- * Routine to manage a connection to a SeedLink server based on the values
- * given in the slconn struct and collect data.
+ * Designed to run in a loop of a client program, this function can
+ * return full or partial packets.  The caller is responsible for
+ * consuming the data on each return.  Keepalives will be sent if
+ * configured for the connection. This routing can operate in blocking
+ * or non-blocking mode.
  *
- * Designed to run in a tight loop at the heart of a client program, this
- * function will return every time a packet is received.
+ * The \a plbuffer size will be increased up to \a maxbuffersize to
+ * accommodate whole packets.  The system's realloc() is used to
+ * reallocate the buffer.  The buffer's size is never reduced.
  *
- * Returns SLPACKET when something is received and sets the slpack
- * pointer to the received packet.  When the connection was closed by
- * the server or the termination sequence completed SLTERMINATE is
- * returned and the slpack pointer is set to NULL.
+d * \note The caller is responsible for freeing the memory allocated at
+ * \a plbuffer.
+ *
+ * The returned \a packetinfo contains the details including: sequence
+ * number, payload length, payload type, and how much of the payload
+ * has been returned so far.
+ *
+ * If the \a slconn.noblock flags is set, the function will return
+ * quickly even if no data are available, setting \a plbytes to 0 when
+ * no data are returned.  If the flag is not set, the function will
+ * block and only return if data are available.
+ *
+ * @param[in]  slconn  SeedLink connection description
+ * @param[in]  packetinfo  Pointer to ::SLpacketinfo
+ * @param[in|out] plbuffer Pointer to packet payload buffer
+ * @param[in|out] plbuffersize Size of payload buffer
+ * @param[in]  maxbuffersize Maximum size of payload buffer
+ *
+ * @returns An @ref collect-status code
+ * @retval SLPACKET Complete packet returned
+ * @retval SLTERMINATE Connection termination or error
+ * @retval SLNOPACKET  No packet available
  ***************************************************************************/
 int
-sl_collect (SLCD *slconn, SLpacket **slpack)
+sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
+            char **plbuffer, uint32_t *plbuffersize,
+            uint32_t maxbuffersize)
 {
-  int bytesread;
-  double current_time;
-  char retpacket;
-  int bufferlen;
-  uint8_t formatversion = 0;
+  uint32_t payloadbytes = 0;
+  uint32_t received = 0;
+  uint32_t resize;
 
-  /* For select()ing during the read loop */
+  if (!slconn || !packetinfo || !plbuffer || !plbuffersize)
+    return SLTERMINATE;
+
+  /* Initial allocation of payload buffer */
+  if (*plbuffersize == 0)
+  {
+    /* Minimum of 512 or specified maximum */
+    resize = (maxbuffersize < 512) ? maxbuffersize : 512;
+
+    if ((*plbuffer = (char *)malloc(resize)) == NULL)
+    {
+      sl_log (2, 0, "%s() cannot allocate memory\n", __func__);
+      *packetinfo = NULL;
+
+      return SLTERMINATE;
+    }
+
+    slconn->stat->payload = *plbuffer;
+    *plbuffersize = resize;
+  }
+
+  /* Loop with sl_receive() */
+  while (sl_receive (slconn,
+                     *plbuffer + received,
+                     *plbuffersize - received,
+                     &payloadbytes) != NULL)
+  {
+    received += payloadbytes;
+
+    /* If no new payload received (non-blocking) return */
+    if (payloadbytes == 0)
+    {
+      *packetinfo = NULL;
+      return SLNOPACKET;
+    }
+
+    /* Check if payload is larger than allowed maximum */
+    if (slconn->stat->packetinfo.payloadlength > maxbuffersize)
+    {
+      *packetinfo = &slconn->stat->packetinfo;
+      return SLTOOLARGE;
+    }
+    /* Increase buffer size if with allowed maximum */
+    else if (slconn->stat->packetinfo.payloadlength > *plbuffersize)
+    {
+      *plbuffer = (char *)realloc (*plbuffer, slconn->stat->packetinfo.payloadlength);
+
+      if (*plbuffer == NULL)
+      {
+        sl_log (2, 0, "%s() cannot allocate memory\n", __func__);
+        *packetinfo = NULL;
+
+        return SLTERMINATE;
+      }
+
+      slconn->stat->payload = *plbuffer;
+      *plbuffersize = slconn->stat->packetinfo.payloadlength;
+    }
+    /* Return complete packets */
+    else if (slconn->stat->packetinfo.payloadlength == slconn->stat->packetinfo.payloadcollected)
+    {
+      *packetinfo = &slconn->stat->packetinfo;
+      return SLPACKET;
+    }
+  }
+
+  return SLTERMINATE;
+}  /* End of sl_collect() */
+
+/**********************************************************************/ /**
+ * @brief Managage a connection to a SeedLink server and collect packets
+ *
+ * The sl_collect() function is a wrapper of this function that
+ * manages a buffer for receiving complete packets and is recommended
+ * for most uses.
+ *
+ * Designed to run in a loop of a client program, this function can
+ * return full or partial packets.  The caller is responsible for
+ * consuming the data on each return.  This routine will send
+ * keepalives if configured for the connection and can operate in
+ * blocking or non-blocking mode.
+ *
+ * \note While the function can operate with a small buffer in many
+ * cases, it is recommended to use a buffer than can contain complete
+ * packet payloads expected for efficiency and simplicity.
+ *
+ * The returned \a packetinfo contains the details including: sequence
+ * number, payload length, payload type, and how much of the payload
+ * has been returned so far.
+ *
+ * This function will not return more than a whole packet payload, the
+ * caller does not need to buffer data for following packet.
+ *
+ * \note The function can return partial payload data and the client
+ * must handle partial returns.  Detecting incomplete packets and
+ * constructing whole packets is an exercise for the caller.  A
+ * complete payload has been returned when \a packetinfo.payloadlength
+ * and \a packetinfo.payloadcollected are equal.
+ *
+ * If the \a slconn.noblock flags is set, the function will return
+ * quickly even if no data are available, setting \a plbytes to 0 when
+ * no data are returned.  If the flag is not set, the function will
+ * block and only return if data are available.
+ *
+ * The slconn->stats->payload pointer should be set to beginning of the
+ * payload buffer to facilitate stream tracking and v3 payload detection.
+ *
+ * @param[in]  slconn   SeedLink connection description
+ * @param[out] plbuffer Destination buffer for data packet payload
+ * @param[in]  plbuffersize Length of destination buffer
+ * @param[out] plbytes  Number of bytes returned in destination buffer
+ *
+ * @retval ::SLpacketinfo Description of current packet (if any), \a plbytes
+ *    will be set to the length of payload data written to \a plbuffer,
+ *    or 0 when no data is returned.
+ * @retval NULL Connection termination or error, connection has been closed.
+ ***************************************************************************/
+const SLpacketinfo *
+sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbytes)
+{
+  int64_t bytesread;
+  int64_t current_time;
+  int bytesavailable;
+
   struct timeval select_tv;
   fd_set select_fd;
   int select_ret;
 
-  *slpack = NULL;
+  if (!slconn || (plbuffersize > 0 && !plbuffer))
+    return NULL;
 
-  /* Check if the info was set */
-  if (slconn->info != NULL)
+  /* Start the primary loop */
+  while (!slconn->terminate)
   {
-    slconn->stat->query_mode = InfoQuery;
-  }
+    current_time = sl_nstime();
 
-  /* If the connection is not up check the SLCD and reset the timing variables */
-  if (slconn->link == -1)
-  {
-    if (sl_checkslcd (slconn))
+    if (slconn->link == -1)
     {
-      sl_log_r (slconn, 2, 0, "problems with the connection description\n");
-      return SLTERMINATE;
+      slconn->stat->conn_state = DOWN;
     }
 
-    slconn->stat->netto_trig     = -1; /* Init net timeout trigger to reset state */
-    slconn->stat->keepalive_trig = -1; /* Init keepalive trigger to reset state */
-  }
-
-  /* Start the primary loop  */
-  while (1)
-  {
-    if (!slconn->terminate)
+    /* Throttle the loop while delaying */
+    if (slconn->stat->conn_state == DOWN &&
+        slconn->stat->netdly_time &&
+        slconn->stat->netdly_time > current_time)
     {
-      if (slconn->link == -1)
+      sl_usleep (500000);
+    }
+
+    /* Connect to server if disconnected */
+    if (slconn->stat->conn_state == DOWN &&
+        slconn->stat->netdly_time < current_time)
+    {
+      if (sl_connect (slconn, 1) != -1)
       {
-        slconn->stat->sl_state = SL_DOWN;
+        slconn->stat->conn_state = UP;
       }
+      slconn->stat->netto_time     = 0;
+      slconn->stat->netdly_time    = 0;
+      slconn->stat->keepalive_time = 0;
+    }
 
-      /* Check for network timeout */
-      if (slconn->stat->sl_state == SL_DATA && slconn->netto && slconn->stat->netto_trig > 0)
+    /* Negotiate/configure the connection */
+    if (slconn->stat->conn_state == UP)
+    {
+      if (slconn->streams)
       {
-        sl_log_r (slconn, 1, 0, "network timeout (%ds), reconnecting in %ds\n",
-                  slconn->netto, slconn->netdly);
-        slconn->link              = sl_disconnect (slconn);
-        slconn->stat->sl_state    = SL_DOWN;
-        slconn->stat->netto_trig  = -1;
-        slconn->stat->netdly_trig = -1;
-      }
-
-      /* Check if a keepalive packet needs to be sent */
-      if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info &&
-          slconn->keepalive && slconn->stat->keepalive_trig > 0)
-      {
-        sl_log_r (slconn, 1, 2, "sending keepalive request\n");
-
-        if (sl_send_info (slconn, "ID", 3) != -1)
+        if (sl_configlink (slconn) == -1)
         {
-          slconn->stat->query_mode     = KeepAliveQuery;
-          slconn->stat->expect_info    = 1;
-          slconn->stat->keepalive_trig = -1;
-        }
-      }
-
-      /* Check if an in-stream INFO request needs to be sent */
-      if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info && slconn->info)
-      {
-        if (sl_send_info (slconn, slconn->info, 1) != -1)
-        {
-          slconn->stat->query_mode  = InfoQuery;
-          slconn->stat->expect_info = 1;
-        }
-        else
-        {
-          slconn->stat->query_mode = NoQuery;
-        }
-
-        slconn->info = NULL;
-      }
-
-      /* Throttle the loop while delaying */
-      if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig > 0)
-      {
-        slp_usleep (500000);
-      }
-
-      /* Connect to remote SeedLink */
-      if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig == 0)
-      {
-        if (sl_connect (slconn, 1) != -1)
-        {
-          slconn->stat->sl_state = SL_UP;
-        }
-        slconn->stat->netto_trig     = -1;
-        slconn->stat->netdly_trig    = -1;
-        slconn->stat->keepalive_trig = -1;
-      }
-
-      /* Negotiate/configure the connection */
-      if (slconn->stat->sl_state == SL_UP)
-      {
-        int slconfret = 0;
-
-        /* Only send query if a query is set and no streams are defined,
-         * if streams are defined we'll send the query after configuration. */
-        if (slconn->info && slconn->streams == NULL)
-        {
-          if (sl_send_info (slconn, slconn->info, 1) != -1)
-          {
-            slconn->stat->query_mode  = InfoQuery;
-            slconn->stat->expect_info = 1;
-          }
-          else
-          {
-            slconn->stat->query_mode  = NoQuery;
-            slconn->stat->expect_info = 0;
-          }
-
-          slconn->info = NULL;
-        }
-        else
-        {
-          slconfret                 = sl_configlink (slconn);
-          slconn->stat->expect_info = 0;
-        }
-
-        if (slconfret != -1)
-        {
-          slconn->stat->recptr   = 0; /* initialize the data buffer pointers */
-          slconn->stat->sendptr  = 0;
-          slconn->stat->sl_state = SL_DATA;
-        }
-        else
-        {
-          sl_log_r (slconn, 2, 0, "negotiation with remote SeedLink failed\n");
+          sl_log_r (slconn, 2, 0, "%s(): negotiation with server failed\n", __func__);
           slconn->link              = sl_disconnect (slconn);
-          slconn->stat->netdly_trig = -1;
-        }
-      }
-    }
-    else /* We are terminating */
-    {
-      if (slconn->link != -1)
-      {
-        slconn->link = sl_disconnect (slconn);
-      }
-
-      slconn->stat->sl_state = SL_DOWN;
-    }
-
-    /* Process data in buffer */
-    while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + SLRECSIZEMIN)
-    {
-      bufferlen = slconn->stat->recptr - slconn->stat->sendptr;
-      retpacket = 1;
-
-      slconn->stat->slpack.slhead = &slconn->stat->databuf[slconn->stat->sendptr];
-      slconn->stat->slpack.msrecord = &slconn->stat->databuf[slconn->stat->sendptr + SLHEADSIZE];
-      slconn->stat->slpack.reclen = detect (slconn->stat->slpack.msrecord, bufferlen, &formatversion);
-
-      /* Return error if no miniSEED could be detected */
-      if (slconn->stat->slpack.reclen < 0)
-      {
-        sl_log_r (slconn, 2, 0, "%s(): non-miniSEED packet received!?! Terminating.\n", __func__);
-        return SLTERMINATE;
-      }
-
-      /* Stop processing if the buffer contains miniSEED but not enough data */
-      if (slconn->stat->slpack.reclen == 0 ||
-          (slconn->stat->slpack.reclen > 0 && slconn->stat->slpack.reclen > bufferlen))
-      {
-        break;
-      }
-
-      /* Process an INFO packet */
-      if (!memcmp (slconn->stat->slpack.slhead, INFOSIGNATURE, 6))
-      {
-        char terminator;
-
-        terminator = (slconn->stat->slpack.slhead[SLHEADSIZE - 1] != '*');
-
-        if (!slconn->stat->expect_info)
-        {
-          sl_log_r (slconn, 2, 0, "unexpected INFO packet received, skipping\n");
-        }
-        else
-        {
-          if (terminator)
-          {
-            slconn->stat->expect_info = 0;
-          }
-
-          /* Keep alive packets are not returned */
-          if (slconn->stat->query_mode == KeepAliveQuery)
-          {
-            retpacket = 0;
-
-            if (!terminator)
-            {
-              sl_log_r (slconn, 2, 0, "non-terminated keep-alive packet received!?!\n");
-            }
-            else
-            {
-              sl_log_r (slconn, 1, 2, "keepalive packet received\n");
-            }
-          }
-        }
-
-        if (slconn->stat->query_mode != NoQuery)
-        {
-          slconn->stat->query_mode = NoQuery;
-        }
-      }
-      else /* Update the stream chain entry if not an INFO packet */
-      {
-        if ((update_stream (slconn, &slconn->stat->slpack)) == -1)
-        {
-          /* If updating didn't work the packet is broken */
-          retpacket = 0;
+          slconn->stat->netdly_time = 0;
         }
       }
 
-      /* Increment the send pointer */
-      slconn->stat->sendptr += (SLHEADSIZE + slconn->stat->slpack.reclen);
+      slconn->stat->conn_state = STREAMING;
+    }
 
-      /* Return packet */
-      if (retpacket)
+    /* Send INFO request if one not in progress */
+    if (slconn->stat->conn_state == STREAMING &&
+        slconn->stat->query_state == NoQuery &&
+        slconn->info)
+    {
+      if (sl_send_info (slconn, slconn->info, 1) != -1)
       {
-        *slpack = &slconn->stat->slpack;
-        return SLPACKET;
+        slconn->stat->query_state = InfoQuery;
       }
-    } /* Done processing data in recv buffer */
+      else
+      {
+        slconn->stat->query_state = NoQuery;
+      }
 
-    /* A trap door for terminating, all complete data packets from the buffer
-       have been sent to the caller */
-    if (slconn->terminate)
-    {
-      return SLTERMINATE;
+      slconn->info = NULL;
     }
 
-    /* After processing the packet buffer shift the data */
-    if (slconn->stat->sendptr)
+    /* Read incoming data stream */
+    if (slconn->stat->conn_state == STREAMING)
     {
-      memmove (slconn->stat->databuf,
-               &slconn->stat->databuf[slconn->stat->sendptr],
-               slconn->stat->recptr - slconn->stat->sendptr);
-
-      slconn->stat->recptr -= slconn->stat->sendptr;
-      slconn->stat->sendptr = 0;
-    }
-
-    /* Catch cases where the data stream stopped */
-    if ((slconn->stat->recptr - slconn->stat->sendptr) == 7 &&
-        !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "ERROR\r\n", 7))
-    {
-      sl_log_r (slconn, 2, 0, "SeedLink server reported an error with the last command\n");
-      slconn->link = sl_disconnect (slconn);
-      return SLTERMINATE;
-    }
-
-    if ((slconn->stat->recptr - slconn->stat->sendptr) == 3 &&
-        !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "END", 3))
-    {
-      sl_log_r (slconn, 1, 1, "End of buffer or selected time window\n");
-      slconn->link = sl_disconnect (slconn);
-      return SLTERMINATE;
-    }
-
-    /* Read incoming data if connection is up */
-    if (slconn->stat->sl_state == SL_DATA)
-    {
-      /* Check for more available data from the socket */
       bytesread = 0;
 
-      /* Poll the server */
       FD_ZERO (&select_fd);
       FD_SET ((unsigned int)slconn->link, &select_fd);
       select_tv.tv_sec  = 0;
-      select_tv.tv_usec = 500000; /* Block up to 0.5 seconds */
+
+      /* Wait up to 0.5 seconds when blocking, otherwise 100 usec */
+      select_tv.tv_usec = (!slconn->noblock) ? 500000 : 100;
 
       select_ret = select ((slconn->link + 1), &select_fd, NULL, NULL, &select_tv);
 
       /* Check the return from select(), an interrupted system call error
          will be reported if a signal handler was used.  If the terminate
          flag is set this is not an error. */
-      if (select_ret > 0)
+      if (select_ret < 0 && !slconn->terminate)
       {
-        if (!FD_ISSET (slconn->link, &select_fd))
-        {
-          sl_log_r (slconn, 2, 0, "select() reported data but socket not in set!\n");
-        }
-        else
-        {
-          bytesread = sl_recvdata (slconn, (void *)&slconn->stat->databuf[slconn->stat->recptr],
-                                   BUFSIZE - slconn->stat->recptr, slconn->sladdr);
-        }
-      }
-      else if (select_ret < 0 && !slconn->terminate)
-      {
-        sl_log_r (slconn, 2, 0, "select() error: %s\n", slp_strerror ());
-        slconn->link              = sl_disconnect (slconn);
-        slconn->stat->netdly_trig = -1;
+        sl_log_r (slconn, 2, 0, "%s(): select() error: %s\n", __func__, sl_strerror ());
+        break;
       }
 
-      if (bytesread < 0) /* read() failed */
+      /* Read available data */
+      if (select_ret > 0 && FD_ISSET (slconn->link, &select_fd))
       {
-        slconn->link              = sl_disconnect (slconn);
-        slconn->stat->netdly_trig = -1;
-      }
-      else if (bytesread > 0) /* Data is here, process it */
-      {
-        slconn->stat->recptr += bytesread;
+        bytesavailable = recvable (slconn->link);
 
-        /* Reset the timeout and keepalive timers */
-        slconn->stat->netto_trig     = -1;
-        slconn->stat->keepalive_trig = -1;
+        if (bytesavailable < 0)
+        {
+          sl_log_r (slconn, 2, 0, "%s(): recvable() returned error\n", __func__);
+          break;
+        }
+
+        bytesread = 0;
+
+        /* Read next header */
+        if (slconn->stat->stream_state == HEADER)
+        {
+          if ((slconn->proto_major <= 3 && bytesavailable >= SLHEADSIZE) ||
+              (slconn->proto_major == 4 && bytesavailable >= SLHEADSIZE_EXT))
+          {
+            bytesread = receive_header (slconn, bytesavailable);
+
+#ifdef DEBUG
+            fprintf (stderr, "DEBUG %s() return from receive_header(): %"PRId64", with bytes available: %d, state: %d\n",
+                     __func__, bytesread, bytesavailable, slconn->stat->stream_state);
+#endif
+
+            if (bytesread < 0)
+            {
+              break;
+            }
+            else if (bytesread > 0)
+            {
+              /* Set state for payload collection */
+              slconn->stat->packetinfo.payloadcollected = 0;
+              slconn->stat->stream_state = PAYLOAD;
+              bytesavailable -= bytesread;
+            }
+          }
+          else
+          {
+            /* A narrow case of small data, check for special cases */
+            if (bytesavailable > 0)
+            {
+              bytesread = recv (slconn->link,
+                                slconn->stat->packetinfo.header,
+                                sizeof(slconn->stat->packetinfo.header),
+                                MSG_PEEK);
+
+              if (bytesread >= 5 && !memcmp (slconn->stat->packetinfo.header, "ERROR", 5))
+              {
+                sl_log_r (slconn, 2, 0, "Server reported an error with the last command\n");
+                break;
+              }
+              if (bytesread >= 3 && !memcmp (slconn->stat->packetinfo.header, "END", 3))
+              {
+                sl_log_r (slconn, 1, 1, "End of buffer or selected time window\n");
+                break;
+              }
+            }
+          }
+        } /* Done reading header */
+
+#ifdef DEBUG
+        fprintf (stderr, "DEBUG: %s() bytesavailable: %d, payloadlength: %u, payloadcollected: %u, state: %d\n",
+                 __func__, bytesavailable,
+                 slconn->stat->packetinfo.payloadlength,
+                 slconn->stat->packetinfo.payloadcollected,
+                 slconn->stat->stream_state);
+#endif
+
+        /* Collect payload */
+        if (slconn->stat->stream_state == PAYLOAD)
+        {
+          bytesread = 0;
+          if (slconn->proto_major <= 3)
+          {
+            bytesread = receive_v3payload (slconn, plbuffer, plbuffersize, bytesavailable);
+          }
+          else if (slconn->proto_major == 4)
+          {
+            bytesread = receive_v4payload (slconn, plbuffer, plbuffersize, bytesavailable);
+          }
+
+#ifdef DEBUG
+          fprintf (stderr, "DEBUG: %s() return from received_vXpayload: %"PRId64", bytesavailable: %d\n",
+                   __func__, bytesread, bytesavailable);
+#endif
+
+          /* Set state for header collection if payload is complete */
+          if (slconn->stat->packetinfo.payloadlength > 0 &&
+              slconn->stat->packetinfo.payloadlength == slconn->stat->packetinfo.payloadcollected)
+          {
+            slconn->stat->stream_state = HEADER;
+          }
+
+          if (bytesread < 0) /* read() failed */
+          {
+            break;
+          }
+          else if (bytesread > 0) /* Return collected payload */
+          {
+            slconn->stat->netto_time     = 0;
+            slconn->stat->keepalive_time = 0;
+
+            *plbytes = bytesread;
+
+            return &slconn->stat->packetinfo;
+          }
+        } /* Done reading payload */
       }
-    }
+    } /* Done reading data */
 
     /* Update timing variables */
-    current_time = sl_dtime ();
+    current_time = sl_nstime ();
 
-    /* Network timeout timing logic */
-    if (slconn->netto)
-    {
-      if (slconn->stat->netto_trig == -1) /* reset timer */
-      {
-        slconn->stat->netto_time = current_time;
-        slconn->stat->netto_trig = 0;
-      }
-      else if (slconn->stat->netto_trig == 0 &&
-               (current_time - slconn->stat->netto_time) > slconn->netto)
-      {
-        slconn->stat->netto_trig = 1;
-      }
-    }
-
-    /* Keepalive/heartbeat interval timing logic */
-    if (slconn->keepalive)
-    {
-      if (slconn->stat->keepalive_trig == -1) /* reset timer */
-      {
-        slconn->stat->keepalive_time = current_time;
-        slconn->stat->keepalive_trig = 0;
-      }
-      else if (slconn->stat->keepalive_trig == 0 &&
-               (current_time - slconn->stat->keepalive_time) > slconn->keepalive)
-      {
-        slconn->stat->keepalive_trig = 1;
-      }
-    }
-
-    /* Network delay timing logic */
-    if (slconn->netdly)
-    {
-      if (slconn->stat->netdly_trig == -1) /* reset timer */
-      {
-        slconn->stat->netdly_time = current_time;
-        slconn->stat->netdly_trig = 1;
-      }
-      else if (slconn->stat->netdly_trig == 1 &&
-               (current_time - slconn->stat->netdly_time) > slconn->netdly)
-      {
-        slconn->stat->netdly_trig = 0;
-      }
-    }
-  } /* End of primary loop */
-} /* End of sl_collect() */
-
-/***************************************************************************
- * sl_collect_nb:
- *
- * A wrapper for sl_collect_nb_size() to operate with up to the maximum
- * miniSEED record size.
- ***************************************************************************/
-int
-sl_collect_nb (SLCD *slconn, SLpacket **slpack)
-{
-  return sl_collect_nb_size (slconn, slpack, SLRECSIZEMAX);
-}
-
-/***************************************************************************
- * sl_collect_nb_size:
- *
- * Routine to manage a connection to a SeedLink server based on the values
- * given in the slconn struct and collect data.
- *
- * Designed to run in a tight loop at the heart of a client program, this
- * function is a non-blocking version sl_collect().  SLNOPACKET will be
- * returned when no data is available.
- *
- * Returns SLPACKET when something is received and sets the slpack
- * pointer to the received packet.  Returns SLNOPACKET when no packets
- * have been received, slpack is set to NULL.  When the connection was
- * closed by the server or the termination sequence completed
- * SLTERMINATE is returned and the slpack pointer is set to NULL.
- *
- * 6 Apr 2012 - Jacob Crummey:
- * Added sl_collect_nb_size() to allow for selecting SeedLink record
- * packet size.  Possible values for slrecsize are 128, 256, 512.
- * There is no error checking, so the value of slrecsize must be
- * checked before passing it to sl_collect_nb_size().
- *
- * 'slrecsize' has been re-purposed to be 'maxrecsize' and used to allow
- * the caller to specify a maximum record size to return.
- ***************************************************************************/
-int
-sl_collect_nb_size (SLCD *slconn, SLpacket **slpack, int maxrecsize)
-{
-  int bytesread;
-  double current_time;
-  char retpacket;
-  int bufferlen;
-  uint8_t formatversion = 0;
-
-
-  *slpack = NULL;
-
-  /* Check if the info was set */
-  if (slconn->info != NULL)
-  {
-    slconn->stat->query_mode = InfoQuery;
-  }
-
-  /* If the connection is not up check the SLCD and reset the timing variables */
-  if (slconn->link == -1)
-  {
-    if (sl_checkslcd (slconn))
-    {
-      sl_log_r (slconn, 2, 0, "problems with the connection description\n");
-      return SLTERMINATE;
-    }
-
-    slconn->stat->netto_trig     = -1; /* Init net timeout trigger to reset state */
-    slconn->stat->keepalive_trig = -1; /* Init keepalive trigger to reset state */
-  }
-
-  /* Start the main sequence  */
-  if (!slconn->terminate)
-  {
-    if (slconn->link == -1)
-    {
-      slconn->stat->sl_state = SL_DOWN;
-    }
-
-    /* Check for network timeout */
-    if (slconn->stat->sl_state == SL_DATA &&
-        slconn->netto && slconn->stat->netto_trig > 0)
+    /* Check for network idle timeout */
+    if (slconn->stat->conn_state == STREAMING &&
+        slconn->netto && slconn->stat->netto_time &&
+        slconn->stat->netto_time < current_time)
     {
       sl_log_r (slconn, 1, 0, "network timeout (%ds), reconnecting in %ds\n",
                 slconn->netto, slconn->netdly);
       slconn->link              = sl_disconnect (slconn);
-      slconn->stat->sl_state    = SL_DOWN;
-      slconn->stat->netto_trig  = -1;
-      slconn->stat->netdly_trig = -1;
+      slconn->stat->conn_state  = DOWN;
+      slconn->stat->netto_time  = 0;
+      slconn->stat->netdly_time = 0;
     }
 
-    /* Check if a keepalive packet needs to be sent */
-    if (slconn->stat->sl_state == SL_DATA && !slconn->stat->expect_info &&
-        slconn->keepalive && slconn->stat->keepalive_trig > 0)
+    /* Check if keepalive packet needs to be sent */
+    if (slconn->stat->conn_state == STREAMING &&
+        slconn->stat->query_state == NoQuery &&
+        slconn->keepalive && slconn->stat->keepalive_time &&
+        slconn->stat->keepalive_time < current_time)
     {
-      sl_log_r (slconn, 1, 2, "sending keepalive request\n");
+      sl_log_r (slconn, 1, 2, "sending keepalive mesage\n");
 
-      if (sl_send_info (slconn, "ID", 3) != -1)
+      if (sl_send_info (slconn, "ID", 3) == -1)
       {
-        slconn->stat->query_mode     = KeepAliveQuery;
-        slconn->stat->expect_info    = 1;
-        slconn->stat->keepalive_trig = -1;
+        break;
       }
+
+      slconn->stat->query_state     = KeepAliveQuery;
+      slconn->stat->keepalive_time = 0;
     }
 
-    /* Check if an in-stream INFO request needs to be sent */
-    if (slconn->stat->sl_state == SL_DATA &&
-        !slconn->stat->expect_info && slconn->info)
+    /* Network timeout */
+    if (slconn->netto && slconn->stat->netto_time == 0)
     {
-      if (sl_send_info (slconn, slconn->info, 1) != -1)
+      slconn->stat->netto_time = current_time + (slconn->netto * SLTMODULUS);
+    }
+
+    /* Keepalive/heartbeat interval */
+    if (slconn->keepalive && slconn->stat->keepalive_time == 0)
+    {
+      slconn->stat->keepalive_time = current_time + (slconn->keepalive * SLTMODULUS);
+    }
+
+    /* Network connection delay */
+    if (slconn->netdly && slconn->stat->netdly_time == 0)
+    {
+      slconn->stat->netdly_time = current_time + (slconn->netdly * SLTMODULUS);
+    }
+
+    /* Return if not waiting for data */
+    if (slconn->noblock)
+    {
+      *plbytes = 0;
+      return &slconn->stat->packetinfo;
+    }
+  } /* End of primary loop */
+
+  /* Terminating, make sure connection is closed */
+  if (slconn->link >= 0)
+  {
+    slconn->link = sl_disconnect (slconn);
+  }
+
+  return NULL;
+} /* End of sl_receive() */
+
+
+/***************************************************************************
+ * receive_header:
+ *
+ * Receive packet header.
+ *
+ * Returns:
+ * bytes : Size of header read
+ * -1 :  on termination or error
+ ***************************************************************************/
+static int
+receive_header (SLCD *slconn, int bytesavailable)
+{
+  int64_t bytesread = 0;
+  uint32_t readsize = 0;
+  char *tail = NULL;
+
+  if (!slconn)
+    return -1;
+
+  if (slconn->proto_major <= 3 && bytesavailable >= SLHEADSIZE)
+  {
+    readsize = SLHEADSIZE;
+    memset(slconn->stat->packetinfo.header + SLHEADSIZE, 0,
+           sizeof(slconn->stat->packetinfo.header) - SLHEADSIZE);
+  }
+  else if (slconn->proto_major == 4 && bytesavailable >= SLHEADSIZE_EXT)
+  {
+    readsize = SLHEADSIZE_EXT;
+  }
+  else
+  {
+    sl_log_r (slconn, 2, 0, "%s() cannot determine read size, proto_major: %d, bytesavaiable: %d\n",
+              __func__, slconn->proto_major, bytesavailable);
+    return -1;
+  }
+
+  bytesread = sl_recvdata (slconn, slconn->stat->packetinfo.header,
+                           readsize, slconn->sladdr);
+
+#ifdef DEBUG
+  fprintf (stderr, "DEBUG %s() recved header (%"PRId64"): '%16.16s'\n", __func__, bytesread, slconn->stat->packetinfo.header);
+#endif
+
+  if (bytesread < 0) /* recv() failed */
+  {
+    return -1;
+  }
+  else if (bytesread > 0)
+  {
+    if (bytesread != readsize)
+    {
+      sl_log_r (slconn, 2, 0, "%s() incomplete header received, available: %d, read: %" PRId64 "\n",
+                __func__, bytesavailable, bytesread);
+      return -1;
+    }
+
+    /* Catch special cases of stream interruption */
+    if (bytesread >= 5 && !memcmp (slconn->stat->packetinfo.header, "ERROR", 5))
+    {
+      sl_log_r (slconn, 2, 0, "Server reported an error with the last command\n");
+      return -1;
+    }
+    if (bytesread >= 3 && !memcmp (slconn->stat->packetinfo.header, "END", 3))
+    {
+      sl_log_r (slconn, 1, 1, "End of buffer or selected time window\n");
+      return -1;
+    }
+
+    /* Parse v3 INFO header */
+    if (!memcmp (slconn->stat->packetinfo.header, INFOSIGNATURE, 6))
+    {
+      slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
+      slconn->stat->packetinfo.payloadlength = 0;
+
+      slconn->stat->packetinfo.payloadtype = (slconn->stat->packetinfo.header[SLHEADSIZE - 1] == '*') ?
+        SLPAYLOAD_MSEED2INFO :
+        SLPAYLOAD_MSEED2INFOTERM;
+    }
+    /* Parse v3 data header */
+    else if (!memcmp (slconn->stat->packetinfo.header, SIGNATURE, 2))
+    {
+      slconn->stat->packetinfo.seqnum = strtoul (slconn->stat->packetinfo.header + 2, &tail, 16);
+
+      if (*tail)
       {
-        slconn->stat->query_mode  = InfoQuery;
-        slconn->stat->expect_info = 1;
+        sl_log_r (slconn, 2, 0, "%s() cannot parse sequence number from v3 header: %8.8s\n",
+                  __func__, slconn->stat->packetinfo.header);
+        return -1;
       }
+
+      slconn->stat->packetinfo.payloadlength = 0;
+      slconn->stat->packetinfo.payloadtype = SLPAYLOAD_UNKNOWN;
+    }
+    /* Parse v4 header */
+    else if (!memcmp (slconn->stat->packetinfo.header, SIGNATURE_EXT, 2))
+    {
+      memcpy (&slconn->stat->packetinfo.seqnum, slconn->stat->packetinfo.header + 8, 8);
+      memcpy (&slconn->stat->packetinfo.payloadlength, slconn->stat->packetinfo.header + 4, 4);
+      slconn->stat->packetinfo.payloadtype = slconn->stat->packetinfo.header[2];
+
+      if (!sl_littleendianhost ())
+      {
+        sl_gswap8a (&slconn->stat->packetinfo.seqnum);
+        sl_gswap4a (&slconn->stat->packetinfo.payloadlength);
+      }
+    }
+    else
+    {
+      sl_log_r (slconn, 2, 0, "%s(): unexpected header signature not found (instead: %2.2s)\n",
+                __func__, slconn->stat->packetinfo.header);
+      return -1;
+    }
+  }
+
+  return bytesread;
+} /* End of receive_header() */
+
+
+/***************************************************************************
+ * receive_v3payload:
+ *
+ * Receive packet payload for v3 protocol.
+ *
+ * The supplied buffer must be large enough for payload detection,
+ * defined as SL_MIN_BUFFER bytes.
+ *
+ * Returns
+ * bytes : Number of bytes written to 'plbuffer' on success
+ * -1 :  on termination or error
+ ***************************************************************************/
+int64_t
+receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
+                   int bytesavailable)
+{
+  int64_t bytesread = 0;
+  uint32_t collected = 0;
+  uint32_t readsize;
+  uint32_t nextpow2;
+  char payloadtype = SLPAYLOAD_UNKNOWN;
+  int64_t detectedlength;
+
+  if (!slconn || !plbuffer)
+    return -1;
+
+  if (!slconn->stat->payload)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): required slconn->stat->payload pointer not set.\n",
+              __func__);
+    return -1;
+  }
+
+  if (slconn->stat->packetinfo.payloadcollected == 0)
+  {
+    /* Initial payload read buffer must be large enough for detection */
+    if (plbuffersize < SL_MIN_BUFFER)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): provided buffer is too small (%u), must be at least %u bytes\n",
+                __func__, plbuffersize, SL_MIN_BUFFER);
+      return -1;
+    }
+
+    /* Initial payload read must be at least SL_MIN_BUFFER */
+    if (bytesavailable < SL_MIN_BUFFER)
+    {
+      return 0;
+    }
+  }
+
+  while (bytesavailable > 0 && !slconn->terminate)
+  {
+#ifdef DEBUG
+    fprintf (stderr, "DEBUG %s(): bytesavailable: %d, payloadcollected: %u, payloadlength: %u, plbuffersize: %u\n",
+             __func__, bytesavailable,
+             slconn->stat->packetinfo.payloadcollected,
+             slconn->stat->packetinfo.payloadlength,
+             plbuffersize);
+#endif
+
+    /* It is important that this routine does not read more than a single
+       packet payload from the socket (there are other readers), so we employ
+       logic to minimize the reads until we know the packet length.
+
+       Strategy to read minimum needed for packet:
+       - if miniSEED 3, SL_MIN_BUFFER is enough to determine the length
+       - if miniSEED 2, increment read limit to next possible record length
+
+       Packet length is unknown when set to 0.
+    */
+    if (slconn->stat->packetinfo.payloadlength == 0)
+    {
+      /* Collect up to SL_MIN_BUFFER initially */
+      if (slconn->stat->packetinfo.payloadcollected < SL_MIN_BUFFER)
+      {
+        readsize = SL_MIN_BUFFER - slconn->stat->packetinfo.payloadcollected;
+      }
+      /* Otherwise, find bytes remaining to next power of 2 length */
       else
       {
-        slconn->stat->query_mode = NoQuery;
+        for (nextpow2 = 32; nextpow2 < slconn->stat->packetinfo.payloadcollected;)
+          nextpow2 *= 2;
+
+        readsize = nextpow2 - slconn->stat->packetinfo.payloadcollected;
       }
-
-      slconn->info = NULL;
+    }
+    /* Packet length is known: read remaining */
+    else if (slconn->stat->packetinfo.payloadlength > 0 &&
+             slconn->stat->packetinfo.payloadlength > slconn->stat->packetinfo.payloadcollected)
+    {
+      readsize = slconn->stat->packetinfo.payloadlength - slconn->stat->packetinfo.payloadcollected;
+    }
+    else
+    {
+      sl_log_r (slconn, 2, 0, "%s(): cannot determine read size, payloadlength: %u, payloadcollected: %u\n",
+                __func__, slconn->stat->packetinfo.payloadlength, slconn->stat->packetinfo.payloadcollected);
+      return -1;
     }
 
-    /* Throttle the loop while delaying */
-    if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig > 0)
+#ifdef DEBUG
+    fprintf (stderr, "DEBUG %s(): readsize %u\n", __func__, readsize);
+#endif
+
+    /* Fail if payload length unknown and not enough buffer to continue detection */
+    if (slconn->stat->packetinfo.payloadlength == 0 &&
+        (collected + readsize) > plbuffersize)
     {
-      slp_usleep (500000);
+      sl_log_r (slconn, 2, 0, "%s(): provided buffer size insufficient for payload detection in %u bytes\n",
+                __func__, (collected + readsize));
+      return -1;
     }
 
-    /* Connect to remote SeedLink */
-    if (slconn->stat->sl_state == SL_DOWN && slconn->stat->netdly_trig == 0)
+    /* Reduce read size to remaining buffer if smaller */
+    if ((collected + readsize) > plbuffersize)
     {
-      if (sl_connect (slconn, 1) != -1)
+      readsize = plbuffersize - collected;
+    }
+
+    bytesread = sl_recvdata (slconn, plbuffer + collected, readsize, slconn->sladdr);
+
+#ifdef DEBUG
+    fprintf (stderr, "DEBUG %s(): bytesread %"PRId64" to offset: %p\n", __func__, bytesread, plbuffer + collected);
+#endif
+
+    if (bytesread < 0) /* recv() failed */
+    {
+      return-1;
+    }
+    else if (bytesread > 0) /* Process collected payload */
+    {
+      slconn->stat->packetinfo.payloadcollected += bytesread;
+      collected += bytesread;
+      bytesavailable -= bytesread;
+
+      /* Detect payload type and length if not yet determined */
+      if (slconn->stat->packetinfo.payloadlength == 0 &&
+          slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER)
       {
-        slconn->stat->sl_state = SL_UP;
-      }
-      slconn->stat->netto_trig     = -1;
-      slconn->stat->netdly_trig    = -1;
-      slconn->stat->keepalive_trig = -1;
-    }
+        detectedlength = detect (slconn->stat->payload,
+                                 slconn->stat->packetinfo.payloadcollected,
+                                 &payloadtype);
 
-    /* Negotiate/configure the connection */
-    if (slconn->stat->sl_state == SL_UP)
-    {
-      int slconfret = 0;
+#ifdef DEBUG
+        fprintf (stderr, "DEBUG: %s() detectedlength: %"PRId64", payloadlength: %u, payloadcollected: %u, type: %c\n",
+                 __func__, detectedlength, slconn->stat->packetinfo.payloadlength, slconn->stat->packetinfo.payloadcollected, payloadtype);
+#endif
 
-      /* Only send query if a query is set and no streams are defined,
-       * if streams are defined we'll send the query after configuration.
-       */
-      if (slconn->info && slconn->streams == NULL)
-      {
-        if (sl_send_info (slconn, slconn->info, 1) != -1)
+        /* Return error if no recognized payload detected */
+        if (detectedlength < 0)
         {
-          slconn->stat->query_mode  = InfoQuery;
-          slconn->stat->expect_info = 1;
+          sl_log_r (slconn, 2, 0, "%s(): non-miniSEED packet received for v3 protocol!?! Terminating.\n",
+                    __func__);
+          return -1;
         }
-        else
+        /* Update packet info if length detected */
+        else if (detectedlength > 0)
         {
-          slconn->stat->query_mode  = NoQuery;
-          slconn->stat->expect_info = 0;
+          if (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_UNKNOWN)
+          {
+            slconn->stat->packetinfo.payloadtype = payloadtype;
+          }
+
+          slconn->stat->packetinfo.payloadlength = detectedlength;
+        }
+      }
+
+      /* Handle payload of known length */
+      if (slconn->stat->packetinfo.payloadlength > 0)
+      {
+        /* Update streaming tracking if initial payload and non-INFO */
+        if (slconn->stat->packetinfo.payloadcollected == collected &&
+            slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER &&
+            slconn->stat->packetinfo.payloadtype != SLPAYLOAD_MSEED2INFO &&
+            slconn->stat->packetinfo.payloadtype != SLPAYLOAD_MSEED2INFOTERM)
+        {
+          if (update_stream (slconn, slconn->stat->payload) == -1)
+          {
+            sl_log_r (slconn, 2, 0, "%s(): cannot update stream tracking\n", __func__);
+            return -1;
+          }
         }
 
-        slconn->info = NULL;
-      }
-      else
-      {
-        slconfret                 = sl_configlink (slconn);
-        slconn->stat->expect_info = 0;
-      }
+        /* Keepalive INFO responses are not returned to caller */
+        if (slconn->stat->query_state == KeepAliveQuery &&
+            (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFOTERM ||
+             slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFO))
+        {
+          collected = 0;
+        }
 
-      if (slconfret != -1)
-      {
-        slconn->stat->recptr   = 0; /* initialize the data buffer pointers */
-        slconn->stat->sendptr  = 0;
-        slconn->stat->sl_state = SL_DATA;
-      }
-      else
-      {
-        sl_log_r (slconn, 2, 0, "negotiation with remote SeedLink failed\n");
-        slconn->link              = sl_disconnect (slconn);
-        slconn->stat->netdly_trig = -1;
+        /* Payload is complete */
+        if (slconn->stat->packetinfo.payloadcollected == slconn->stat->packetinfo.payloadlength)
+        {
+          if (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFOTERM)
+          {
+            if (slconn->stat->query_state == KeepAliveQuery)
+            {
+              sl_log_r (slconn, 1, 2, "Keepalive packet received\n");
+            }
+
+            slconn->stat->query_state = NoQuery;
+          }
+        }
+
+        /* Return received data to caller */
+        break;
       }
     }
   }
-  else /* We are terminating */
-  {
-    if (slconn->link != -1)
-    {
-      slconn->link = sl_disconnect (slconn);
-    }
 
-    slconn->stat->sl_state = SL_DATA;
+  return collected;
+} /* End of receive_v3payload() */
+
+
+/***************************************************************************
+ * receive_v4payload:
+ *
+ * Receive packet payload for v4 protocol
+ *
+ * Returns
+ * bytes : Number of bytes written to 'plbuffer' on success
+ * -1 :  on termination or error
+ ***************************************************************************/
+static int64_t
+receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
+                   int bytesavailable)
+{
+  int64_t bytesread = 0;
+  uint32_t collected = 0;
+  uint32_t readsize;
+
+  if (!slconn || !plbuffer)
+    return -1;
+
+  if (!slconn->stat->payload)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): required slconn->stat->payload pointer not set.\n",
+              __func__);
+    return -1;
   }
 
-  /* Process data in buffer */
-  while (slconn->stat->recptr - slconn->stat->sendptr >= SLHEADSIZE + SLRECSIZEMIN)
+  while (bytesavailable > 0 && !slconn->terminate)
   {
-    bufferlen = slconn->stat->recptr - slconn->stat->sendptr;
-    retpacket = 1;
+    /* Read size: remaining payload */
+    readsize = slconn->stat->packetinfo.payloadlength - slconn->stat->packetinfo.payloadcollected;
 
-    slconn->stat->slpack.slhead = &slconn->stat->databuf[slconn->stat->sendptr];
-    slconn->stat->slpack.msrecord = &slconn->stat->databuf[slconn->stat->sendptr + SLHEADSIZE];
-    slconn->stat->slpack.reclen = detect (slconn->stat->slpack.msrecord, bufferlen, &formatversion);
-
-    /* Return error if no miniSEED could be detected */
-    if (slconn->stat->slpack.reclen < 0)
+    /* Reduce read size to remaining buffer if smaller */
+    if ((collected + readsize) > plbuffersize)
     {
-      sl_log_r (slconn, 2, 0, "%s(): non-miniSEED packet received!?! Terminating.\n", __func__);
-      return SLTERMINATE;
+      readsize = plbuffersize - collected;
     }
 
-    /* Stop processing if the buffer contains miniSEED but not enough data */
-    if (slconn->stat->slpack.reclen == 0 ||
-        (slconn->stat->slpack.reclen > 0 && slconn->stat->slpack.reclen > bufferlen))
+    bytesread = sl_recvdata (slconn, plbuffer + collected, readsize, slconn->sladdr);
+
+    if (bytesread < 0) /* recv() failed */
     {
+      return -1;
+    }
+    else if (bytesread > 0) /* Process collected payload */
+    {
+      slconn->stat->packetinfo.payloadcollected += bytesread;
+      collected += bytesread;
+      bytesavailable -= bytesread;
+
+      /* Update stream tracking on initial read of non-INFO packets */
+      if (slconn->stat->packetinfo.payloadcollected == collected &&
+          slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER &&
+          slconn->stat->packetinfo.payloadtype != 'I')
+      {
+        if (update_stream (slconn, slconn->stat->payload) == -1)
+        {
+          sl_log_r (slconn, 2, 0, "%s(): cannot update stream tracking\n", __func__);
+          return -1;
+        }
+      }
+
+      /* Keepalive INFO responses, not returned to caller */
+      if (slconn->stat->packetinfo.payloadtype == 'I' &&
+          slconn->stat->query_state == KeepAliveQuery)
+      {
+        collected = 0;
+      }
+
+      /* Payload is complete */
+      if (slconn->stat->packetinfo.payloadcollected == slconn->stat->packetinfo.payloadlength)
+      {
+        if (slconn->stat->packetinfo.payloadtype == 'I')
+        {
+          if (slconn->stat->query_state == KeepAliveQuery)
+          {
+            sl_log_r (slconn, 1, 2, "Keepalive packet received\n");
+          }
+
+          slconn->stat->query_state = NoQuery;
+        }
+      }
+
+      /* Return received data to caller */
       break;
     }
-
-    /* Process an INFO packet */
-    if (!memcmp (slconn->stat->slpack.slhead, INFOSIGNATURE, 6))
-    {
-      char terminator;
-
-      terminator = (slconn->stat->slpack.slhead[SLHEADSIZE - 1] != '*');
-
-      if (!slconn->stat->expect_info)
-      {
-        sl_log_r (slconn, 2, 0, "unexpected INFO packet received, skipping\n");
-      }
-      else
-      {
-        if (terminator)
-        {
-          slconn->stat->expect_info = 0;
-        }
-
-        /* Keep alive packets are not returned */
-        if (slconn->stat->query_mode == KeepAliveQuery)
-        {
-          retpacket = 0;
-
-          if (!terminator)
-          {
-            sl_log_r (slconn, 2, 0, "non-terminated keep-alive packet received!?!\n");
-          }
-          else
-          {
-            sl_log_r (slconn, 1, 2, "keepalive packet received\n");
-          }
-        }
-      }
-
-      if (slconn->stat->query_mode != NoQuery)
-      {
-        slconn->stat->query_mode = NoQuery;
-      }
-    }
-    else /* Update the stream chain entry if not an INFO packet */
-    {
-      if ((update_stream (slconn, &slconn->stat->slpack)) == -1)
-      {
-        /* If updating didn't work the packet is broken */
-        retpacket = 0;
-      }
-    }
-
-    /* Increment the send pointer */
-    slconn->stat->sendptr += (SLHEADSIZE + slconn->stat->slpack.reclen);
-
-    /* Return packet */
-    if (retpacket)
-    {
-      *slpack = &slconn->stat->slpack;
-      return SLPACKET;
-    }
   }
 
-  /* A trap door for terminating, all complete data packets from the buffer
-     have been sent to the caller */
-  if (slconn->terminate)
-  {
-    return SLTERMINATE;
-  }
-
-  /* After processing the packet buffer shift the data */
-  if (slconn->stat->sendptr)
-  {
-    memmove (slconn->stat->databuf,
-             &slconn->stat->databuf[slconn->stat->sendptr],
-             slconn->stat->recptr - slconn->stat->sendptr);
-
-    slconn->stat->recptr -= slconn->stat->sendptr;
-    slconn->stat->sendptr = 0;
-  }
-
-  /* Catch cases where the data stream stopped */
-  if ((slconn->stat->recptr - slconn->stat->sendptr) == 7 &&
-      !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "ERROR\r\n", 7))
-  {
-    sl_log_r (slconn, 2, 0, "SeedLink server reported an error with the last command\n");
-    slconn->link = sl_disconnect (slconn);
-    return SLTERMINATE;
-  }
-
-  if ((slconn->stat->recptr - slconn->stat->sendptr) == 3 &&
-      !strncmp (&slconn->stat->databuf[slconn->stat->sendptr], "END", 3))
-  {
-    sl_log_r (slconn, 1, 1, "End of buffer or selected time window\n");
-    slconn->link = sl_disconnect (slconn);
-    return SLTERMINATE;
-  }
-
-  /* Process data in our buffer and then read incoming data */
-  if (slconn->stat->sl_state == SL_DATA)
-  {
-    /* Check for more available data from the socket */
-    bytesread = 0;
-
-    bytesread = sl_recvdata (slconn, (void *)&slconn->stat->databuf[slconn->stat->recptr],
-                             BUFSIZE - slconn->stat->recptr, slconn->sladdr);
-
-    if (bytesread < 0 && !slconn->terminate) /* read() failed */
-    {
-      slconn->link              = sl_disconnect (slconn);
-      slconn->stat->netdly_trig = -1;
-    }
-    else if (bytesread > 0) /* Data is here, process it */
-    {
-      slconn->stat->recptr += bytesread;
-
-      /* Reset the timeout and keepalive timers */
-      slconn->stat->netto_trig     = -1;
-      slconn->stat->keepalive_trig = -1;
-    }
-  }
-
-  /* Update timing variables */
-  current_time = sl_dtime ();
-
-  /* Network timeout timing logic */
-  if (slconn->netto)
-  {
-    if (slconn->stat->netto_trig == -1) /* reset timer */
-    {
-      slconn->stat->netto_time = current_time;
-      slconn->stat->netto_trig = 0;
-    }
-    else if (slconn->stat->netto_trig == 0 &&
-             (current_time - slconn->stat->netto_time) > slconn->netto)
-    {
-      slconn->stat->netto_trig = 1;
-    }
-  }
-
-  /* Keepalive/heartbeat interval timing logic */
-  if (slconn->keepalive)
-  {
-    if (slconn->stat->keepalive_trig == -1) /* reset timer */
-    {
-      slconn->stat->keepalive_time = current_time;
-      slconn->stat->keepalive_trig = 0;
-    }
-    else if (slconn->stat->keepalive_trig == 0 &&
-             (current_time - slconn->stat->keepalive_time) > slconn->keepalive)
-    {
-      slconn->stat->keepalive_trig = 1;
-    }
-  }
-
-  /* Network delay timing logic */
-  if (slconn->netdly)
-  {
-    if (slconn->stat->netdly_trig == -1) /* reset timer */
-    {
-      slconn->stat->netdly_time = current_time;
-      slconn->stat->netdly_trig = 1;
-    }
-    else if (slconn->stat->netdly_trig == 1 &&
-             (current_time - slconn->stat->netdly_time) > slconn->netdly)
-    {
-      slconn->stat->netdly_trig = 0;
-    }
-  }
-
-  /* Non-blocking and no data was returned */
-  return SLNOPACKET;
-
-} /* End of sl_collect_nb() */
+  return collected;
+} /* End of receive_v4payload() */
 
 /***************************************************************************
  * update_stream:
  *
- * Update the appropriate stream chain entries given a miniSEED
- * record.
+ * Update the appropriate stream chain entries given a recognized
+ * payload.  Length of the payload must be at least enough to
+ * determine stream details.
  *
  * Returns 0 if successfully updated and -1 if not found or error.
  ***************************************************************************/
 static int
-update_stream (SLCD *slconn, const SLpacket *slpack)
+update_stream (SLCD *slconn, const char *payload)
 {
   SLstream *curstream;
-  struct sl_fsdh_s fsdh;
-  int seqnum;
   int swapflag = 0;
   int updates  = 0;
-  char net[11];
-  char sta[11];
 
-  if ((seqnum = sl_sequence (slpack)) == -1)
+  uint16_t year;
+  uint16_t yday;
+  uint8_t hour;
+  uint8_t min;
+  uint8_t sec;
+  int month = 0;
+  int mday  = 0;
+
+  char timestamp[31];
+  char net[11] = {0};
+  char sta[11] = {0};
+
+  /* miniSEED 2 */
+  if (slconn->stat->packetinfo.payloadtype == '2')
   {
-    sl_log_r (slconn, 2, 0, "%s(): could not determine sequence number\n", __func__);
-    return -1;
+    /* Copy time fields from fixed header */
+    memcpy (&year, payload + 20, sizeof (uint16_t));
+    memcpy (&yday, payload + 22, sizeof (uint16_t));
+    hour = payload[24];
+    min = payload[25];
+    sec = payload[26];
+
+    /* Determine if byte swapping is needed by testing for bogus year/day values */
+    if (year < 1900 || year > 2100 || yday < 1 || yday > 366)
+      swapflag = 1;
+
+    if (swapflag)
+    {
+      sl_gswap2a (&year);
+      sl_gswap2a (&yday);
+    }
+
+    sl_doy2md (year, yday, &month, &mday);
+
+    snprintf (timestamp, sizeof(timestamp),
+              "%04d,%02d,%02d,%02d,%02d,%02d",
+              year, month, mday, hour, min, sec);
+
+    /* Generate "clean" net and sta strings */
+    sl_strncpclean (net, payload + 18, 2);
+    sl_strncpclean (sta, payload + 8, 5);
   }
-
-  /* Copy fixed header */
-  memcpy (&fsdh, slpack->msrecord, sizeof (struct sl_fsdh_s));
-
-  /* Check to see if byte swapping is needed (bogus year makes good test) */
-  if ((fsdh.start_time.year < 1900) || (fsdh.start_time.year > 2050))
-    swapflag = 1;
-
-  /* Change byte order? */
-  if (swapflag)
+  /* miniSEED 3 */
+  else if (slconn->stat->packetinfo.payloadtype == '3')
   {
-    sl_gswap2 (&fsdh.start_time.year);
-    sl_gswap2 (&fsdh.start_time.day);
+    /* Copy time fields from fixed header */
+    memcpy (&year, payload + 8, sizeof (uint16_t));
+    memcpy (&yday, payload + 10, sizeof (uint16_t));
+    hour = payload[12];
+    min = payload[13];
+    sec = payload[14];
+
+    /* Determine if byte swapping is needed by testing for host endianness */
+    if (!sl_littleendianhost())
+      swapflag = 1;
+
+    if (swapflag)
+    {
+      sl_gswap2a (&year);
+      sl_gswap2a (&yday);
+    }
+
+    sl_doy2md (year, yday, &month, &mday);
+
+    snprintf (timestamp, sizeof(timestamp),
+              "%04d,%02d,%02d,%02d,%02d,%02d",
+              year, month, mday, hour, min, sec);
+
+    /* Extract net and sta codes from FDSN source identifier */
+    //TODO Limit to proper FDSN SID scheme:
+    //if (payload[33] > 5 && !memcmp (payload + 40, "FDSN:", 5))
+    if (payload[33] > 10 &&
+        (!memcmp (payload + 40, "FDSN:", 5) ||
+         !memcmp (payload + 40, "XFDSN:", 6)))
+    {
+      // TODO proper FDSN SID, sidstart = 45
+      uint8_t sidstart = 40 + ((payload[40] == 'X') ? 6 : 5);
+      uint8_t sidend = 40 + payload[33];
+
+      for (int idx = sidstart, code = 0, codeidx = 0;
+           idx < sidend && codeidx < sizeof(net);
+           idx++)
+      {
+        if (payload[idx] == '_')
+        {
+          codeidx = 0;
+          code++;
+        }
+        else if (code == 0)
+          net[codeidx++] = payload[idx];
+        else if (code == 1)
+          sta[codeidx++] = payload[idx];
+
+        if (code > 1)
+          break;
+      }
+    }
+  }
+  else
+  {
+    sl_log_r (slconn, 2, 0, "%s(): Unrecognized payload type: '%c'\n",
+              __func__, slconn->stat->packetinfo.payloadtype);
+
+    return -1;
   }
 
   curstream = slconn->streams;
 
-  /* Generate some "clean" net and sta strings */
-  if (curstream != NULL)
-  {
-    sl_strncpclean (net, fsdh.network, 2);
-    sl_strncpclean (sta, fsdh.station, 5);
-  }
-
   /* For uni-station mode */
-  if (curstream != NULL)
+  if (curstream != NULL &&
+      strcmp (curstream->net, UNINETWORK) == 0 &&
+      strcmp (curstream->sta, UNISTATION) == 0)
   {
-    if (strcmp (curstream->net, UNINETWORK) == 0 &&
-        strcmp (curstream->sta, UNISTATION) == 0)
-    {
-      int month = 0;
-      int mday  = 0;
+    curstream->seqnum = slconn->stat->packetinfo.seqnum;
+    strcpy (curstream->timestamp, timestamp);
 
-      sl_doy2md (fsdh.start_time.year,
-                 fsdh.start_time.day,
-                 &month, &mday);
-
-      curstream->seqnum = seqnum;
-
-      snprintf (curstream->timestamp, sizeof(curstream->timestamp),
-                "%04d,%02d,%02d,%02d,%02d,%02d",
-                fsdh.start_time.year,
-                month,
-                mday,
-                fsdh.start_time.hour,
-                fsdh.start_time.min,
-                fsdh.start_time.sec);
-
-      return 0;
-    }
+    return 0;
   }
 
   /* For multi-station mode, search the stream chain and update all matching entries */
@@ -892,23 +1049,8 @@ update_stream (SLCD *slconn, const SLpacket *slpack)
     if (sl_globmatch (net, curstream->net) &&
         sl_globmatch (sta, curstream->sta))
     {
-      int month = 0;
-      int mday  = 0;
-
-      sl_doy2md (fsdh.start_time.year,
-                 fsdh.start_time.day,
-                 &month, &mday);
-
-      curstream->seqnum = seqnum;
-
-      snprintf (curstream->timestamp, sizeof(curstream->timestamp),
-                "%04d,%02d,%02d,%02d,%02d,%02d",
-                fsdh.start_time.year,
-                month,
-                mday,
-                fsdh.start_time.hour,
-                fsdh.start_time.min,
-                fsdh.start_time.sec);
+      curstream->seqnum = slconn->stat->packetinfo.seqnum;
+      strcpy (curstream->timestamp, timestamp);
 
       updates++;
     }
@@ -923,15 +1065,21 @@ update_stream (SLCD *slconn, const SLpacket *slpack)
   return (updates == 0) ? -1 : 0;
 } /* End of update_stream() */
 
-/***************************************************************************
- * sl_newslcd:
+/***********************************************************************/ /**
+ * @brief Initialize a new ::SLCD
  *
- * Allocate, initialze and return a pointer to a new SLCD struct.
+ * Allocate a new ::SLCD and initialize values to default startup
+ * values.
  *
- * Returns allocated SLCD struct on success, NULL on error.
+ * The \a clientname must be specified and should be a string
+ * describing the name of the client program. The \a clientversion is
+ * optional and should be the version of the client program.  These
+ * values are passed directly to sl_setclientname().
+ *
+ * @returns An initialized ::SLCD on success, NULL on error.
  ***************************************************************************/
 SLCD *
-sl_newslcd (void)
+sl_newslcd (const char *clientname, const char *clientversion)
 {
   SLCD *slconn;
 
@@ -949,21 +1097,30 @@ sl_newslcd (void)
   slconn->begin_time = NULL;
   slconn->end_time   = NULL;
 
-  slconn->resume       = 1;
-  slconn->multistation = 0;
+  slconn->noblock      = 0;
   slconn->dialup       = 0;
   slconn->batchmode    = 0;
+
   slconn->lastpkttime  = 1;
   slconn->terminate    = 0;
+  slconn->resume       = 1;
+  slconn->multistation = 0;
 
   slconn->keepalive = 0;
   slconn->iotimeout = 60;
   slconn->netto     = 600;
   slconn->netdly    = 30;
 
-  slconn->link         = -1;
-  slconn->info         = NULL;
-  slconn->protocol_ver = 0.0;
+  slconn->link          = -1;
+  slconn->capabilities  = NULL;
+  slconn->caparray      = NULL;
+  slconn->info          = NULL;
+  slconn->clientname    = NULL;
+  slconn->clientversion = NULL;
+  slconn->proto_major   = 0;
+  slconn->proto_minor   = 0;
+  slconn->server_major  = 0;
+  slconn->server_minor  = 0;
 
   /* Allocate the associated persistent state struct */
   slconn->stat = (SLstat *)malloc (sizeof (SLstat));
@@ -975,24 +1132,29 @@ sl_newslcd (void)
     return NULL;
   }
 
-  slconn->stat->recptr      = 0;
-  slconn->stat->sendptr     = 0;
-  slconn->stat->slpack.slhead = NULL;
-  slconn->stat->slpack.msrecord = NULL;
-  slconn->stat->expect_info = 0;
+  slconn->stat->packetinfo.header[0] = '\0';
+  slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
+  slconn->stat->packetinfo.payloadlength = 0;
+  slconn->stat->packetinfo.payloadcollected = 0;
+  slconn->stat->packetinfo.payloadtype = SLPAYLOAD_UNKNOWN;
 
-  slconn->stat->netto_trig     = -1;
-  slconn->stat->netdly_trig    = 0;
-  slconn->stat->keepalive_trig = -1;
+  slconn->stat->netto_time     = 0;
+  slconn->stat->netdly_time    = 0;
+  slconn->stat->keepalive_time = 0;
 
-  slconn->stat->netto_time     = 0.0;
-  slconn->stat->netdly_time    = 0.0;
-  slconn->stat->keepalive_time = 0.0;
+  slconn->stat->payload      = NULL;
 
-  slconn->stat->sl_state   = SL_DOWN;
-  slconn->stat->query_mode = NoQuery;
+  slconn->stat->conn_state   = DOWN;
+  slconn->stat->stream_state = HEADER;
+  slconn->stat->query_state  = NoQuery;
 
   slconn->log = NULL;
+
+  if (clientname && sl_setclientname(slconn, clientname, clientversion))
+  {
+    sl_freeslcd (slconn);
+    return NULL;
+  }
 
   return slconn;
 } /* End of sl_newslconn() */
@@ -1033,6 +1195,18 @@ sl_freeslcd (SLCD *slconn)
   if (slconn->end_time != NULL)
     free (slconn->end_time);
 
+  if (slconn->capabilities != NULL)
+    free (slconn->capabilities);
+
+  if (slconn->caparray != NULL)
+    free (slconn->caparray);
+
+  if (slconn->clientname != NULL)
+    free (slconn->clientname);
+
+  if (slconn->clientversion != NULL)
+    free (slconn->clientversion);
+
   if (slconn->stat != NULL)
     free (slconn->stat);
 
@@ -1041,6 +1215,51 @@ sl_freeslcd (SLCD *slconn)
 
   free (slconn);
 } /* End of sl_freeslcd() */
+
+/***********************************************************************/ /**
+ * @brief Set client name and version reported to server (v4 only)
+ *
+ * Set the program name and, optionally, version that will be send to
+ * the server in protocol v4 version.  These values will be combined
+ * into a value with the pattern:
+ *   NAME[/VERSION]
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setclientname (SLCD *slconn, const char *name, const char *version)
+{
+  if (!slconn || !name)
+    return -1;
+
+  if (slconn->clientname)
+    free (slconn->clientname);
+
+  if (slconn->clientversion)
+    free (slconn->clientversion);
+
+  slconn->clientname = strdup (name);
+
+  if (slconn->clientname == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
+
+  if (version)
+  {
+    slconn->clientversion = strdup (version);
+
+    if (slconn->clientversion == NULL)
+    {
+      sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+      return -1;
+    }
+  }
+
+  return 0;
+} /* End of sl_setclientname() */
 
 /***************************************************************************
  * sl_addstream:
@@ -1056,7 +1275,7 @@ sl_freeslcd (SLCD *slconn)
  ***************************************************************************/
 int
 sl_addstream (SLCD *slconn, const char *net, const char *sta,
-              const char *selectors, int seqnum,
+              const char *selectors, uint64_t seqnum,
               const char *timestamp)
 {
   SLstream *curstream;
@@ -1138,7 +1357,7 @@ sl_addstream (SLCD *slconn, const char *net, const char *sta,
  ***************************************************************************/
 int
 sl_setuniparams (SLCD *slconn, const char *selectors,
-                 int seqnum, const char *timestamp)
+                 uint64_t seqnum, const char *timestamp)
 {
   SLstream *newstream;
 
@@ -1197,7 +1416,7 @@ sl_request_info (SLCD *slconn, const char *infostr)
 {
   if (slconn->info != NULL)
   {
-    sl_log_r (slconn, 2, 0, "Cannot make '%.15s' INFO request, one is already pending\n",
+    sl_log_r (slconn, 2, 0, "Cannot request INFO '%.20s', another is pending\n",
               infostr);
     return -1;
   }
@@ -1209,114 +1428,58 @@ sl_request_info (SLCD *slconn, const char *infostr)
 } /* End of sl_request_info() */
 
 /***************************************************************************
- * sl_sequence:
+ * sl_hascapablity:
  *
- * Check for 'SL' signature and sequence number from buffer containing
- * a SeedLink packet.
+ * Check if server capabilities include specified value.
  *
- * Returns the packet sequence number of the SeedLink packet on success,
- *   0 for INFO packets or -1 on error.
+ * Returns non-zero if capability is supported, 0 otherwise.
  ***************************************************************************/
 int
-sl_sequence (const SLpacket *slpack)
+sl_hascapability (SLCD *slconn, char *capability)
 {
-  int seqnum;
-  char seqstr[7], *sqtail;
+  int length;
+  int start;
+  int idx;
 
-  if (memcmp (slpack->slhead, SIGNATURE, 2))
-    return -1;
-
-  if (!memcmp (slpack->slhead, INFOSIGNATURE, 6))
+  if (!slconn || !capability)
     return 0;
 
-  memcpy (seqstr, slpack->slhead + 2, 6);
-  seqstr[6] = '\0';
-  seqnum    = strtoul (seqstr, &sqtail, 16);
+  if (!slconn->capabilities)
+    return 0;
 
-  if (seqnum & ~0xffffff || *sqtail)
-    return -1;
+  length = strlen (slconn->capabilities);
 
-  return seqnum;
-} /* End of sl_sequence() */
-
-/***************************************************************************
- * sl_packettype:
- *
- * Check the type of packet.  First check for an INFO packet then check for
- * the first 'important' blockette found in the data record.  If none of
- * the known marker blockettes are found then it is a regular data record.
- *
- * Returns the packet type; defined in libslink.h.
- ***************************************************************************/
-int
-sl_packettype (const SLpacket *slpack)
-{
-  int b2000 = 0;
-  struct sl_fsdh_s *fsdh;
-
-  uint16_t num_samples;
-  int16_t samprate_fact;
-  int16_t begin_blockette;
-  uint16_t blkt_type;
-  uint16_t next_blkt;
-
-  const struct sl_blkt_head_s *p;
-  fsdh = (struct sl_fsdh_s *)slpack->msrecord;
-
-  /* Check for an INFO packet */
-  if (!memcmp (slpack->slhead, INFOSIGNATURE, 6))
+  /* Create capabilities array if needed */
+  if (slconn->caparray == NULL)
   {
-    /* Check if it is terminated */
-    if (slpack->slhead[SLHEADSIZE - 1] != '*')
-      return SLINFT;
-    else
-      return SLINF;
-  }
+    /* Copy and replace spaces with terminating NULLs */
+    slconn->caparray = strdup(slconn->capabilities);
 
-  num_samples     = (uint16_t)ntohs (fsdh->num_samples);
-  samprate_fact   = (int16_t)ntohs (fsdh->samprate_fact);
-  begin_blockette = (int16_t)ntohs (fsdh->begin_blockette);
-
-  p = (const struct sl_blkt_head_s *)((const char *)fsdh +
-                                      begin_blockette);
-
-  blkt_type = (uint16_t)ntohs (p->blkt_type);
-  next_blkt = (uint16_t)ntohs (p->next_blkt);
-
-  do
-  {
-    if (((const char *)p) - ((const char *)fsdh) >
-        MAX_HEADER_SIZE)
+    for (idx = 0; idx < length; idx++)
     {
-      return SLNUM;
+      if (slconn->caparray[idx] == ' ')
+        slconn->caparray[idx] = '\0';
     }
-
-    if (blkt_type >= 200 && blkt_type <= 299)
-      return SLDET;
-    if (blkt_type >= 300 && blkt_type <= 399)
-      return SLCAL;
-    if (blkt_type >= 500 && blkt_type <= 599)
-      return SLTIM;
-    if (blkt_type == 2000)
-      b2000 = 1;
-
-    p = (const struct sl_blkt_head_s *)((const char *)fsdh +
-                                        next_blkt);
-
-    blkt_type = (uint16_t)ntohs (p->blkt_type);
-    next_blkt = (uint16_t)ntohs (p->next_blkt);
-  } while ((const struct sl_fsdh_s *)p != fsdh);
-
-  if (samprate_fact == 0)
-  {
-    if (num_samples != 0)
-      return SLMSG;
-    if (b2000)
-      return SLBLK;
   }
 
-  return SLDATA;
-} /* End of sl_packettype() */
+  /* Search capabilities array for a matching entry */
+  for (idx = 0, start = -1; idx < length; idx++)
+  {
+    /* Determine if at the start of a capability flag:
+       either initial state or following a terminating NULL */
+    if (slconn->caparray[idx] == '\0')
+      start = -1;
+    else if (start == -1)
+      start = 1;
+    else
+      start = 0;
+
+    if (start == 1 && strcmp (slconn->caparray + idx, capability) == 0)
+      return 1;
+  }
+
+  return 0;
+} /* End of sl_terminate() */
 
 /***************************************************************************
  * sl_terminate:
@@ -1342,63 +1505,62 @@ sl_terminate (SLCD *slconn)
  * at 64-byte offsets for the fixed section of the next header,
  * thereby implying the record length.
  *
- * @param[in] record Buffer to test for record
- * @param[in] recbuflen Length of buffer
- * @param[out] formatversion Major version of format detected, 0 if unknown
+ * @param[in] buffer Buffer to test for known data types
+ * @param[in] buflen Length of buffer
+ * @param[out] payloadtype Payload type detected
  *
  * @retval -1 Data record not detected or error
  * @retval 0 Data record detected but could not determine length
  * @retval >0 Size of the record in bytes
  *********************************************************************/
-static int
-detect (const char *record, uint64_t recbuflen, uint8_t *formatversion)
+static int64_t
+detect (const char *buffer, uint64_t buflen, char *payloadtype)
 {
   uint8_t swapflag = 0; /* Byte swapping flag */
-  uint8_t foundlen = 0; /* Found record length */
-  int32_t reclen = -1; /* Size of record in bytes */
+  int64_t reclen = -1;  /* Size of record in bytes */
 
   uint16_t blkt_offset; /* Byte offset for next blockette */
   uint16_t blkt_type;
   uint16_t next_blkt;
   const char *nextfsdh;
 
-  if (!record || !formatversion)
+  if (!buffer || !payloadtype)
     return -1;
 
-  /* Buffer must be at least SLRECSIZEMIN */
-  if (recbuflen < SLRECSIZEMIN)
+  /* Buffer must be at least SL_MIN_BUFFER */
+  if (buflen < SL_MIN_BUFFER)
     return -1;
 
   /* Check for valid header, set format version */
-  *formatversion = 0;
-  if (MS3_ISVALIDHEADER (record))
+  *payloadtype = SLPAYLOAD_UNKNOWN;
+  if (MS3_ISVALIDHEADER (buffer))
   {
-    *formatversion = 3;
+    *payloadtype = SLPAYLOAD_MSEED3;
 
+    //TODO swap for operation on big endian sid:8, extra:16, payload:32
     reclen = MS3FSDH_LENGTH                   /* Length of fixed portion of header */
-             + *pMS3FSDH_SIDLENGTH (record)   /* Length of source identifier */
-             + *pMS3FSDH_EXTRALENGTH (record) /* Length of extra headers */
-             + *pMS3FSDH_DATALENGTH (record); /* Length of data payload */
-
-    foundlen = 1;
+             + *pMS3FSDH_SIDLENGTH (buffer)   /* Length of source identifier */
+             + *pMS3FSDH_EXTRALENGTH (buffer) /* Length of extra headers */
+             + *pMS3FSDH_DATALENGTH (buffer); /* Length of data payload */
   }
-  else if (MS2_ISVALIDHEADER (record))
+  else if (MS2_ISVALIDHEADER (buffer))
   {
-    *formatversion = 2;
+    *payloadtype = SLPAYLOAD_MSEED2;
+    reclen = 0;
 
     /* Check to see if byte swapping is needed by checking for sane year and day */
-    if (!MS_ISVALIDYEARDAY (*pMS2FSDH_YEAR(record), *pMS2FSDH_DAY(record)))
+    if (!MS_ISVALIDYEARDAY (*pMS2FSDH_YEAR(buffer), *pMS2FSDH_DAY(buffer)))
       swapflag = 1;
 
-    blkt_offset = HO2u(*pMS2FSDH_BLOCKETTEOFFSET (record), swapflag);
+    blkt_offset = HO2u(*pMS2FSDH_BLOCKETTEOFFSET (buffer), swapflag);
 
     /* Loop through blockettes as long as number is non-zero and viable */
     while (blkt_offset != 0 &&
            blkt_offset > 47 &&
-           blkt_offset <= recbuflen)
+           blkt_offset <= buflen)
     {
-      memcpy (&blkt_type, record + blkt_offset, 2);
-      memcpy (&next_blkt, record + blkt_offset + 2, 2);
+      memcpy (&blkt_type, buffer + blkt_offset, 2);
+      memcpy (&next_blkt, buffer + blkt_offset + 2, 2);
 
       if (swapflag)
       {
@@ -1408,13 +1570,11 @@ detect (const char *record, uint64_t recbuflen, uint8_t *formatversion)
 
       /* Found a 1000 blockette, not truncated */
       if (blkt_type == 1000 &&
-          (int)(blkt_offset + 8) <= recbuflen)
+          (int)(blkt_offset + 8) <= buflen)
       {
-        foundlen = 1;
-
-        /* Field 3 of B1000 is a uint8_t value describing the record
+        /* Field 3 of B1000 is a uint8_t value describing the buffer
          * length as 2^(value).  Calculate 2-raised with a shift. */
-        reclen = (unsigned int)1 << *pMS2B1000_RECLEN(record+blkt_offset);
+        reclen = (unsigned int)1 << *pMS2B1000_RECLEN(buffer+blkt_offset);
 
         break;
       }
@@ -1431,18 +1591,18 @@ detect (const char *record, uint64_t recbuflen, uint8_t *formatversion)
     }
 
     /* If record length was not determined by a 1000 blockette scan the buffer
-     * and search for the next record */
+     * and search for the next record header. */
     if (reclen == -1)
     {
-      nextfsdh = record + 64;
+      nextfsdh = buffer + 64;
 
-      /* Check for record header or blank/noise record at MINRECLEN byte offsets */
-      while (((nextfsdh - record) + 48) < recbuflen)
+      /* Check for record header or blank/noise record at 64-byte offsets */
+      while (((nextfsdh - buffer) + 48) < buflen)
       {
         if (MS2_ISVALIDHEADER (nextfsdh))
         {
-          foundlen = 1;
-          reclen = nextfsdh - record;
+          reclen = nextfsdh - buffer;
+
           break;
         }
 
@@ -1451,8 +1611,32 @@ detect (const char *record, uint64_t recbuflen, uint8_t *formatversion)
     }
   } /* End of miniSEED 2.x detection */
 
-  if (!foundlen)
-    return -1;
-  else
-    return reclen;
+  return reclen;
 } /* End of detect() */
+
+/***************************************************************************
+ * Determine the number of bytes available for reading on the
+ * specified socket.
+ *
+ * Returns number of bytes available for recv() on socket on success,
+ * -1 on error.
+ ***************************************************************************/
+static int
+recvable (SOCKET sock)
+{
+#if defined(SLP_WIN)
+  u_long available = 0;
+
+  if (ioctlsocket(sock, FIONREAD, &available))
+    return -1;
+
+  return available;
+#else
+  int available = -1;
+
+  if (ioctl(sock, FIONREAD, &available) < 0)
+    return -1;
+
+  return available;
+#endif
+}
