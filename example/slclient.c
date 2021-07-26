@@ -150,7 +150,7 @@ packet_handler (const SLpacketinfo *packetinfo,
   int printed;
 
   /* Build a current local time string */
-  dtime   = sl_dtime ();
+  dtime   = sl_dtime (void);
   secfrac = (double)((double)dtime - (int)dtime);
   itime   = (time_t)dtime;
   timep   = localtime (&itime);

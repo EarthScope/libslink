@@ -232,7 +232,7 @@ typedef struct SLlog_s
 
 /** @def SL_EPOCH2SLTIME
     @brief macro to convert Unix/POSIX epoch time to high precision epoch time */
-#define SL_EPOCH2SLTIME(X) (X) * (nstime_t) SLTMODULUS
+#define SL_EPOCH2SLTIME(X) (X) * (int64_t) SLTMODULUS
 
 /** @def SL_SLTIME2EPOCH
     @brief Macro to convert high precision epoch time to Unix/POSIX epoch time */

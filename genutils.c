@@ -211,7 +211,7 @@ sl_nstime (void)
 {
 #if defined(SLP_WIN)
 
-  uint64 rv;
+  uint64_t rv;
   FILETIME FileTime;
 
   GetSystemTimeAsFileTime(&FileTime);
@@ -245,7 +245,7 @@ sl_nstime (void)
 void
 sl_usleep (unsigned long int useconds)
 {
-#if defined(SL_WIN)
+#if defined(SLP_WIN)
 
   SleepEx ((useconds / 1000), 1);
 

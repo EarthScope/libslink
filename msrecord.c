@@ -740,7 +740,7 @@ host_latency (SLMSrecord *msr)
     span = (double)msr->fsdh.num_samples * (1.0 / dsamprate);
 
   /* Grab UTC time according to the system clock */
-  epoch = sl_dtime ();
+  epoch = sl_dtime (void);
 
   /* Now calculate the latency */
   sepoch  = sl_msr_depochstime (msr);
