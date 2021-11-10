@@ -28,15 +28,17 @@
 extern "C" {
 #endif
 
+#define LIBSLINK_RELEASE "2021.313"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  3      /**< libslink major version */
 #define LIBSLINK_VERSION_MINOR  0      /**< libslink minor version */
-#define LIBSLINK_VERSION_PATCH  0
+#define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
 #define LIBSLINK_STRINGIFY(a)   LIBSLINK_XSTRINGIFY(a)
 #define LIBSLINK_XSTRINGIFY(a)  #a
+/** @def LIBSLINK_VERSION
+    @brief libslink version string */
 #define LIBSLINK_VERSION        LIBSLINK_STRINGIFY(LIBSLINK_VERSION_MAJOR) "." \
                                 LIBSLINK_STRINGIFY(LIBSLINK_VERSION_MINOR) "." \
                                 LIBSLINK_STRINGIFY(LIBSLINK_VERSION_PATCH) "DEV"
-#define LIBSLINK_RELEASE "2021.191"    /**< libslink release date */
 
 /** @defgroup seedlink-connection SeedLink Connection */
 /** @defgroup connection-state Connection State */
