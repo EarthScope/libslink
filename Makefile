@@ -6,9 +6,10 @@
 #   LDFLAGS : Specify linker options to use
 #   CPPFLAGS : Specify c-preprocessor options to use
 
-# Extract version from libslink.h, expected line should include LIBSLINK_VERSION "#.#.#"
-MAJOR_VER = $(shell grep LIBSLINK_VERSION libslink.h | grep -Eo '[0-9]+.[0-9]+.[0-9]+' | cut -d . -f 1)
-FULL_VER = $(shell grep LIBSLINK_VERSION libslink.h | grep -Eo '[0-9]+.[0-9]+.[0-9]+')
+# Extract version from libslink.h
+MAJOR_VER = $(shell grep -E 'LIBSLINK_VERSION_MAJOR[ \t]+[0-9]+' libslink.h | grep -Eo '[0-9]+')
+MINOR_VER = $(shell grep -E 'LIBSLINK_VERSION_MINOR[ \t]+[0-9]+' libslink.h | grep -Eo '[0-9]+')
+PATCH_VER = $(shell grep -E 'LIBSLINK_VERSION_PATCH[ \t]+[0-9]+' libslink.h | grep -Eo '[0-9]+')
 COMPAT_VER = $(MAJOR_VER).0.0
 
 # Default settings for install target
@@ -37,12 +38,12 @@ OS := $(shell uname -s)
 ifeq ($(OS), Darwin)
 	LIB_SO_BASE = $(LIB_NAME).dylib
 	LIB_SO_MAJOR = $(LIB_NAME).$(MAJOR_VER).dylib
-	LIB_SO = $(LIB_NAME).$(FULL_VER).dylib
-	LIB_OPTS = -dynamiclib -compatibility_version $(COMPAT_VER) -current_version $(FULL_VER) -install_name $(LIB_SO)
+	LIB_SO = $(LIB_NAME).$(MAJOR_VER).$(MINOR_VER).$(PATCH_VER).dylib
+	LIB_OPTS = -dynamiclib -compatibility_version $(COMPAT_VER) -current_version $(MAJOR_VER).$(MINOR_VER).$(PATCH_VER) -install_name $(LIB_SO)
 else
 	LIB_SO_BASE = $(LIB_NAME).so
 	LIB_SO_MAJOR = $(LIB_NAME).so.$(MAJOR_VER)
-	LIB_SO = $(LIB_NAME).so.$(FULL_VER)
+	LIB_SO = $(LIB_NAME).so.$(MAJOR_VER).$(MINOR_VER).$(PATCH_VER)
 	LIB_OPTS = -shared -Wl,--version-script=libslink.map -Wl,-soname,$(LIB_SO_MAJOR)
 endif
 
@@ -83,7 +84,7 @@ install: shared
 	     -e 's|@EXEC_PREFIX@|$(EXEC_PREFIX)|g' \
 	     -e 's|@LIBDIR@|$(LIBDIR)|g' \
 	     -e 's|@INCLUDEDIR@|$(PREFIX)/include|g' \
-	     -e 's|@VERSION@|$(FULL_VER)|g' \
+	     -e 's|@VERSION@|$(MAJOR_VER).$(MINOR_VER).$(PATCH_VER)|g' \
 	     slink.pc.in > $(DESTDIR)$(LIBDIR)/pkgconfig/slink.pc
 	@mkdir -p $(DESTDIR)$(DOCDIR)/example
 	@cp -r example $(DESTDIR)$(DOCDIR)/
