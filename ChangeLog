@@ -13,10 +13,15 @@
 	can return partial packets. sl_collect() provides a wrapper that
 	manages a receive buffer for complete packets.
         * sl_packettype() and sl_sequence() removed, similar details are
-	provided in an SLpacketinfo strucuture.  The packet type is changed
+	provided in an SLpacketinfo strucuture.  The historic packet type
+	is no longer derived as the heuristic of blockette discovery is
+	unreliable.
 	to packet payload types and no longer based on an unreliable
 	heuristic of blockette discovery.
 	* sl_openfile() and sl_readline() removed.
+	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
+	* Header contains separate major, minor, patch versioning,
+	thanks @yensoon2!
 
 2020.048:
 	- Support M SEED quality code.

@@ -31,13 +31,14 @@
 #include "mseedformat.h"
 
 /* Function(s) only used in this source file */
+static int receive_netstaid (SLCD *slconn, int bytesavailable);
 static int receive_header (SLCD *slconn, int bytesavailable);
 static int64_t receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
                                   int bytesavailable);
 static int64_t receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
                                   int bytesavailable);
 static int update_stream (SLCD *slconn, const char *payload);
-static int64_t detect (const char *record, uint64_t recbuflen, char *payloadtype);
+static int64_t detect (const char *record, uint64_t recbuflen, char *payloadformat);
 static int recvable (SOCKET sock);
 
 /**********************************************************************/ /**
@@ -53,7 +54,7 @@ static int recvable (SOCKET sock);
  * accommodate whole packets.  The system's realloc() is used to
  * reallocate the buffer.  The buffer's size is never reduced.
  *
-d * \note The caller is responsible for freeing the memory allocated at
+ * \note The caller is responsible for freeing the memory allocated at
  * \a plbuffer.
  *
  * The returned \a packetinfo contains the details including: sequence
@@ -325,6 +326,9 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
           if ((slconn->proto_major <= 3 && bytesavailable >= SLHEADSIZE) ||
               (slconn->proto_major == 4 && bytesavailable >= SLHEADSIZE_EXT))
           {
+            slconn->stat->packetinfo.netstaidlength = 0;
+            slconn->stat->packetinfo.netstaid[0] = '\0';
+
             bytesread = receive_header (slconn, bytesavailable);
 
             if (bytesread < 0)
@@ -333,9 +337,18 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
             }
             else if (bytesread > 0)
             {
-              /* Set state for payload collection */
-              slconn->stat->packetinfo.payloadcollected = 0;
-              slconn->stat->stream_state = PAYLOAD;
+              /* Set state for network-station ID or payload collection */
+              if (slconn->stat->packetinfo.netstaidlength > 0)
+              {
+                slconn->stat->packetinfo.netstaid[0] = '\0';
+                slconn->stat->stream_state = NETSTAID;
+              }
+              else
+              {
+                slconn->stat->packetinfo.payloadcollected = 0;
+                slconn->stat->stream_state = PAYLOAD;
+              }
+
               bytesavailable -= bytesread;
             }
           }
@@ -364,6 +377,26 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
             }
           }
         } /* Done reading header */
+
+        /* Collect network-station ID */
+        if (slconn->stat->stream_state == NETSTAID &&
+            slconn->stat->packetinfo.netstaidlength > 0 &&
+            bytesavailable >= slconn->stat->packetinfo.netstaidlength)
+        {
+          bytesread = receive_netstaid (slconn, bytesavailable);
+
+          if (bytesread < 0)
+          {
+            break;
+          }
+          else if (bytesread > 0)
+          {
+            /* Set state for payload collection */
+            slconn->stat->packetinfo.payloadcollected = 0;
+            slconn->stat->stream_state = PAYLOAD;
+            bytesavailable -= bytesread;
+          }
+        } /* Done reading network-station ID */
 
         /* Collect payload */
         if (slconn->stat->stream_state == PAYLOAD)
@@ -472,6 +505,60 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
 
 
 /***************************************************************************
+ * receive_netstaid:
+ *
+ * Receive packet network-station ID following fixed-length header.
+ * The value written to packetinfo.netstaid will be null-termianted.
+ *
+ * Returns:
+ * bytes : Size of ID read
+ * -1 :  on termination or error
+ ***************************************************************************/
+static int
+receive_netstaid (SLCD *slconn, int bytesavailable)
+{
+  int64_t bytesread = 0;
+
+  if (slconn->stat->packetinfo.netstaidlength >= bytesavailable)
+  {
+    return 0;
+  }
+  else if (slconn->stat->packetinfo.netstaidlength >
+           (sizeof(slconn->stat->packetinfo.netstaid) - 1))
+  {
+    sl_log_r (slconn, 2, 0,
+              "[%s] %s() received NET_STA ID is too large (%d) for buffer (%lu)\n",
+              slconn->sladdr, __func__,
+              slconn->stat->packetinfo.netstaidlength,
+              sizeof (slconn->stat->packetinfo.netstaid));
+    return -1;
+  }
+
+  bytesread = sl_recvdata (slconn, slconn->stat->packetinfo.netstaid,
+                           slconn->stat->packetinfo.netstaidlength,
+                           slconn->sladdr);
+
+  if (bytesread < 0) /* recv() failed */
+  {
+    return -1;
+  }
+  else if (bytesread != slconn->stat->packetinfo.netstaidlength)
+  {
+    sl_log_r (slconn, 2, 0,
+              "[%s] %s() read of %" PRId64 " bytes not the same as NET_STA ID length of %d\n",
+              slconn->sladdr, __func__,
+              bytesread,
+              slconn->stat->packetinfo.netstaidlength);
+    return -1;
+  }
+
+  slconn->stat->packetinfo.netstaid[bytesread] = '\0';
+
+  return bytesread;
+}  /* End of receive_netstaid() */
+
+
+/***************************************************************************
  * receive_header:
  *
  * Receive packet header.
@@ -502,7 +589,7 @@ receive_header (SLCD *slconn, int bytesavailable)
   }
   else
   {
-    sl_log_r (slconn, 2, 0, "[%s] %s() cannot determine read size, proto_major: %d, bytesavaiable: %d\n",
+    sl_log_r (slconn, 2, 0, "[%s] %s() cannot determine read size, proto_major: %d, bytesavailable: %d\n",
               slconn->sladdr, __func__, slconn->proto_major, bytesavailable);
     return -1;
   }
@@ -543,7 +630,7 @@ receive_header (SLCD *slconn, int bytesavailable)
       slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
       slconn->stat->packetinfo.payloadlength = 0;
 
-      slconn->stat->packetinfo.payloadtype = (slconn->stat->packetinfo.header[SLHEADSIZE - 1] == '*') ?
+      slconn->stat->packetinfo.payloadformat = (slconn->stat->packetinfo.header[SLHEADSIZE - 1] == '*') ?
         SLPAYLOAD_MSEED2INFO :
         SLPAYLOAD_MSEED2INFOTERM;
     }
@@ -560,14 +647,16 @@ receive_header (SLCD *slconn, int bytesavailable)
       }
 
       slconn->stat->packetinfo.payloadlength = 0;
-      slconn->stat->packetinfo.payloadtype = SLPAYLOAD_UNKNOWN;
+      slconn->stat->packetinfo.payloadformat = SLPAYLOAD_UNKNOWN;
     }
     /* Parse v4 header */
     else if (!memcmp (slconn->stat->packetinfo.header, SIGNATURE_EXT, 2))
     {
-      memcpy (&slconn->stat->packetinfo.seqnum, slconn->stat->packetinfo.header + 8, 8);
+      slconn->stat->packetinfo.payloadformat = slconn->stat->packetinfo.header[2];
+      slconn->stat->packetinfo.payloadsubformat = slconn->stat->packetinfo.header[3];
       memcpy (&slconn->stat->packetinfo.payloadlength, slconn->stat->packetinfo.header + 4, 4);
-      slconn->stat->packetinfo.payloadtype = slconn->stat->packetinfo.header[2];
+      memcpy (&slconn->stat->packetinfo.seqnum, slconn->stat->packetinfo.header + 8, 8);
+      memcpy (&slconn->stat->packetinfo.netstaidlength, slconn->stat->packetinfo.header + 16, 1);
 
       if (!sl_littleendianhost ())
       {
@@ -607,7 +696,7 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
   uint32_t collected = 0;
   uint32_t readsize;
   uint32_t nextpow2;
-  char payloadtype = SLPAYLOAD_UNKNOWN;
+  char payloadformat = SLPAYLOAD_UNKNOWN;
   int64_t detectedlength;
 
   if (!slconn || !plbuffer)
@@ -711,7 +800,7 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       {
         detectedlength = detect (slconn->stat->payload,
                                  slconn->stat->packetinfo.payloadcollected,
-                                 &payloadtype);
+                                 &payloadformat);
 
         /* Return error if no recognized payload detected */
         if (detectedlength < 0)
@@ -724,9 +813,9 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
         /* Update packet info if length detected */
         else if (detectedlength > 0)
         {
-          if (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_UNKNOWN)
+          if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_UNKNOWN)
           {
-            slconn->stat->packetinfo.payloadtype = payloadtype;
+            slconn->stat->packetinfo.payloadformat = payloadformat;
           }
 
           slconn->stat->packetinfo.payloadlength = detectedlength;
@@ -736,11 +825,9 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       /* Handle payload of known length */
       if (slconn->stat->packetinfo.payloadlength > 0)
       {
-        /* Update streaming tracking if initial payload and non-INFO */
+        /* Update streaming tracking if initial payload */
         if (slconn->stat->packetinfo.payloadcollected == collected &&
-            slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER &&
-            slconn->stat->packetinfo.payloadtype != SLPAYLOAD_MSEED2INFO &&
-            slconn->stat->packetinfo.payloadtype != SLPAYLOAD_MSEED2INFOTERM)
+            slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER)
         {
           if (update_stream (slconn, slconn->stat->payload) == -1)
           {
@@ -752,8 +839,8 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 
         /* Keepalive INFO responses are not returned to caller */
         if (slconn->stat->query_state == KeepAliveQuery &&
-            (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFOTERM ||
-             slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFO))
+            (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
+             slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO))
         {
           collected = 0;
         }
@@ -761,7 +848,7 @@ receive_v3payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
         /* Payload is complete */
         if (slconn->stat->packetinfo.payloadcollected == slconn->stat->packetinfo.payloadlength)
         {
-          if (slconn->stat->packetinfo.payloadtype == SLPAYLOAD_MSEED2INFOTERM)
+          if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM)
           {
             if (slconn->stat->query_state == KeepAliveQuery)
             {
@@ -832,10 +919,9 @@ receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       collected += bytesread;
       bytesavailable -= bytesread;
 
-      /* Update stream tracking on initial read of non-INFO packets */
+      /* Update stream tracking on initial read of packets */
       if (slconn->stat->packetinfo.payloadcollected == collected &&
-          slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER &&
-          slconn->stat->packetinfo.payloadtype != 'I')
+          slconn->stat->packetinfo.payloadcollected >= SL_MIN_BUFFER)
       {
         if (update_stream (slconn, slconn->stat->payload) == -1)
         {
@@ -846,7 +932,8 @@ receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       }
 
       /* Keepalive INFO responses, not returned to caller */
-      if (slconn->stat->packetinfo.payloadtype == 'I' &&
+      if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
+          slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO &&
           slconn->stat->query_state == KeepAliveQuery)
       {
         collected = 0;
@@ -855,7 +942,8 @@ receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       /* Payload is complete */
       if (slconn->stat->packetinfo.payloadcollected == slconn->stat->packetinfo.payloadlength)
       {
-        if (slconn->stat->packetinfo.payloadtype == 'I')
+        if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
+            slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO)
         {
           if (slconn->stat->query_state == KeepAliveQuery)
           {
@@ -877,9 +965,8 @@ receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 /***************************************************************************
  * update_stream:
  *
- * Update the appropriate stream chain entries given a recognized
- * payload.  Length of the payload must be at least enough to
- * determine stream details.
+ * Update the appropriate stream chain entries.  Length of the payload
+ * must be at least enough to determine stream details.
  *
  * Returns 0 if successfully updated and -1 if not found or error.
  ***************************************************************************/
@@ -902,8 +989,18 @@ update_stream (SLCD *slconn, const char *payload)
   char net[11] = {0};
   char sta[11] = {0};
 
+  /* Do no updates for info and error packets */
+  if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO ||
+      slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
+      (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
+       (slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO ||
+        slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_ERROR)))
+  {
+    return 0;
+  }
+
   /* miniSEED 2 */
-  if (slconn->stat->packetinfo.payloadtype == '2')
+  if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2)
   {
     /* Copy time fields from fixed header */
     memcpy (&year, payload + 20, sizeof (uint16_t));
@@ -933,7 +1030,7 @@ update_stream (SLCD *slconn, const char *payload)
     sl_strncpclean (sta, payload + 8, 5);
   }
   /* miniSEED 3 */
-  else if (slconn->stat->packetinfo.payloadtype == '3')
+  else if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED3)
   {
     /* Copy time fields from fixed header */
     memcpy (&year, payload + 8, sizeof (uint16_t));
@@ -987,13 +1084,6 @@ update_stream (SLCD *slconn, const char *payload)
           break;
       }
     }
-  }
-  else
-  {
-    sl_log_r (slconn, 2, 0, "[%s] %s(): Unrecognized payload type: '%c'\n",
-              slconn->sladdr, __func__, slconn->stat->packetinfo.payloadtype);
-
-    return -1;
   }
 
   curstream = slconn->streams;
@@ -1104,7 +1194,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
   slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
   slconn->stat->packetinfo.payloadlength = 0;
   slconn->stat->packetinfo.payloadcollected = 0;
-  slconn->stat->packetinfo.payloadtype = SLPAYLOAD_UNKNOWN;
+  slconn->stat->packetinfo.payloadformat = SLPAYLOAD_UNKNOWN;
 
   slconn->stat->netto_time     = 0;
   slconn->stat->netdly_time    = 0;
@@ -1477,14 +1567,14 @@ sl_terminate (SLCD *slconn)
  *
  * @param[in] buffer Buffer to test for known data types
  * @param[in] buflen Length of buffer
- * @param[out] payloadtype Payload type detected
+ * @param[out] payloadformat Payload type detected
  *
  * @retval -1 Data record not detected or error
  * @retval 0 Data record detected but could not determine length
  * @retval >0 Size of the record in bytes
  *********************************************************************/
 static int64_t
-detect (const char *buffer, uint64_t buflen, char *payloadtype)
+detect (const char *buffer, uint64_t buflen, char *payloadformat)
 {
   uint8_t swapflag = 0; /* Byte swapping flag */
   int64_t reclen = -1;  /* Size of record in bytes */
@@ -1494,7 +1584,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadtype)
   uint16_t next_blkt;
   const char *nextfsdh;
 
-  if (!buffer || !payloadtype)
+  if (!buffer || !payloadformat)
     return -1;
 
   /* Buffer must be at least SL_MIN_BUFFER */
@@ -1502,10 +1592,10 @@ detect (const char *buffer, uint64_t buflen, char *payloadtype)
     return -1;
 
   /* Check for valid header, set format version */
-  *payloadtype = SLPAYLOAD_UNKNOWN;
+  *payloadformat = SLPAYLOAD_UNKNOWN;
   if (MS3_ISVALIDHEADER (buffer))
   {
-    *payloadtype = SLPAYLOAD_MSEED3;
+    *payloadformat = SLPAYLOAD_MSEED3;
 
     //TODO swap for operation on big endian sid:8, extra:16, payload:32
     reclen = MS3FSDH_LENGTH                   /* Length of fixed portion of header */
@@ -1515,7 +1605,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadtype)
   }
   else if (MS2_ISVALIDHEADER (buffer))
   {
-    *payloadtype = SLPAYLOAD_MSEED2;
+    *payloadformat = SLPAYLOAD_MSEED2;
     reclen = 0;
 
     /* Check to see if byte swapping is needed by checking for sane year and day */

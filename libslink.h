@@ -191,7 +191,7 @@ typedef struct SLlog_s
 #define SL_PROTO_MINOR  0            /**< Maximum minor version of protocol supported */
 
 #define SLHEADSIZE          8        /**< V3 Standard SeedLink header size */
-#define SLHEADSIZE_EXT      16       /**< V4 Extended SeedLink header size */
+#define SLHEADSIZE_EXT      17       /**< V4 Extended SeedLink header prefix size */
 #define SIGNATURE           "SL"     /**< Standard SeedLink header signature */
 #define SIGNATURE_EXT       "SE"     /**< Extended SeedLink header signature */
 #define INFOSIGNATURE       "SLINFO" /**< SeedLink INFO packet signature */
@@ -200,7 +200,7 @@ typedef struct SLlog_s
 #define SL_MIN_BUFFER       48       /**< Minimum data for payload detection and tracking */
 
 /** @addtogroup payload-types
-    @brief Packet payload type values
+    @brief Packet payload format and sub-format type values
 
     @{ */
 #define SLPAYLOAD_UNKNOWN        0  //!< Unknown payload
@@ -208,7 +208,11 @@ typedef struct SLlog_s
 #define SLPAYLOAD_MSEED2INFOTERM 2  //!< miniSEED 2 with INFO payload (terminated)
 #define SLPAYLOAD_MSEED2        '2' //!< miniSEED 2
 #define SLPAYLOAD_MSEED3        '3' //!< miniSEED 3
-#define SLPAYLOAD_INFO          'I' //!< INFO response in JSON
+#define SLPAYLOAD_JSON          'J' //!< JSON payload
+#define SLPAYLOAD_XML           'X' //!< XML payload
+
+#define SLPAYLOAD_JSON_INFO     'I' //!< JSON payload, subformat INFO
+#define SLPAYLOAD_JSON_ERROR    'E' //!< JSON payload, subformat ERROR
 /** @} */
 
 /** @addtogroup collect-status
@@ -258,7 +262,10 @@ typedef struct slpacketinfo_s
   uint64_t seqnum;              /**< Packet sequence number */
   uint32_t payloadlength;       /**< Packet payload length */
   uint32_t payloadcollected;    /**< Packet payload collected so far */
-  char     payloadtype;         /**< Packet payload type */
+  char     netstaid[22];        /**< Station ID in NET_STA format */
+  char     payloadformat;       /**< Packet payload format */
+  char     payloadsubformat;    /**< Packet payload subformat */
+  uint8_t  netstaidlength;      /**< Station ID length */
 } SLpacketinfo;
 
 /** @brief Stream information */
@@ -285,19 +292,17 @@ typedef struct stat_s
   enum                          /**< Connection state */
   {
     DOWN, UP, STREAMING
-  }
-    conn_state;
+  } conn_state;
 
   enum                          /**< Stream state */
   {
-   HEADER, PAYLOAD
+    HEADER, NETSTAID, PAYLOAD
   } stream_state;
 
   enum                          /**< INFO query state */
   {
     NoQuery, InfoQuery, KeepAliveQuery
-  }
-    query_state;
+  } query_state;
 
 } SLstat;
 
@@ -528,7 +533,7 @@ extern uint8_t sl_littleendianhost (void);
 extern int sl_doy2md (int year, int jday, int *month, int *mday);
 extern int sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor);
 extern int sl_checkslcd (const SLCD *slconn);
-extern const char *sl_typestr (char type);
+extern const char *sl_formatstr (char format, char subformat);
 extern const char *sl_strerror(void);
 extern int64_t sl_nstime (void);
 extern void sl_usleep(unsigned long int useconds);

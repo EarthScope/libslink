@@ -145,14 +145,14 @@ sl_checkslcd (const SLCD *slconn)
 } /* End of sl_checkslconn() */
 
 /**********************************************************************/ /**
- * @brief Return human readable description for specified payload type
+ * @brief Return human readable description for specified payload format
  *
- * @returns Descriptive string for payload type
+ * @returns Descriptive string for payload format
  ***************************************************************************/
 const char *
-sl_typestr (char type)
+sl_formatstr (char format, char subformat)
 {
-  switch (type)
+  switch (format)
   {
   case SLPAYLOAD_UNKNOWN:
     return "Unknown";
@@ -164,13 +164,42 @@ sl_typestr (char type)
     return "INFO (terminated) as XML in miniSEED 2";
     break;
   case SLPAYLOAD_MSEED2:
-    return "miniSEED 2";
+    switch (subformat)
+    {
+    case 'E':
+      return "miniSEED 2 event detection";
+      break;
+    case 'C':
+      return "miniSEED 2 calibration";
+      break;
+    case 'T':
+      return "miniSEED 2 timing exception";
+      break;
+    case 'L':
+      return "miniSEED 2 log";
+      break;
+    case 'O':
+      return "miniSEED 2 opaque";
+      break;
+    default:
+      return "miniSEED 2";
+    }
     break;
   case SLPAYLOAD_MSEED3:
     return "miniSEED 3";
     break;
-  case SLPAYLOAD_INFO:
-    return "INFO in JSON";
+  case SLPAYLOAD_JSON:
+    switch (subformat)
+    {
+    case SLPAYLOAD_JSON_INFO:
+      return "INFO in JSON";
+      break;
+    case SLPAYLOAD_JSON_ERROR:
+      return "ERROR in JSON";
+      break;
+    default:
+      return "JSON";
+    }
     break;
   default:
     return "Unrecognized payload type";

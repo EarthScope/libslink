@@ -166,10 +166,10 @@ packet_handler (const SLpacketinfo *packetinfo,
 
   sl_log (0, 1, "%s, seq %" PRIu64 ", Received %u bytes of payload format %s\n",
           timestamp, packetinfo->seqnum, payloadlength,
-          sl_typestr(packetinfo->payloadtype));
+          sl_formatstr(packetinfo->payloadformat, packetinfo->payloadsubformat));
 
   /* Process waveform data */
-  if (packetinfo->payloadtype == SLPAYLOAD_MSEED2)
+  if (packetinfo->payloadformat == SLPAYLOAD_MSEED2)
   {
     sl_msr_parse (slconn->log, (const char *)payload, &msr, 1, 0,
                   packetinfo->payloadlength);
@@ -179,7 +179,8 @@ packet_handler (const SLpacketinfo *packetinfo,
   }
   else
   {
-    sl_log (1, 1, "Unsupported payload type: %c\n", packetinfo->payloadtype);
+    sl_log (1, 1, "Unsupported payload format: %c, subformat: %c\n",
+            packetinfo->payloadformat, packetinfo->payloadsubformat);
   }
 
 } /* End of packet_handler() */

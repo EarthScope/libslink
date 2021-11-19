@@ -1658,8 +1658,8 @@ negotiate_v4 (SLCD *slconn)
 
     /* Generate STATION command */
     snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-              "STATION %s %s\r",
-              curstream->sta, curstream->net);
+              "STATION %s_%s\r",
+              curstream->net, curstream->sta);
 
     stationcnt++;
 
