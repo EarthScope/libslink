@@ -116,6 +116,7 @@ sl_strparse (const char *string, const char *delim, SLstrlist **list)
   }
 } /* End of sl_strparse() */
 
+
 /***************************************************************************
  * sl_strncpclean:
  *

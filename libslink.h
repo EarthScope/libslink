@@ -225,9 +225,8 @@ typedef struct SLlog_s
 #define SLTOOLARGE              -2  //!< Received packet is too large for buffer
 /** @} */
 
-/* The station and network code used for uni-station mode */
-#define UNISTATION  "UNI"  /**< Station code for uni-station mode */
-#define UNINETWORK  "XX"   /**< Network code for uni-station mode */
+/* The station ID used for uni-station mode */
+#define UNINETSTAID "XX_UNI"  /**< Station ID for uni-station mode */
 
 /** @def SL_UNSETSEQUENCE
     @brief Representation for unset sequence values. **/
@@ -271,8 +270,7 @@ typedef struct slpacketinfo_s
 /** @brief Stream information */
 typedef struct slstream_s
 {
-  char   *net;      	        /**< The network code */
-  char   *sta;      	        /**< The station code */
+  char    netstaid[22];         /**< Station ID in NET_STA format */
   char   *selectors;	        /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
   char    timestamp[31];        /**< Time stamp of last packet received */
@@ -351,7 +349,7 @@ extern const SLpacketinfo *sl_receive (SLCD *slconn, char *plbuffer,
 extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
 extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
-extern int sl_addstream (SLCD *slconn, const char *net, const char *sta,
+extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);
 extern int sl_setuniparams (SLCD *slconn, const char *selectors,

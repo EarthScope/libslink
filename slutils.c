@@ -968,6 +968,9 @@ receive_v4payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
  * Update the appropriate stream chain entries.  Length of the payload
  * must be at least enough to determine stream details.
  *
+ * The slconn->stat->packetinfo.netstaid value is also populated from
+ * the payload if not already set.
+ *
  * Returns 0 if successfully updated and -1 if not found or error.
  ***************************************************************************/
 static int
@@ -985,9 +988,9 @@ update_stream (SLCD *slconn, const char *payload)
   int month = 0;
   int mday  = 0;
 
-  char timestamp[31];
-  char net[11] = {0};
-  char sta[11] = {0};
+  char timestamp[31] = {0};
+  char *cp;
+  int count;
 
   /* Do no updates for info and error packets */
   if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO ||
@@ -1025,9 +1028,16 @@ update_stream (SLCD *slconn, const char *payload)
               "%04d,%02d,%02d,%02d,%02d,%02d",
               year, month, mday, hour, min, sec);
 
-    /* Generate "clean" net and sta strings */
-    sl_strncpclean (net, payload + 18, 2);
-    sl_strncpclean (sta, payload + 8, 5);
+    /* Generate NET_STA string if not already set */
+    if (slconn->stat->packetinfo.netstaidlength == 0)
+    {
+      count = sl_strncpclean (slconn->stat->packetinfo.netstaid,
+                              payload + 18, 2);
+      slconn->stat->packetinfo.netstaid[count++] = '_';
+      count += sl_strncpclean (slconn->stat->packetinfo.netstaid + count,
+                               payload + 8, 5);
+      slconn->stat->packetinfo.netstaidlength = count;
+    }
   }
   /* miniSEED 3 */
   else if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED3)
@@ -1055,33 +1065,26 @@ update_stream (SLCD *slconn, const char *payload)
               "%04d,%02d,%02d,%02d,%02d,%02d",
               year, month, mday, hour, min, sec);
 
-    /* Extract net and sta codes from FDSN source identifier */
-    //TODO Limit to proper FDSN SID scheme:
-    //if (payload[33] > 5 && !memcmp (payload + 40, "FDSN:", 5))
-    if (payload[33] > 10 &&
-        (!memcmp (payload + 40, "FDSN:", 5) ||
-         !memcmp (payload + 40, "XFDSN:", 6)))
+    /* Extract NET_STA string from FDSN Source Identifier */
+    if (slconn->stat->packetinfo.netstaidlength == 0 &&
+        payload[33] > 10 &&
+        !memcmp (payload + 40, "FDSN:", 5))
     {
-      // TODO proper FDSN SID, sidstart = 45
-      uint8_t sidstart = 40 + ((payload[40] == 'X') ? 6 : 5);
-      uint8_t sidend = 40 + payload[33];
-
-      for (int idx = sidstart, code = 0, codeidx = 0;
-           idx < sidend && codeidx < sizeof(net);
-           idx++)
+      /* Copy from ':' to 2nd '_' */
+      if ((cp = strchr (payload + 45, '_')))
       {
-        if (payload[idx] == '_')
+        if ((cp = strchr (cp + 1, '_')))
         {
-          codeidx = 0;
-          code++;
-        }
-        else if (code == 0)
-          net[codeidx++] = payload[idx];
-        else if (code == 1)
-          sta[codeidx++] = payload[idx];
+          slconn->stat->packetinfo.netstaidlength = cp - payload + 40;
 
-        if (code > 1)
-          break;
+          if (slconn->stat->packetinfo.netstaidlength <
+              sizeof (slconn->stat->packetinfo.netstaid))
+          {
+            memcpy (slconn->stat->packetinfo.netstaid,
+                    payload + 40,
+                    slconn->stat->packetinfo.netstaidlength);
+          }
+        }
       }
     }
   }
@@ -1090,8 +1093,7 @@ update_stream (SLCD *slconn, const char *payload)
 
   /* For uni-station mode */
   if (curstream != NULL &&
-      strcmp (curstream->net, UNINETWORK) == 0 &&
-      strcmp (curstream->sta, UNISTATION) == 0)
+      strcmp (curstream->netstaid, UNINETSTAID) == 0)
   {
     curstream->seqnum = slconn->stat->packetinfo.seqnum;
     strcpy (curstream->timestamp, timestamp);
@@ -1102,9 +1104,8 @@ update_stream (SLCD *slconn, const char *payload)
   /* For multi-station mode, search the stream chain and update all matching entries */
   while (curstream != NULL)
   {
-    /* Use glob matching to match wildcarded network and station codes */
-    if (sl_globmatch (net, curstream->net) &&
-        sl_globmatch (sta, curstream->sta))
+    /* Use glob matching to match wildcarded station ID codes */
+    if (sl_globmatch (slconn->stat->packetinfo.netstaid, curstream->netstaid))
     {
       curstream->seqnum = slconn->stat->packetinfo.seqnum;
       strcpy (curstream->timestamp, timestamp);
@@ -1117,8 +1118,8 @@ update_stream (SLCD *slconn, const char *payload)
 
   /* If no updates then no match was found */
   if (updates == 0)
-    sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %.2s %.6s\n",
-              slconn->sladdr, net, sta);
+    sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n",
+              slconn->sladdr, slconn->stat->packetinfo.netstaid);
 
   return (updates == 0) ? -1 : 0;
 } /* End of update_stream() */
@@ -1325,14 +1326,14 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
  * Add a new stream entry to the stream chain for the given SLCD
  * struct.  No checking is done for duplicate streams.
  *
- *  - selectors should be 0 if there are none to use
+ *  - selectors should be NULL if there are none to use
  *  - seqnum should be -1 to start at the next data
- *  - timestamp should be 0 if it should not be used
+ *  - timestamp should be NULL if it should not be used
  *
  * Returns 0 if successfully added or -1 on error.
  ***************************************************************************/
 int
-sl_addstream (SLCD *slconn, const char *net, const char *sta,
+sl_addstream (SLCD *slconn, const char *netstaid,
               const char *selectors, uint64_t seqnum,
               const char *timestamp)
 {
@@ -1345,8 +1346,7 @@ sl_addstream (SLCD *slconn, const char *net, const char *sta,
   /* Sanity, check for a uni-station mode entry */
   if (curstream)
   {
-    if (strcmp (curstream->net, UNINETWORK) == 0 &&
-        strcmp (curstream->sta, UNISTATION) == 0)
+    if (strcmp (curstream->netstaid, UNINETSTAID) == 0)
     {
       sl_log_r (slconn, 2, 0, "[%s] %s(): uni-station mode already configured!\n",
                 slconn->sladdr, __func__);
@@ -1369,8 +1369,7 @@ sl_addstream (SLCD *slconn, const char *net, const char *sta,
     return -1;
   }
 
-  newstream->net = strdup (net);
-  newstream->sta = strdup (sta);
+  strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid));
 
   if (selectors == 0 || selectors == NULL)
     newstream->selectors = 0;
@@ -1432,16 +1431,14 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
       return -1;
     }
   }
-  else if (strcmp (newstream->net, UNINETWORK) != 0 ||
-           strcmp (newstream->sta, UNISTATION) != 0)
+  else if (strcmp (newstream->netstaid, UNINETSTAID) != 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n",
               slconn->sladdr, __func__);
     return -1;
   }
 
-  newstream->net = UNINETWORK;
-  newstream->sta = UNISTATION;
+  strncpy (newstream->netstaid, UNINETSTAID, sizeof (newstream->netstaid));
 
   if (selectors == 0 || selectors == NULL)
     newstream->selectors = 0;

@@ -20,6 +20,7 @@
 	heuristic of blockette discovery.
 	* sl_openfile() and sl_readline() removed.
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
+	* sl_addstream() takes NET_STA ID instead of separeate net and sta.
 	* Header contains separate major, minor, patch versioning,
 	thanks @yensoon2!
 

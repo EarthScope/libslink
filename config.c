@@ -54,17 +54,14 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
                     const char *defselect)
 {
   FILE *fp;
-  char net[3];
-  char sta[6];
-  char selectors[100];
+  char net[11] = {0};
+  char sta[11] = {0};
+  char netstaid[22] = {0};
+  char selectors[100] = {0};
   char line[100];
   int fields;
   int count;
   int stacount;
-
-  net[0]       = '\0';
-  sta[0]       = '\0';
-  selectors[0] = '\0';
 
   /* Open the stream list file */
   if ((fp = fopen (streamfile, "rb")) == NULL)
@@ -88,7 +85,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
 
   while (fgets (line, sizeof (line), fp))
   {
-    fields = sscanf (line, "%2s %5s %99[a-zA-Z0-9!?. ]\n",
+    fields = sscanf (line, "%10s %10s %99s\n",
                      net, sta, selectors);
 
     /* Ignore blank or comment lines */
@@ -100,15 +97,17 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
       sl_log_r (slconn, 2, 0, "cannot parse line %d of stream list\n", count);
     }
 
+    snprintf (netstaid, sizeof (netstaid), "%s_%s", net, sta);
+
     /* Add this stream to the stream chain */
     if (fields == 3)
     {
-      sl_addstream (slconn, net, sta, selectors, -1, NULL);
+      sl_addstream (slconn, netstaid, selectors, -1, NULL);
       stacount++;
     }
     else
     {
-      sl_addstream (slconn, net, sta, defselect, -1, NULL);
+      sl_addstream (slconn, netstaid, defselect, -1, NULL);
       stacount++;
     }
 
@@ -148,7 +147,8 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
  * "stream1[:selectors1],stream2[:selectors2],..."
  *
  * For example:
- * "IU_KONO:BHE BHN,GE_WLF,MN_AQU:HH?.D"
+ * "IU_COLA:*_B_H_? *_L_H_?"
+ * "IU_KONO:BHE BHN,GE_WLF,MN_AQU:HH?"
  *
  * Returns the number of streams configured or -1 on error.
  ***************************************************************************/
@@ -160,95 +160,62 @@ sl_parse_streamlist (SLCD *slconn, const char *streamlist,
   int fields;
 
   const char *staselect;
-  char *net;
-  char *sta;
+  char *netstaid;
 
-  SLstrlist *ringlist   = NULL; /* split streamlist on ',' */
-  SLstrlist *reqlist    = NULL; /* split ringlist on ':' */
-  SLstrlist *netstalist = NULL; /* split reqlist[0] on "_" */
+  SLstrlist *strlist = NULL; /* split streamlist on ',' */
+  SLstrlist *reqlist = NULL; /* split strlist on ':' */
 
-  SLstrlist *ringptr   = NULL;
-  SLstrlist *reqptr    = NULL;
-  SLstrlist *netstaptr = NULL;
+  SLstrlist *ringptr = NULL;
+  SLstrlist *reqptr  = NULL;
 
   /* Parse the streams and selectors */
-  sl_strparse (streamlist, ",", &ringlist);
-  ringptr = ringlist;
+  sl_strparse (streamlist, ",", &strlist);
+  ringptr = strlist;
 
   while (ringptr != 0)
   {
-    net       = NULL;
-    sta       = NULL;
     staselect = NULL;
 
+    /* Parse reqlist (the 'NET_STA:selector' part) */
     fields = sl_strparse (ringptr->element, ":", &reqlist);
     reqptr = reqlist;
 
-    /* Fill in the NET and STA fields */
-    if (sl_strparse (reqptr->element, "_", &netstalist) != 2)
+    netstaid = reqptr->element;
+
+    if (strlen(netstaid) < 3 || strchr(netstaid, '_') == NULL)
     {
-      sl_log_r (slconn, 2, 0, "not in NET_STA format: %s\n", reqptr->element);
+      sl_log_r (slconn, 2, 0, "not in NET_STA format: %s\n", netstaid);
       count = -1;
     }
-    else
+
+    if (fields > 1) /* Selectors were included following the ':' */
     {
-      /* Point to the first element, should be a network code */
-      netstaptr = netstalist;
-      if (strlen (netstaptr->element) == 0)
-      {
-        sl_log_r (slconn, 2, 0, "not in NET_STA format: %s\n",
-                  reqptr->element);
-        count = -1;
-      }
-      net = netstaptr->element;
-
-      /* Point to the second element, should be a station code */
-      netstaptr = netstaptr->next;
-      if (strlen (netstaptr->element) == 0)
-      {
-        sl_log_r (slconn, 2, 0, "not in NET_STA format: %s\n",
-                  reqptr->element);
-        count = -1;
-      }
-      sta = netstaptr->element;
-    }
-
-    if (fields > 1)
-    { /* Selectors were included */
-      /* Point to the second element of reqptr, should be selectors */
       reqptr = reqptr->next;
+      staselect = reqptr->element;
+
       if (strlen (reqptr->element) == 0)
       {
         sl_log_r (slconn, 2, 0, "empty selector: %s\n", reqptr->element);
         count = -1;
       }
-      staselect = reqptr->element;
     }
     else /* If no specific selectors, use the default */
     {
       staselect = defselect;
     }
 
-    /* Add this to the stream chain */
+    /* Add to the stream chain */
     if (count != -1)
     {
-      sl_addstream (slconn, net, sta, staselect, -1, 0);
+      sl_addstream (slconn, netstaid, staselect, -1, NULL);
       count++;
     }
 
-    /* Free the netstalist (the 'NET_STA' part) */
-    sl_strparse (NULL, NULL, &netstalist);
-
-    /* Free the reqlist (the 'NET_STA:selector' part) */
     sl_strparse (NULL, NULL, &reqlist);
 
     ringptr = ringptr->next;
   }
 
-  if (netstalist != NULL)
-  {
-    sl_strparse (NULL, NULL, &netstalist);
-  }
   if (reqlist != NULL)
   {
     sl_strparse (NULL, NULL, &reqlist);
@@ -264,7 +231,7 @@ sl_parse_streamlist (SLCD *slconn, const char *streamlist,
   }
 
   /* Free the ring list */
-  sl_strparse (NULL, NULL, &ringlist);
+  sl_strparse (NULL, NULL, &strlist);
 
   return count;
 } /* End of sl_parse_streamlist() */
