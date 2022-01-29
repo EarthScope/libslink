@@ -4,7 +4,7 @@
  * Network communication routines for SeedLink
  *
  * Originally based on the SeedLink interface of the modified Comserv in
- * SeisComP written by Andres Heinloo
+ * SeisComP written by Andres Heinloo.
  *
  * This file is part of the SeedLink Library.
  *
@@ -1067,9 +1067,31 @@ negotiate_uni_v3 (SLCD *slconn)
   char *selptr;
   char *extreply = 0;
   char *term1, *term2;
+  char begin_time[31] = {0};
+  char end_time[31]   = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
+
+  /* Generate V3, legacy SeedLink style date-time strings */
+  if (slconn->begin_time)
+  {
+    if (sl_commadatetime (begin_time, slconn->begin_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
+                __func__, slconn->begin_time);
+      return -1;
+    }
+  }
+  if (slconn->end_time)
+  {
+    if (sl_commadatetime (end_time, slconn->end_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
+                __func__, slconn->end_time);
+      return -1;
+    }
+  }
 
   /* Point to the stream chain */
   curstream = slconn->streams;
@@ -1154,18 +1176,17 @@ negotiate_uni_v3 (SLCD *slconn)
   /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
      optionally, stop time) takes precedence over the resumption from any
      previous sequence number. */
-  if (slconn->begin_time != NULL)
+  if (begin_time[0])
   {
     if (sl_checkversion (slconn, 2, 92) >= 0)
     {
-      if (slconn->end_time == NULL)
+      if (end_time[0] == '\0')
       {
-        sprintf (sendstr, "TIME %.30s\r", slconn->begin_time);
+        sprintf (sendstr, "TIME %.31s\r", begin_time);
       }
       else
       {
-        sprintf (sendstr, "TIME %.30s %.30s\r", slconn->begin_time,
-                 slconn->end_time);
+        sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
                 slconn->sladdr);
@@ -1196,11 +1217,11 @@ negotiate_uni_v3 (SLCD *slconn)
         strlen (curstream->timestamp))
     {
       /* Increment sequence number by 1 */
-      sprintf (sendstr, "%s %0" PRIX64 " %.30s\r", cmd,
+      sprintf (sendstr, "%s %0" PRIX64 " %.31s\r", cmd,
                (curstream->seqnum + 1), curstream->timestamp);
 
       sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %0" PRIX64 " (Dec %"PRIu64") at %.30s\n",
+                "[%s] resuming data from %0" PRIX64 " (Dec %"PRIu64") at %.31s\n",
                 slconn->sladdr, (curstream->seqnum + 1),
                 (curstream->seqnum + 1), curstream->timestamp);
     }
@@ -1263,13 +1284,35 @@ negotiate_multi_v3 (SLCD *slconn)
   int acceptsel = 0; /* Count of accepted selectors */
   char *selptr;
   char *term1, *term2;
-  char *extreply = 0;
+  char *extreply      = 0;
+  char begin_time[31] = {0};
+  char end_time[31]   = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
 
   char net[22];
   char *sta;
+
+  /* Generate V3, legacy SeedLink style date-time strings */
+  if (slconn->begin_time)
+  {
+    if (sl_commadatetime (begin_time, slconn->begin_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
+                __func__, slconn->begin_time);
+      return -1;
+    }
+  }
+  if (slconn->end_time)
+  {
+    if (sl_commadatetime (end_time, slconn->end_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
+                __func__, slconn->end_time);
+      return -1;
+    }
+  }
 
   /* Point to the stream chain */
   curstream = slconn->streams;
@@ -1430,18 +1473,17 @@ negotiate_multi_v3 (SLCD *slconn)
     /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
        optionally, stop time) takes precedence over the resumption from any
        previous sequence number. */
-    if (slconn->begin_time != NULL)
+    if (begin_time[0])
     {
       if (sl_checkversion (slconn, 2, 92) >= 0)
       {
-        if (slconn->end_time == NULL)
+        if (end_time[0] == '\0')
         {
-          sprintf (sendstr, "TIME %.30s\r", slconn->begin_time);
+          sprintf (sendstr, "TIME %.31s\r", begin_time);
         }
         else
         {
-          sprintf (sendstr, "TIME %.30s %.30s\r", slconn->begin_time,
-                   slconn->end_time);
+          sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
         }
         sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
                   curstream->netstaid);
@@ -1472,11 +1514,11 @@ negotiate_multi_v3 (SLCD *slconn)
           strlen (curstream->timestamp))
       {
         /* Increment sequence number by 1 */
-        sprintf (sendstr, "%s %0" PRIX64 " %.30s\r", cmd,
+        sprintf (sendstr, "%s %0" PRIX64 " %.31s\r", cmd,
                  (curstream->seqnum + 1), curstream->timestamp);
 
         sl_log_r (slconn, 1, 1,
-                  "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.30s\n",
+                  "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
                   slconn->sladdr, (curstream->seqnum + 1),
                   (curstream->seqnum + 1), curstream->timestamp);
       }
@@ -1605,6 +1647,8 @@ negotiate_v4 (SLCD *slconn)
   int sellen          = 0;
   char *selptr;
   char *cp;
+  char begin_time[31] = {0};
+  char end_time[31]   = {0};
   char sendstr[10];  /* A buffer for small command strings */
   char readbuf[200]; /* A buffer for responses */
   SLstream *curstream;
@@ -1622,6 +1666,26 @@ negotiate_v4 (SLCD *slconn)
 
   if (!slconn)
     return -1;
+
+  /* Generate V4, ISO compatible date-time strings */
+  if (slconn->begin_time)
+  {
+    if (sl_isodatetime (begin_time, slconn->begin_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
+                __func__, slconn->begin_time);
+      return -1;
+    }
+  }
+  if (slconn->end_time)
+  {
+    if (sl_isodatetime (end_time, slconn->end_time) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
+                __func__, slconn->end_time);
+      return -1;
+    }
+  }
 
   /* Point to the stream chain */
   curstream = slconn->streams;
@@ -1735,7 +1799,7 @@ negotiate_v4 (SLCD *slconn)
     /* Generate DATA or FETCH command with:
      *   - optional sequence number, INCREMENTED
      *   - optional time window if supported by server */
-    if (time_capability && slconn->begin_time != NULL)
+    if (time_capability && begin_time[0])
     {
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
@@ -1743,18 +1807,18 @@ negotiate_v4 (SLCD *slconn)
                   "%s %" PRIu64 "%s%s%s\r",
                   (slconn->dialup) ? "FETCH" : "DATA",
                   (curstream->seqnum + 1),
-                  slconn->begin_time,
-                  (slconn->end_time) ? " " : "",
-                  (slconn->end_time) ? slconn->end_time : "");
+                  begin_time,
+                  (end_time[0]) ? " " : "",
+                  (end_time[0]) ? end_time : "");
       }
       else
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
                   "%s -1 %s%s%s\r",
                   (slconn->dialup) ? "FETCH" : "DATA",
-                  slconn->begin_time,
-                  (slconn->end_time) ? " " : "",
-                  (slconn->end_time) ? slconn->end_time : "");
+                  begin_time,
+                  (end_time[0]) ? " " : "",
+                  (end_time[0]) ? end_time : "");
       }
     }
     else

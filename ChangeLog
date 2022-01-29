@@ -1,5 +1,12 @@
-2021.20x:
+2022.02x:
 	- Update internal sequence numbers to unsigned 64-bit values.
+	- Header contains separate major, minor, patch versioning,
+        thanks @yensoon2!
+	- Internal date-time representation now ISO compatible format,
+	conversion to-from legacy SeedLink time format included.
+	- Saved state file now using NET_STA syntax. Both new and old
+	formats are supported when reading.
+
 	API changes:
 	* sl_newslcd() now takes two arguments of client name and version.
 	* sl_collect() now takes a buffer provided by the caller as a
@@ -21,8 +28,6 @@
 	* sl_openfile() and sl_readline() removed.
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
 	* sl_addstream() takes NET_STA ID instead of separeate net and sta.
-	* Header contains separate major, minor, patch versioning,
-	thanks @yensoon2!
 
 2020.048:
 	- Support M SEED quality code.

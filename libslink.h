@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_RELEASE "2021.313"    /**< libslink release date */
+#define LIBSLINK_RELEASE "2021.332"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  3      /**< libslink major version */
 #define LIBSLINK_VERSION_MINOR  0      /**< libslink minor version */
 #define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
@@ -534,6 +534,8 @@ extern int sl_checkslcd (const SLCD *slconn);
 extern const char *sl_formatstr (char format, char subformat);
 extern const char *sl_strerror(void);
 extern int64_t sl_nstime (void);
+extern char *sl_isodatetime (char *isodatetime, const char *datetime);
+extern char *sl_commadatetime (char *commadatetime, const char *datetime);
 extern void sl_usleep(unsigned long int useconds);
 
 /*@ @brief For a linked list of strings, as filled by strparse() */

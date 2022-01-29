@@ -265,6 +265,198 @@ sl_nstime (void)
 #endif
 } /* End of sl_nstime() */
 
+/**********************************************************************/ /**
+ * @brief Return ISO-compatible date-time formatted string
+ *
+ * Convert date-time string deliminters to match the following
+ * ISO-8601 date-time format if needed and possible:
+ *
+ *   YYYY-MM-DDThh:mm:ss.sssssssssZ
+ *
+ * The output string will always be in UTC with a 'Z' designation if
+ * it contains a time portion.
+ *
+ * The output buffer pointer can be the same as the input pointer for
+ * an in-place conversion.
+ *
+ * This routine does very little validation, invalid input date-times
+ * will result in invalid conversions.
+ *
+ * The output buffer must be as large as the input date-time string
+ * plus a terminating 'Z' if not included in the original string.
+ *
+ * @param[out] isodatetime Buffer to write ISO-8601 time string
+ * @param[in] datetime Date-time string to convert
+ *
+ * @returns Date-time string converted ISO-8601 format
+ * @retval Pointer to date-time string on success
+ * @retval NULL on error
+ ***************************************************************************/
+char *
+sl_isodatetime (char *isodatetime, const char *datetime)
+{
+  char newchar;
+  int delims;
+  int idx;
+
+  if (datetime == NULL || isodatetime == NULL)
+    return NULL;
+
+  /* Create output string char-by-char from input string */
+  for (idx = 0, delims = 0; datetime[idx] != '\0'; idx++)
+  {
+    /* Pass through digits */
+    if (isdigit (datetime[idx]))
+    {
+      newchar = 0;
+    }
+    /* Pass through acceptable delimiters */
+    else if (datetime[idx] == '-' ||
+             datetime[idx] == 'T' ||
+             datetime[idx] == ':' ||
+             datetime[idx] == '.' ||
+             datetime[idx] == 'Z')
+    {
+      delims++;
+      newchar = 0;
+    }
+    /* Convert comma to appropriate delimiter */
+    else if (datetime[idx] == ',')
+    {
+      delims++;
+
+      switch (delims)
+      {
+      case 1:
+      case 2:
+        newchar = '-';
+        break;
+      case 3:
+        newchar = 'T';
+        break;
+      case 4:
+      case 5:
+        newchar = ':';
+        break;
+      case 6:
+        newchar = '.';
+        break;
+      default:
+        return NULL;
+      }
+    }
+    /* Unrecognized character in input date-time string */
+    else
+    {
+      return NULL;
+    }
+
+    /* Write new character if set */
+    if (newchar)
+    {
+      isodatetime[idx] = newchar;
+    }
+    /* Write input character if not the same buffer */
+    else if (datetime != isodatetime)
+    {
+      isodatetime[idx] = datetime[idx];
+    }
+  }
+
+  /* Add UTC 'Z' suffix if not present and time components included */
+  if (delims >= 3 && isodatetime[idx - 1] != 'Z')
+  {
+    isodatetime[idx++] = 'Z';
+  }
+
+  isodatetime[idx] = '\0';
+
+  return isodatetime;
+} /* End of sl_isodatetime() */
+
+/**********************************************************************/ /**
+ * @brief Return legacy SeedLink comma-deliminted date-time formatted string
+ *
+ * Convert date-time string deliminters to match the following
+ * comma-delimited format if needed and possible:
+ *
+ *   YYYY,MM,DD,hh,mm,ss,ssssss
+ *
+ * The output buffer pointer can be the same as the input pointer for
+ * an in-place conversion.
+ *
+ * This routine does very little validation, invalid input date-times
+ * will result in invalid conversions.
+ *
+ * @param[out] commadatetime Buffer to write comma-delimited time string
+ * @param[in] datetime Date-time string to convert
+ *
+ * @returns Date-time string converted comma-delimited format
+ * @retval Pointer to date-time string on success
+ * @retval NULL on error
+ ***************************************************************************/
+char *
+sl_commadatetime (char *commadatetime, const char *datetime)
+{
+  char newchar;
+  int delims;
+  int idx;
+
+  if (datetime == NULL || commadatetime == NULL)
+    return NULL;
+
+  /* Create output string char-by-char from input string */
+  for (idx = 0, delims = 0; datetime[idx] != '\0'; idx++)
+  {
+    /* Pass through digits */
+    if (isdigit (datetime[idx]))
+    {
+      newchar = 0;
+    }
+    /* Pass through acceptable delimiter */
+    else if (datetime[idx] == ',')
+    {
+      delims++;
+      newchar = 0;
+    }
+    /* Convert recognized delimiters to commas */
+    else if (datetime[idx] == '-' ||
+             datetime[idx] == 'T' ||
+             datetime[idx] == ':' ||
+             datetime[idx] == '.')
+    {
+      delims++;
+      newchar = ',';
+    }
+    /* Terminating 'Z' is skipped */
+    else if (datetime[idx] == 'Z' && datetime[idx+1] == '\0')
+    {
+      break;
+    }
+    /* Unrecognized character in input date-time string */
+    else
+    {
+      return NULL;
+    }
+
+    /* Write new character if set */
+    if (newchar)
+    {
+      commadatetime[idx] = newchar;
+    }
+    /* Write input character if not the same buffer */
+    else if (datetime != commadatetime)
+    {
+      commadatetime[idx] = datetime[idx];
+    }
+  }
+
+  commadatetime[idx] = '\0';
+
+  return commadatetime;
+} /* End of sl_commadatetime() */
+
+
 /***************************************************************************
  * sl_usleep:
  *

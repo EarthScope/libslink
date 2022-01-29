@@ -111,6 +111,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
   int idx;
 
   char netstaid[22] = {0};
+  char timestamp[31] = {0};
   char *netstastr;
   char *seqstr;
   char *timestr;
@@ -186,6 +187,22 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     {
       sl_log_r (slconn, 2, 0, "could not parse line %d of state file\n", count);
       break;
+    }
+
+    /* Convert old comma-delimited date-time to ISO-compatible format
+     * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+    if (timestr)
+    {
+      if (sl_isodatetime(timestamp, timestr) != NULL)
+      {
+        timestr = timestamp;
+      }
+      else
+      {
+        sl_log_r (slconn, 1, 0, "could not parse timestamp for %s entry: '%s', ignoring\n",
+                  netstastr, timestr);
+        return -1;
+      }
     }
 
     if (seqstr[0] == '-' && seqstr[1] == '1')

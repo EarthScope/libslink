@@ -982,6 +982,8 @@ update_stream (SLCD *slconn, const char *payload)
 
   uint16_t year;
   uint16_t yday;
+  uint16_t fsec;
+  uint32_t nsec;
   uint8_t hour;
   uint8_t min;
   uint8_t sec;
@@ -1011,6 +1013,7 @@ update_stream (SLCD *slconn, const char *payload)
     hour = payload[24];
     min = payload[25];
     sec = payload[26];
+    memcpy (&fsec, payload + 28, sizeof (uint16_t));
 
     /* Determine if byte swapping is needed by testing for bogus year/day values */
     if (year < 1900 || year > 2100 || yday < 1 || yday > 366)
@@ -1020,13 +1023,14 @@ update_stream (SLCD *slconn, const char *payload)
     {
       sl_gswap2a (&year);
       sl_gswap2a (&yday);
+      sl_gswap2a (&fsec);
     }
 
     sl_doy2md (year, yday, &month, &mday);
 
     snprintf (timestamp, sizeof(timestamp),
-              "%04d,%02d,%02d,%02d,%02d,%02d",
-              year, month, mday, hour, min, sec);
+              "%04d-%02d-%02dT%02d:%02d:%02d.%04dZ",
+              year, month, mday, hour, min, sec, fsec);
 
     /* Generate NET_STA string if not already set */
     if (slconn->stat->packetinfo.netstaidlength == 0)
@@ -1048,6 +1052,7 @@ update_stream (SLCD *slconn, const char *payload)
     hour = payload[12];
     min = payload[13];
     sec = payload[14];
+    memcpy (&nsec, payload + 4, sizeof (uint32_t));
 
     /* Determine if byte swapping is needed by testing for host endianness */
     if (!sl_littleendianhost())
@@ -1057,13 +1062,14 @@ update_stream (SLCD *slconn, const char *payload)
     {
       sl_gswap2a (&year);
       sl_gswap2a (&yday);
+      sl_gswap4a (&nsec);
     }
 
     sl_doy2md (year, yday, &month, &mday);
 
     snprintf (timestamp, sizeof(timestamp),
-              "%04d,%02d,%02d,%02d,%02d,%02d",
-              year, month, mday, hour, min, sec);
+              "%04d-%02d-%02dT%02d:%02d:%02d.%09dZ",
+              year, month, mday, hour, min, sec, nsec);
 
     /* Extract NET_STA string from FDSN Source Identifier */
     if (slconn->stat->packetinfo.netstaidlength == 0 &&
@@ -1217,6 +1223,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
 
   return slconn;
 } /* End of sl_newslconn() */
+
 
 /***************************************************************************
  * sl_freeslcd:
@@ -1381,7 +1388,19 @@ sl_addstream (SLCD *slconn, const char *netstaid,
   if (timestamp == 0 || timestamp == NULL)
     newstream->timestamp[0] = '\0';
   else
-    strncpy (newstream->timestamp, timestamp, 20);
+    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp));
+
+  /* Convert old comma-delimited date-time to ISO-compatible format if needed
+   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+  if (newstream->timestamp[0])
+  {
+    if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): could not parse timestamp for %s entry: '%s'\n",
+                __func__, netstaid, newstream->timestamp);
+      return -1;
+    }
+  }
 
   newstream->next = NULL;
 
@@ -1450,7 +1469,7 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
   if (timestamp == 0 || timestamp == NULL)
     newstream->timestamp[0] = '\0';
   else
-    strncpy (newstream->timestamp, timestamp, 20);
+    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp));
 
   newstream->next = NULL;
 
