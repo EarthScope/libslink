@@ -131,12 +131,12 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     /* Add this stream to the stream chain */
     if (fields == 2)
     {
-      sl_addstream (slconn, netstaid, selectors, -1, NULL);
+      sl_addstream (slconn, netstaid, selectors, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
     else
     {
-      sl_addstream (slconn, netstaid, defselect, -1, NULL);
+      sl_addstream (slconn, netstaid, defselect, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
   }
@@ -234,7 +234,7 @@ sl_parse_streamlist (SLCD *slconn, const char *streamlist,
     /* Add to the stream chain */
     if (count != -1)
     {
-      sl_addstream (slconn, netstaid, staselect, -1, NULL);
+      sl_addstream (slconn, netstaid, staselect, SL_UNSETSEQUENCE, NULL);
       count++;
     }
 

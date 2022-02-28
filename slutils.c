@@ -1334,7 +1334,7 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
  * struct.  No checking is done for duplicate streams.
  *
  *  - selectors should be NULL if there are none to use
- *  - seqnum should be -1 to start at the next data
+ *  - seqnum should be SL_UNSETSEQUENCE to start at the next data
  *  - timestamp should be NULL if it should not be used
  *
  * Returns 0 if successfully added or -1 on error.
@@ -1427,7 +1427,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
  * Also sets the multistation flag to 0 (false).
  *
  *  - selectors should be 0 if there are none to use
- *  - seqnum should be -1 to start at the next data
+ *  - seqnum should be SL_UNSETSEQUENCE to start at the next data
  *  - timestamp should be 0 if it should not be used
  *
  * Returns 0 if successfully added or -1 on error.
