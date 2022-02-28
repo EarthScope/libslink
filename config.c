@@ -34,18 +34,22 @@
  * Read a list of streams and selectors from a file and add them to the
  * stream chain for configuring a multi-station connection.
  *
- * If 'defselect' is not NULL or 0 it will be used as the default selectors
+ * If 'defselect' is not NULL it will be used as the default selectors
  * for entries will no specific selectors indicated.
  *
  * The file is expected to be repeating lines of the form:
- *   <NET> <STA> [selectors]
+ *   NET_STA [selectors]
+ *
  * For example:
  * --------
  * # Comment lines begin with a '#' or '*'
- * GE ISP  BH?.D
- * NL HGN
- * MN AQU  BH?  HH?
+ * GE_ISP  BH?
+ * NL_HGN
+ * MN_AQU  BH? HH? LH?
  * --------
+ *
+ * The legacy format, in which NET and STA are separated by
+ * whitespace, is also supported.
  *
  * Returns the number of streams configured or -1 on error.
  ***************************************************************************/
@@ -54,14 +58,13 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
                     const char *defselect)
 {
   FILE *fp;
-  char net[11] = {0};
-  char sta[11] = {0};
-  char netstaid[22] = {0};
-  char selectors[100] = {0};
-  char line[100];
-  int fields;
-  int count;
-  int stacount;
+  char *cp;
+  char selectors[200] = {0};
+  char netstaid[64] = {0};
+  char line[200];
+  int fields = 0;
+  int streamcount = 0;
+  int linecount = 0;
 
   /* Open the stream list file */
   if ((fp = fopen (streamfile, "rb")) == NULL)
@@ -80,38 +83,62 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
 
   sl_log_r (slconn, 1, 1, "Reading stream list from %s\n", streamfile);
 
-  count    = 1;
-  stacount = 0;
-
   while (fgets (line, sizeof (line), fp))
   {
-    fields = sscanf (line, "%10s %10s %99s\n",
-                     net, sta, selectors);
+    linecount += 1;
+    memset (netstaid, 0, sizeof(netstaid));
+    memset (selectors, 0, sizeof(selectors));
 
-    /* Ignore blank or comment lines */
-    if (fields < 0 || net[0] == '#' || net[0] == '*')
+    /* Terminate string at first newline or carriage return */
+    if ((cp = strchr (line, '\n')) ||
+        (cp = strchr (line, '\r')))
+      *cp = '\0';
+
+    fields = sscanf (line, "%63s", netstaid);
+
+    /* Skip blank or comment lines */
+    if (fields <= 0 || netstaid[0] == '#' || netstaid[0] == '*')
       continue;
 
-    if (fields < 2)
+    /* Parse format: NET_STA [selectors] */
+    if (strchr (netstaid, '_') != NULL)
     {
-      sl_log_r (slconn, 2, 0, "cannot parse line %d of stream list\n", count);
+      fields = sscanf (line, "%63s %199c", netstaid, selectors);
+    }
+    /* Parse legacy format: NET STA [selectors] */
+    else
+    {
+      char net[50] = {0};
+      char sta[50] = {0};
+
+      fields = sscanf (line, "%49s %49s %199c", net, sta, selectors);
+
+      if (fields >= 2)
+      {
+        snprintf (netstaid, sizeof(netstaid), "%s_%s", net, sta);
+
+        fields -= 1;
+      }
     }
 
-    snprintf (netstaid, sizeof (netstaid), "%s_%s", net, sta);
+    if (fields < 1)
+    {
+      sl_log_r (slconn, 2, 0, "cannot parse line %d of stream list: '%s'\n",
+                linecount, line);
+      continue;
+    }
 
     /* Add this stream to the stream chain */
-    if (fields == 3)
+    if (fields == 2)
     {
       sl_addstream (slconn, netstaid, selectors, -1, NULL);
-      stacount++;
+      streamcount++;
     }
     else
     {
       sl_addstream (slconn, netstaid, defselect, -1, NULL);
-      stacount++;
+      streamcount++;
     }
-
-    count++;
   }
 
   if (ferror (fp))
@@ -119,13 +146,13 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     sl_log_r (slconn, 2, 0, "file read error for %s\n", streamfile);
   }
 
-  if (stacount == 0)
+  if (streamcount == 0)
   {
     sl_log_r (slconn, 2, 0, "no streams defined in %s\n", streamfile);
   }
-  else if (stacount > 0)
+  else if (streamcount > 0)
   {
-    sl_log_r (slconn, 1, 2, "Read %d streams from %s\n", stacount, streamfile);
+    sl_log_r (slconn, 1, 2, "Read %d streams from %s\n", streamcount, streamfile);
   }
 
   if (fclose (fp))
@@ -134,7 +161,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     return -1;
   }
 
-  return count;
+  return streamcount;
 } /* End of sl_read_streamlist() */
 
 /***************************************************************************
@@ -148,7 +175,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
  *
  * For example:
  * "IU_COLA:*_B_H_? *_L_H_?"
- * "IU_KONO:BHE BHN,GE_WLF,MN_AQU:HH?"
+ * "IU_KONO:B_H_E B_H_N,GE_WLF,MN_AQU:H_H_?"
  *
  * Returns the number of streams configured or -1 on error.
  ***************************************************************************/

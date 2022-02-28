@@ -6,6 +6,7 @@
 	conversion to-from legacy SeedLink time format included.
 	- Saved state file now using NET_STA syntax. Both new and old
 	formats are supported when reading.
+	- Stream list file support for both NET_STA syntax and legacy format.
 
 	API changes:
 	* sl_newslcd() now takes two arguments of client name and version.

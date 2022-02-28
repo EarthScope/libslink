@@ -175,7 +175,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
       seqstr    = field[1];
       timestr   = (fields >= 3) ? field[2] : NULL;
     }
-    /* Old format: NET STA Sequence [Timestamp] */
+    /* Old format: NET STA Sequence# [Timestamp] */
     else if (fields >= 3)
     {
       snprintf (netstaid, sizeof (netstaid), "%s_%s", field[0], field[1]);
