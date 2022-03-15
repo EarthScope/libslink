@@ -28,8 +28,8 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_VERSION "2.7.0"       /**< libslink version */
-#define LIBSLINK_RELEASE "2020.046"    /**< libslink release date */
+#define LIBSLINK_VERSION "2.7.0RC"     /**< libslink version */
+#define LIBSLINK_RELEASE "2022.074"    /**< libslink release date */
 
 /** @defgroup seedlink-connection SeedLink Connection */
 /** @defgroup connection-state Connection State */
