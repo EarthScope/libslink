@@ -29,6 +29,7 @@
 	* sl_openfile() and sl_readline() removed.
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
 	* sl_addstream() takes NET_STA ID instead of separeate net and sta.
+	* Remove sl_gswap3() and all sl_gswapXa() routines.
 
 2020.048:
 	- Support M SEED quality code.

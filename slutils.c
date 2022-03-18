@@ -660,8 +660,8 @@ receive_header (SLCD *slconn, int bytesavailable)
 
       if (!sl_littleendianhost ())
       {
-        sl_gswap8a (&slconn->stat->packetinfo.seqnum);
-        sl_gswap4a (&slconn->stat->packetinfo.payloadlength);
+        sl_gswap8 (&slconn->stat->packetinfo.seqnum);
+        sl_gswap4 (&slconn->stat->packetinfo.payloadlength);
       }
     }
     else
@@ -1021,9 +1021,9 @@ update_stream (SLCD *slconn, const char *payload)
 
     if (swapflag)
     {
-      sl_gswap2a (&year);
-      sl_gswap2a (&yday);
-      sl_gswap2a (&fsec);
+      sl_gswap2 (&year);
+      sl_gswap2 (&yday);
+      sl_gswap2 (&fsec);
     }
 
     sl_doy2md (year, yday, &month, &mday);
@@ -1060,9 +1060,9 @@ update_stream (SLCD *slconn, const char *payload)
 
     if (swapflag)
     {
-      sl_gswap2a (&year);
-      sl_gswap2a (&yday);
-      sl_gswap4a (&nsec);
+      sl_gswap2 (&year);
+      sl_gswap2 (&yday);
+      sl_gswap4 (&nsec);
     }
 
     sl_doy2md (year, yday, &month, &mday);

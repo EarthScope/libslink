@@ -192,7 +192,7 @@ decode_int16 (int16_t *input, int samplecount, int32_t *output,
     sample = input[idx];
 
     if (swapflag)
-      sl_gswap2a (&sample);
+      sl_gswap2 (&sample);
 
     output[idx] = (int32_t)sample;
 
@@ -228,7 +228,7 @@ decode_int32 (int32_t *input, int samplecount, int32_t *output,
     sample = input[idx];
 
     if (swapflag)
-      sl_gswap4a (&sample);
+      sl_gswap4 (&sample);
 
     output[idx] = sample;
 
@@ -290,8 +290,8 @@ decode_steim1 (int32_t *input, int inputlength, int samplecount,
     {
       if (swapflag)
       {
-        sl_gswap4a (&frame[1]);
-        sl_gswap4a (&frame[2]);
+        sl_gswap4 (&frame[1]);
+        sl_gswap4 (&frame[2]);
       }
 
       X0 = frame[1];
@@ -312,7 +312,7 @@ decode_steim1 (int32_t *input, int inputlength, int samplecount,
 
     /* Swap 32-bit word containing the nibbles */
     if (swapflag)
-      sl_gswap4a (&frame[0]);
+      sl_gswap4 (&frame[0]);
 
     /* Decode each 32-bit word according to nibble */
     for (widx = startnibble; widx < 16 && samplecount > 0; widx++)
@@ -343,8 +343,8 @@ decode_steim1 (int32_t *input, int inputlength, int samplecount,
 
         if (swapflag)
         {
-          sl_gswap2a (&word->d16[0]);
-          sl_gswap2a (&word->d16[1]);
+          sl_gswap2 (&word->d16[0]);
+          sl_gswap2 (&word->d16[1]);
         }
 
         if (decodedebug)
@@ -354,7 +354,7 @@ decode_steim1 (int32_t *input, int inputlength, int samplecount,
       case 3: /* 11: One 4-byte difference */
         diffcount = 1;
         if (swapflag)
-          sl_gswap4a (&word->d32);
+          sl_gswap4 (&word->d32);
 
         if (decodedebug)
           sl_log_rl (log, 1, 0, "  W%02d: 11=1x32b  %d\n", widx, word->d32);
@@ -445,8 +445,8 @@ decode_steim2 (int32_t *input, int inputlength, int samplecount,
     {
       if (swapflag)
       {
-        sl_gswap4a (&frame[1]);
-        sl_gswap4a (&frame[2]);
+        sl_gswap4 (&frame[1]);
+        sl_gswap4 (&frame[2]);
       }
 
       X0 = frame[1];
@@ -467,7 +467,7 @@ decode_steim2 (int32_t *input, int inputlength, int samplecount,
 
     /* Swap 32-bit word containing the nibbles */
     if (swapflag)
-      sl_gswap4a (&frame[0]);
+      sl_gswap4 (&frame[0]);
 
     /* Decode each 32-bit word according to nibble */
     for (widx = startnibble; widx < 16 && samplecount > 0; widx++)
@@ -498,7 +498,7 @@ decode_steim2 (int32_t *input, int inputlength, int samplecount,
 
       case 2: /* nibble=10: Must consult dnib, the high order two bits */
         if (swapflag)
-          sl_gswap4a (&frame[widx]);
+          sl_gswap4 (&frame[widx]);
         dnib = EXTRACTBITRANGE (frame[widx], 30, 2);
 
         switch (dnib)
@@ -550,7 +550,7 @@ decode_steim2 (int32_t *input, int inputlength, int samplecount,
 
       case 3: /* nibble=11: Must consult dnib, the high order two bits */
         if (swapflag)
-          sl_gswap4a (&frame[widx]);
+          sl_gswap4 (&frame[widx]);
         dnib = EXTRACTBITRANGE (frame[widx], 30, 2);
 
         switch (dnib)

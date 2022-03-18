@@ -549,14 +549,8 @@ extern int sl_strncpclean (char *dest, const char *source, int length);
 
 /* Generic byte swapping routines */
 extern void sl_gswap2 (void *data2);
-extern void sl_gswap3 (void *data3);
 extern void sl_gswap4 (void *data4);
 extern void sl_gswap8 (void *data8);
-
-/* Generic byte swapping routines for memory aligned quantities */
-extern void sl_gswap2a (void *data2);
-extern void sl_gswap4a (void *data4);
-extern void sl_gswap8a (void *data8);
 
 /* Byte swap macro for the BTime struct */
 #define SL_SWAPBTIME(x) \
