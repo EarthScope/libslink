@@ -70,7 +70,11 @@ sl_savestate (SLCD *slconn, const char *statefile)
                           curstream->seqnum,
                           curstream->timestamp);
 
-    if (fputs (line, fp) == EOF)
+    if (linelen <= 0)
+    {
+      sl_log_r (slconn, 2, 0, "Error creating state file entry for: %s\n", curstream->netstaid);
+    }
+    else if (fputs (line, fp) == EOF)
     {
       sl_log_r (slconn, 2, 0, "cannot write to state file, %s\n", strerror (errno));
       return -1;
@@ -144,6 +148,13 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     netstastr = NULL;
     seqstr = NULL;
     timestr = NULL;
+
+    /* Dear reader: the below line parsing is a classic example of
+       over-optimization and unnecessary obfuscation.  Avoids a few
+       system calls?  Yes.  Saves a few bytes of memory?  Yup.
+       Somewhat clever?  Sure.  Needed in any way?  No.
+       <waggles finger at past self>
+     */
 
     /* Store pointers to space-separated fields & convert spaces to terminators */
     for (idx = 0, fields = 0;
