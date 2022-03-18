@@ -990,7 +990,7 @@ update_stream (SLCD *slconn, const char *payload)
   int month = 0;
   int mday  = 0;
 
-  char timestamp[31] = {0};
+  char timestamp[64] = {0};
   char *cp;
   int count;
 
@@ -1376,7 +1376,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
     return -1;
   }
 
-  strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid));
+  strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid) - 1);
 
   if (selectors == 0 || selectors == NULL)
     newstream->selectors = 0;
@@ -1388,7 +1388,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
   if (timestamp == 0 || timestamp == NULL)
     newstream->timestamp[0] = '\0';
   else
-    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp));
+    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
 
   /* Convert old comma-delimited date-time to ISO-compatible format if needed
    * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
@@ -1469,7 +1469,7 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
   if (timestamp == 0 || timestamp == NULL)
     newstream->timestamp[0] = '\0';
   else
-    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp));
+    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
 
   newstream->next = NULL;
 
@@ -1504,11 +1504,16 @@ sl_request_info (SLCD *slconn, const char *infostr)
 } /* End of sl_request_info() */
 
 /***************************************************************************
- * sl_hascapablity:
+ * @brief Check if server capabilities include specified value
  *
- * Check if server capabilities include specified value.
+ * The server capabilities returned during connection negotiation are
+ * searched for matches to the specified \a capability.
  *
- * Returns non-zero if capability is supported, 0 otherwise.
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] capability Capabilty string to search for
+ *
+ * @retval 0 Capability is not supported or unknown
+ * @retval >0 Capability is supported
  ***************************************************************************/
 int
 sl_hascapability (SLCD *slconn, char *capability)
@@ -1524,7 +1529,6 @@ sl_hascapability (SLCD *slconn, char *capability)
     return 0;
 
   length = strlen (slconn->capabilities);
-
   /* Create capabilities array if needed */
   if (slconn->caparray == NULL)
   {
@@ -1555,7 +1559,7 @@ sl_hascapability (SLCD *slconn, char *capability)
   }
 
   return 0;
-} /* End of sl_terminate() */
+} /* End of sl_hascapablity() */
 
 /***************************************************************************
  * sl_terminate:
