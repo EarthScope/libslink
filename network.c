@@ -307,7 +307,7 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 {
   char sendstr[100]; /* A buffer for command strings */
 
-  sprintf (sendstr, "INFO %s\r", infostr);
+  sprintf (sendstr, "INFO %s\r\n", infostr);
 
   sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n",
             slconn->sladdr, infostr);
@@ -373,8 +373,11 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   }
 
   /* Send HELLO */
-  sprintf (sendstr, "HELLO\r");
-  sl_log_r (slconn, 1, 2, "[%s] sending: HELLO\n", slconn->sladdr);
+  sprintf (sendstr, "HELLO\r\n");
+
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+            (int)strcspn (sendstr, "\r\n"), sendstr);
+
   sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                NULL, 0);
 
@@ -614,8 +617,11 @@ sayhello_int (SLCD *slconn)
   char readbuf[1024];
 
   /* Send HELLO */
-  sprintf (sendstr, "HELLO\r");
-  sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
+  sprintf (sendstr, "HELLO\r\n");
+
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+            (int)strcspn (sendstr, "\r\n"), sendstr);
+
   sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                NULL, 0);
 
@@ -746,10 +752,12 @@ sayhello_int (SLCD *slconn)
   /* Promote protocol if supported by server */
   if (slconn->server_protocols & SLPROTO40)
   {
-    sprintf (sendstr, "SLPROTO 4.0\r");
+    sprintf (sendstr, "SLPROTO 4.0\r\n");
 
     /* Send SLPROTO and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+              (int)strcspn (sendstr, "\r\n"), sendstr);
+
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                              readbuf, sizeof (readbuf));
 
@@ -761,8 +769,8 @@ sayhello_int (SLCD *slconn)
     /* Check response to SLPROTO */
     if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
     {
-      sl_log_r (slconn, 1, 2, "[%s] %s accepted\n", slconn->sladdr,
-                sendstr);
+      sl_log_r (slconn, 1, 2, "[%s] %.*s accepted\n", slconn->sladdr,
+                (int)strcspn (sendstr, "\r\n"), sendstr);
     }
     else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
     {
@@ -772,15 +780,16 @@ sayhello_int (SLCD *slconn)
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
-      sl_log_r (slconn, 1, 2, "[%s] %s not accepted: %s\n", slconn->sladdr,
-                sendstr, readbuf+6);
+      sl_log_r (slconn, 1, 2, "[%s] %.*s not accepted: %s\n", slconn->sladdr,
+                (int)strcspn (sendstr, "\r\n"), sendstr,
+                readbuf + 6);
       return -1;
     }
     else
     {
       sl_log_r (slconn, 2, 0,
-                "[%s] invalid response to SLPROTO command: %.*s\n",
-                slconn->sladdr, bytesread, readbuf);
+                "[%s] invalid response to SLPROTO command: %.*s\n", slconn->sladdr,
+                bytesread, readbuf);
       return -1;
     }
 
@@ -830,10 +839,12 @@ sayhello_int (SLCD *slconn)
     char *extreply = 0;
 
     /* Send EXTREPLY capability flag */
-    sprintf (sendstr, "CAPABILITIES EXTREPLY\r");
+    sprintf (sendstr, "CAPABILITIES EXTREPLY\r\n");
 
     /* Send CAPABILITIES and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+              (int)strcspn (sendstr, "\r\n"), sendstr);
+
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                              readbuf, sizeof (readbuf));
 
@@ -884,14 +895,16 @@ sayhello_int (SLCD *slconn)
   {
     /* Create USERAGENT, optional client name and version */
     sprintf (sendstr,
-             "USERAGENT %s%s%s libslink/%s\r",
+             "USERAGENT %s%s%s libslink/%s\r\n",
              (slconn->clientname) ? slconn->clientname : "",
              (slconn->clientname && slconn->clientversion) ? "/" : "",
              (slconn->clientname && slconn->clientversion) ? slconn->clientversion : "",
              LIBSLINK_VERSION);
 
     /* Send USERAGENT and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+              (int)strcspn (sendstr, "\r\n"), sendstr);
+
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                              readbuf, sizeof (readbuf));
 
@@ -951,8 +964,11 @@ batchmode_int (SLCD *slconn)
     return -1;
 
   /* Send BATCH and recv response */
-  sprintf (sendstr, "BATCH\r");
-  sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
+  sprintf (sendstr, "BATCH\r\n");
+
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+            (int)strcspn (sendstr, "\r\n"), sendstr);
+
   bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                            readbuf, sizeof (readbuf));
 
@@ -1054,9 +1070,11 @@ negotiate_uni_v3 (SLCD *slconn)
       {
 
         /* Build SELECT command, send it and receive response */
-        sprintf (sendstr, "SELECT %.*s\r", sellen, selptr);
-        sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n", slconn->sladdr,
-                  sellen, selptr);
+        sprintf (sendstr, "SELECT %.*s\r\n", sellen, selptr);
+
+        sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+                  (int)strcspn (sendstr, "\r\n"), sendstr);
+
         bytesread = sl_senddata (slconn, (void *)sendstr,
                                  strlen (sendstr), slconn->sladdr,
                                  readbuf, sizeof (readbuf));
@@ -1119,11 +1137,11 @@ negotiate_uni_v3 (SLCD *slconn)
   {
     if (end_time[0] == '\0')
     {
-      sprintf (sendstr, "TIME %.31s\r", begin_time);
+      sprintf (sendstr, "TIME %.31s\r\n", begin_time);
     }
     else
     {
-      sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
+      sprintf (sendstr, "TIME %.31s %.31s\r\n", begin_time, end_time);
     }
 
     sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
@@ -1147,7 +1165,7 @@ negotiate_uni_v3 (SLCD *slconn)
         strlen (curstream->timestamp))
     {
       /* Increment sequence number by 1 */
-      sprintf (sendstr, "%s %0" PRIX64 " %.31s\r", cmd,
+      sprintf (sendstr, "%s %0" PRIX64 " %.31s\r\n", cmd,
                (curstream->seqnum + 1), curstream->timestamp);
 
       sl_log_r (slconn, 1, 1,
@@ -1158,7 +1176,7 @@ negotiate_uni_v3 (SLCD *slconn)
     else
     {
       /* Increment sequence number by 1 */
-      sprintf (sendstr, "%s %0" PRIX64 "\r", cmd,
+      sprintf (sendstr, "%s %0" PRIX64 "\r\n", cmd,
                (curstream->seqnum + 1));
 
       sl_log_r (slconn, 1, 1,
@@ -1171,11 +1189,11 @@ negotiate_uni_v3 (SLCD *slconn)
   {
     if (slconn->dialup)
     {
-      sprintf (sendstr, "FETCH\r");
+      sprintf (sendstr, "FETCH\r\n");
     }
     else
     {
-      sprintf (sendstr, "DATA\r");
+      sprintf (sendstr, "DATA\r\n");
     }
 
     sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n", slconn->sladdr);
@@ -1256,9 +1274,11 @@ negotiate_multi_v3 (SLCD *slconn)
       *sta++ = '\0';
 
     /* Send the STATION command */
-    sprintf (sendstr, "STATION %s %s\r", sta, net);
-    sl_log_r (slconn, 1, 2, "[%s] sending: STATION %s %s\n",
-              curstream->netstaid, sta, net);
+    sprintf (sendstr, "STATION %s %s\r\n", sta, net);
+
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n",
+              curstream->netstaid,
+              (int)strcspn (sendstr, "\r\n"), sendstr);
 
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
                              curstream->netstaid,
@@ -1328,9 +1348,11 @@ negotiate_multi_v3 (SLCD *slconn)
         else
         {
           /* Build SELECT command, send it and receive response */
-          sprintf (sendstr, "SELECT %.*s\r", sellen, selptr);
+          sprintf (sendstr, "SELECT %.*s\r\n", sellen, selptr);
+
           sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n",
-                    curstream->netstaid, sellen, selptr);
+                    curstream->netstaid,
+                    (int)strcspn (sendstr, "\r\n"), sendstr);
 
           bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
                                    curstream->netstaid,
@@ -1407,11 +1429,11 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       if (end_time[0] == '\0')
       {
-        sprintf (sendstr, "TIME %.31s\r", begin_time);
+        sprintf (sendstr, "TIME %.31s\r\n", begin_time);
       }
       else
       {
-        sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
+        sprintf (sendstr, "TIME %.31s %.31s\r\n", begin_time, end_time);
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
                 curstream->netstaid);
@@ -1434,7 +1456,7 @@ negotiate_multi_v3 (SLCD *slconn)
           strlen (curstream->timestamp))
       {
         /* Increment sequence number by 1 */
-        sprintf (sendstr, "%s %0" PRIX64 " %.31s\r", cmd,
+        sprintf (sendstr, "%s %0" PRIX64 " %.31s\r\n", cmd,
                  (curstream->seqnum + 1), curstream->timestamp);
 
         sl_log_r (slconn, 1, 1,
@@ -1444,7 +1466,7 @@ negotiate_multi_v3 (SLCD *slconn)
       }
       else
       { /* Increment sequence number by 1 */
-        sprintf (sendstr, "%s %0" PRIX64 "\r", cmd,
+        sprintf (sendstr, "%s %0" PRIX64 "\r\n", cmd,
                  (curstream->seqnum + 1));
 
         sl_log_r (slconn, 1, 1,
@@ -1458,11 +1480,11 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       if (slconn->dialup)
       {
-        sprintf (sendstr, "FETCH\r");
+        sprintf (sendstr, "FETCH\r\n");
       }
       else
       {
-        sprintf (sendstr, "DATA\r");
+        sprintf (sendstr, "DATA\r\n");
       }
 
       sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n",
@@ -1531,8 +1553,11 @@ negotiate_multi_v3 (SLCD *slconn)
   }
 
   /* Issue END action command */
-  sprintf (sendstr, "END\r");
-  sl_log_r (slconn, 1, 2, "[%s] sending: END\n", slconn->sladdr);
+  sprintf (sendstr, "END\r\n");
+
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+            (int)strcspn (sendstr, "\r\n"), sendstr);
+
   if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
                    slconn->sladdr, (void *)NULL, 0) < 0)
   {
@@ -1840,8 +1865,11 @@ negotiate_v4 (SLCD *slconn)
               slconn->sladdr, stationcnt);
 
     /* Issue END command to finalize stream selection and start streaming */
-    sprintf (sendstr, "END\r");
-    sl_log_r (slconn, 1, 2, "[%s] sending: END\n", slconn->sladdr);
+    sprintf (sendstr, "END\r\n");
+
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
+              (int)strcspn (sendstr, "\r\n"), sendstr);
+
     if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
                      slconn->sladdr, (void *)NULL, 0) < 0)
     {
