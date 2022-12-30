@@ -274,27 +274,20 @@ sl_configlink (SLCD *slconn)
 {
   SOCKET ret = slconn->link;
 
-  if (slconn->proto_major == 4)
+  if (slconn->protocol & SLPROTO40)
   {
     ret = negotiate_v4 (slconn);
   }
-  else if (slconn->multistation)
+  else if (slconn->protocol & SLPROTO3X)
   {
-    if (sl_checkversion (slconn, 2, 5) >= 0)
+    if (slconn->multistation)
     {
       ret = negotiate_multi_v3 (slconn);
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] Protocol version (%d.%d) does not support multi-station protocol\n",
-                slconn->sladdr, slconn->proto_major, slconn->proto_minor);
-      ret = -1;
+      ret = negotiate_uni_v3 (slconn);
     }
-  }
-  else if (slconn->proto_major <= 3)
-  {
-    ret = negotiate_uni_v3 (slconn);
   }
 
   return ret;
@@ -314,25 +307,15 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 {
   char sendstr[100]; /* A buffer for command strings */
 
-  if (sl_checkversion (slconn, 2, 92) >= 0)
-  {
-    sprintf (sendstr, "INFO %s\r", infostr);
+  sprintf (sendstr, "INFO %s\r", infostr);
 
-    sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n",
-              slconn->sladdr, infostr);
+  sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n",
+            slconn->sladdr, infostr);
 
-    if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                     slconn->sladdr, (void *)NULL, 0) < 0)
-    {
-      sl_log_r (slconn, 2, 0, "[%s] error sending INFO request\n", slconn->sladdr);
-      return -1;
-    }
-  }
-  else
+  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
+                   slconn->sladdr, (void *)NULL, 0) < 0)
   {
-    sl_log_r (slconn, 2, 0,
-              "[%s] Protocol version (%d.%d) does not support INFO requests\n",
-              slconn->sladdr, slconn->proto_major, slconn->proto_minor);
+    sl_log_r (slconn, 2, 0, "[%s] error sending INFO request\n", slconn->sladdr);
     return -1;
   }
 
@@ -624,6 +607,9 @@ sayhello_int (SLCD *slconn)
   char *capptr;        /* Pointer to capabilities flags */
   char capflag = 0;    /* CAPABILITIES command is supported by server */
 
+  uint8_t server_major = 0;
+  uint8_t server_minor = 0;
+
   int bytesread = 0;
   char readbuf[1024];
 
@@ -701,8 +687,8 @@ sayhello_int (SLCD *slconn)
   servstr[servcnt + 1] = '\0';
   ret                  = sscanf (servstr, "%s v%" SCNu8 ".%" SCNu8,
                                  &servid[0],
-                                 &slconn->server_major,
-                                 &slconn->server_minor);
+                                 &server_major,
+                                 &server_minor);
 
   if (strncasecmp (servid, "SEEDLINK", 8))
   {
@@ -711,6 +697,12 @@ sayhello_int (SLCD *slconn)
               slconn->sladdr, servid);
     return -1;
   }
+
+  /* Set server protocol supported from version in server identification */
+  if (server_major == 3)
+    slconn->server_protocols |= SLPROTO3X;
+  else if (server_major == 4 && server_minor == 0)
+    slconn->server_protocols |= SLPROTO40;
 
   /* Check capability flags included in HELLO response */
   capptr = slconn->capabilities;
@@ -721,17 +713,23 @@ sayhello_int (SLCD *slconn)
 
     if (!strncmp (capptr, "SLPROTO:", 8))
     {
-      /* This protocol specification overrides any earlier determination */
-      ret = sscanf (capptr, "SLPROTO:%"SCNu8".%"SCNu8,
-                    &slconn->server_major, &slconn->server_minor);
+      ret = sscanf (capptr, "SLPROTO:%" SCNu8 ".%" SCNu8,
+                    &server_major,
+                    &server_minor);
 
       if (ret < 1)
       {
         sl_log_r (slconn, 1, 1,
                   "[%s] could not parse protocol version from SLPROTO flag: %s\n",
                   slconn->sladdr, capptr);
-        slconn->server_major = 0;
-        slconn->server_minor = 0;
+      }
+      else if (server_major == 3)
+      {
+        slconn->server_protocols |= SLPROTO3X;
+      }
+      else if (server_major == 4 && server_minor == 0)
+      {
+        slconn->server_protocols |= SLPROTO40;
       }
 
       capptr += 8;
@@ -745,14 +743,10 @@ sayhello_int (SLCD *slconn)
     capptr++;
   }
 
-  /* Promote protocol to 4.x if supported by server */
-  if (slconn->server_major == 4)
+  /* Promote protocol if supported by server */
+  if (slconn->server_protocols & SLPROTO40)
   {
-    /* Send maximum protocol version supported by library */
-    sprintf (sendstr,
-             "SLPROTO %u.%u\r",
-             SL_PROTO_MAJOR,
-             SL_PROTO_MINOR);
+    sprintf (sendstr, "SLPROTO 4.0\r");
 
     /* Send SLPROTO and recv response */
     sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
@@ -767,8 +761,8 @@ sayhello_int (SLCD *slconn)
     /* Check response to SLPROTO */
     if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
     {
-      sl_log_r (slconn, 1, 2, "[%s] SLPROTO %u.%u accepted\n", slconn->sladdr,
-                slconn->server_major, slconn->server_minor);
+      sl_log_r (slconn, 1, 2, "[%s] %s accepted\n", slconn->sladdr,
+                sendstr);
     }
     else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
     {
@@ -778,8 +772,8 @@ sayhello_int (SLCD *slconn)
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
-      sl_log_r (slconn, 1, 2, "[%s] SLPROTO not accepted: %s\n", slconn->sladdr,
-                readbuf+6);
+      sl_log_r (slconn, 1, 2, "[%s] %s not accepted: %s\n", slconn->sladdr,
+                sendstr, readbuf+6);
       return -1;
     }
     else
@@ -790,16 +784,17 @@ sayhello_int (SLCD *slconn)
       return -1;
     }
 
-    slconn->proto_major = slconn->server_major;
-    slconn->proto_minor = slconn->server_minor;
+    slconn->protocol = SLPROTO40;
+  }
+  /* Default to SeedLink 3.x if no protocol promotion is possible */
+  else if (slconn->server_protocols & SLPROTO3X)
+  {
+    slconn->protocol = SLPROTO3X;
   }
 
   /* Send GETCAPABILITIES if supported by server */
-  if (slconn->proto_major == 4)
+  if (slconn->protocol & SLPROTO40)
   {
-    uint8_t server_major = 0;
-    uint8_t server_minor = 0;
-
     /* Send GETCAPABILITIES and recv response */
     sl_log_r (slconn, 1, 2, "[%s] sending: GETCAPABILITIES\n", slconn->sladdr);
     bytesread = sl_senddata (slconn, "GETCAPABILITIES\r\n", 17, slconn->sladdr,
@@ -827,44 +822,6 @@ sayhello_int (SLCD *slconn)
       slconn->capabilities = strdup(readbuf);
       slconn->caparray = NULL;
     }
-
-    /* Parse highest protocol version from capabilities */
-    capptr = slconn->capabilities;
-    while (*capptr)
-    {
-      while (*capptr == ' ')
-        capptr++;
-
-      if (!strncmp (capptr, "SLPROTO:", 8))
-      {
-        /* This protocol specification overrides any earlier determination */
-        ret = sscanf (capptr, "SLPROTO:%"SCNu8".%"SCNu8,
-                      &server_major, &server_minor);
-
-        if (ret < 1)
-        {
-          sl_log_r (slconn, 1, 1,
-                    "[%s] could not parse protocol version from SLPROTO flag: %s\n",
-                    slconn->sladdr, capptr);
-          server_major = 0;
-          server_minor = 0;
-        }
-        else if (server_major > slconn->server_major)
-        {
-          slconn->server_major = server_major;
-          slconn->server_minor = server_minor;
-        }
-        else if (server_major == slconn->server_major &&
-                 server_minor > slconn->server_minor)
-        {
-          slconn->server_minor = server_minor;
-        }
-
-        capptr += 8;
-      }
-
-      capptr++;
-    }
   }
   /* Otherwise, send CAPABILITIES flags if supported by server */
   else if (capflag)
@@ -872,11 +829,8 @@ sayhello_int (SLCD *slconn)
     char *term1, *term2;
     char *extreply = 0;
 
-    /* Send maximum protocol version and EXTREPLY capability flag */
-    sprintf (sendstr,
-             "CAPABILITIES SLPROTO:%u.%u EXTREPLY\r",
-             SL_PROTO_MAJOR,
-             SL_PROTO_MINOR);
+    /* Send EXTREPLY capability flag */
+    sprintf (sendstr, "CAPABILITIES EXTREPLY\r");
 
     /* Send CAPABILITIES and recv response */
     sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", slconn->sladdr, sendstr);
@@ -925,15 +879,8 @@ sayhello_int (SLCD *slconn)
     sl_log_r (slconn, 1, 1, "[%s] capabilities: %s\n", slconn->sladdr,
               (slconn->capabilities) ? slconn->capabilities : "");
 
-  /* Set protocol version to server version for <= 3 protocols */
-  if (slconn->server_major <= 3)
-  {
-    slconn->proto_major = slconn->server_major;
-    slconn->proto_minor = slconn->server_minor;
-  }
-
   /* Send USERAGENT if protocol >= v4 */
-  if (slconn->proto_major == 4)
+  if (slconn->protocol & SLPROTO40)
   {
     /* Create USERAGENT, optional client name and version */
     sprintf (sendstr,
@@ -1002,14 +949,6 @@ batchmode_int (SLCD *slconn)
 
   if (!slconn)
     return -1;
-
-  if (sl_checkversion (slconn, 3, 1) < 0 || slconn->proto_major != 3)
-  {
-    sl_log_r (slconn, 2, 0,
-              "[%s] Protocol version (%d.%d) does not support the BATCH command\n",
-              slconn->sladdr, slconn->proto_major, slconn->proto_minor);
-    return -1;
-  }
 
   /* Send BATCH and recv response */
   sprintf (sendstr, "BATCH\r");
@@ -1178,25 +1117,17 @@ negotiate_uni_v3 (SLCD *slconn)
      previous sequence number. */
   if (begin_time[0])
   {
-    if (sl_checkversion (slconn, 2, 92) >= 0)
+    if (end_time[0] == '\0')
     {
-      if (end_time[0] == '\0')
-      {
-        sprintf (sendstr, "TIME %.31s\r", begin_time);
-      }
-      else
-      {
-        sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
-      }
-      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-                slconn->sladdr);
+      sprintf (sendstr, "TIME %.31s\r", begin_time);
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] Protocol version (%d.%d) does not support TIME windows\n",
-                slconn->sladdr, slconn->proto_major, slconn->proto_minor);
+      sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
     }
+
+    sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
+              slconn->sladdr);
   }
   else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
   {
@@ -1211,9 +1142,8 @@ negotiate_uni_v3 (SLCD *slconn)
       sprintf (cmd, "DATA");
     }
 
-    /* Append the last packet time if the feature is enabled and server is >= 2.93 */
+    /* Append the last packet time if the feature is enabled */
     if (slconn->lastpkttime &&
-        sl_checkversion (slconn, 2, 93) >= 0 &&
         strlen (curstream->timestamp))
     {
       /* Increment sequence number by 1 */
@@ -1221,7 +1151,7 @@ negotiate_uni_v3 (SLCD *slconn)
                (curstream->seqnum + 1), curstream->timestamp);
 
       sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %0" PRIX64 " (Dec %"PRIu64") at %.31s\n",
+                "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
                 slconn->sladdr, (curstream->seqnum + 1),
                 (curstream->seqnum + 1), curstream->timestamp);
     }
@@ -1475,25 +1405,16 @@ negotiate_multi_v3 (SLCD *slconn)
        previous sequence number. */
     if (begin_time[0])
     {
-      if (sl_checkversion (slconn, 2, 92) >= 0)
+      if (end_time[0] == '\0')
       {
-        if (end_time[0] == '\0')
-        {
-          sprintf (sendstr, "TIME %.31s\r", begin_time);
-        }
-        else
-        {
-          sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
-        }
-        sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-                  curstream->netstaid);
+        sprintf (sendstr, "TIME %.31s\r", begin_time);
       }
       else
       {
-        sl_log_r (slconn, 2, 0,
-                  "[%s] Protocol version (%d.%d) does not support TIME windows\n",
-                  curstream->netstaid, slconn->proto_major, slconn->proto_minor);
+        sprintf (sendstr, "TIME %.31s %.31s\r", begin_time, end_time);
       }
+      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
+                curstream->netstaid);
     }
     else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
     {
@@ -1508,9 +1429,8 @@ negotiate_multi_v3 (SLCD *slconn)
         sprintf (cmd, "DATA");
       }
 
-      /* Append the last packet time if the feature is enabled and server is >= 2.93 */
+      /* Append the last packet time if the feature is enabled */
       if (slconn->lastpkttime &&
-          sl_checkversion (slconn, 2, 93) >= 0 &&
           strlen (curstream->timestamp))
       {
         /* Increment sequence number by 1 */

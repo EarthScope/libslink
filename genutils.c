@@ -96,34 +96,6 @@ sl_doy2md (int year, int jday, int *month, int *mday)
 } /* End of sl_doy2md() */
 
 /***************************************************************************
- * sl_checkversion:
- *
- * Check protocol version number against specified major and minor values
- *
- * Returns:
- *  1 = version is greater than or equal to value specified
- *  0 = no protocol version is known
- * -1 = version is less than value specified
- ***************************************************************************/
-int
-sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor)
-{
-  if (slconn->proto_major == 0)
-  {
-    return 0;
-  }
-  else if (slconn->proto_major > major ||
-           (slconn->proto_major == major && slconn->proto_minor >= minor))
-  {
-    return 1;
-  }
-  else
-  {
-    return -1;
-  }
-} /* End of sl_checkversion() */
-
-/***************************************************************************
  * sl_checkslcd:
  *
  * Check a SeedLink connection description (SLCD struct).
@@ -143,6 +115,41 @@ sl_checkslcd (const SLCD *slconn)
 
   return retval;
 } /* End of sl_checkslconn() */
+
+/***********************************************************************/ /**
+ * @brief Return protocol details for a specified type
+ *
+ * @param protocol Protocol identifier
+ * @param major Pointer to value for major protocol version (optional)
+ * @param major Pointer to value for minor protocol version (optional)
+ *
+ * @return Pointer to string description of protocol version.
+ ***************************************************************************/
+char *
+sl_protocol_details (LIBPROTOCOL protocol, uint8_t *major, uint8_t *minor)
+{
+  switch (protocol)
+  {
+  case SLPROTO3X:
+    if (major)
+      *major = 3;
+    if (minor)
+      *minor = 0;
+    return "3.X";
+  case SLPROTO40:
+    if (major)
+      *major = 4;
+    if (minor)
+      *minor = 0;
+    return "4.0";
+  default:
+    if (major)
+      *major = 0;
+    if (minor)
+      *minor = 0;
+    return "Unknown";
+  }
+}
 
 /**********************************************************************/ /**
  * @brief Return human readable description for specified payload format

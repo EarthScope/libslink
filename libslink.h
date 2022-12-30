@@ -187,9 +187,6 @@ typedef struct SLlog_s
 #define SL_DEFAULT_HOST "localhost"  /**< Default host for libslink */
 #define SL_DEFAULT_PORT "18000"      /**< Default port for libslink */
 
-#define SL_PROTO_MAJOR  4            /**< Maximum major version of protocol supported */
-#define SL_PROTO_MINOR  0            /**< Maximum minor version of protocol supported */
-
 #define SLHEADSIZE          8        /**< V3 Standard SeedLink header size */
 #define SLHEADSIZE_EXT      17       /**< V4 Extended SeedLink header prefix size */
 #define SIGNATURE           "SL"     /**< Standard SeedLink header signature */
@@ -198,6 +195,14 @@ typedef struct SLlog_s
 #define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
 
 #define SL_MIN_BUFFER       48       /**< Minimum data for payload detection and tracking */
+
+typedef enum /**< Protocols supported by the library */
+{
+  UNSET_PROTO = 0,            /*<< Unset value */
+  SLPROTO3X   = 1u << 0,      /*<< SeedLink 3.x */
+  SLPROTO40   = 1u << 1,      /*<< SeedLink 4.0 */
+} LIBPROTOCOL;
+/** @} */
 
 /** @addtogroup payload-types
     @brief Packet payload format and sub-format type values
@@ -271,7 +276,7 @@ typedef struct slpacketinfo_s
 typedef struct slstream_s
 {
   char    netstaid[22];         /**< Station ID in NET_STA format */
-  char   *selectors;	        /**< SeedLink style selectors for this station */
+  char   *selectors;	          /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
   char    timestamp[31];        /**< Time stamp of last packet received */
   struct  slstream_s *next;     /**< The next station in the chain */
@@ -307,10 +312,10 @@ typedef struct stat_s
 /** @brief SeedLink connection description */
 typedef struct slcd_s
 {
-  SLstream   *streams;		/**< Pointer to stream chain (a linked list of structs) */
+  SLstream   *streams;		      /**< Pointer to stream chain (a linked list of structs) */
   char       *sladdr;           /**< The host:port of SeedLink server */
-  char       *begin_time;	/**< Beginning of time window */
-  char       *end_time;		/**< End of time window */
+  char       *begin_time;     	/**< Beginning of time window */
+  char       *end_time;		      /**< End of time window */
 
   int         keepalive;        /**< Interval to send keepalive/heartbeat (secs) */
   int         iotimeout;        /**< Timeout for network I/O operations (seconds) */
@@ -326,16 +331,14 @@ typedef struct slcd_s
   int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
   int8_t      multistation;     /**< Boolean flag to indicate multistation mode */
 
-  uint8_t     proto_major;      /**< Major version of SeedLink protocol in use */
-  uint8_t     proto_minor;      /**< Minor version of SeedLink protocol in use */
-  uint8_t     server_major;     /**< Major version supported by server */
-  uint8_t     server_minor;     /**< Minor version supported by server */
+  LIBPROTOCOL protocol;         /**< Protocol in use */
+  uint32_t    server_protocols; /**< Server protocol versions supported by library */
   char       *capabilities;     /**< Capabilities supported by server */
   char       *caparray;         /**< Array of capabilities */
   const char *info;             /**< INFO request to send */
   char       *clientname;       /**< Client program name */
   char       *clientversion;    /**< Client program version */
-  SOCKET      link;		/**< The network socket descriptor */
+  SOCKET      link;		          /**< The network socket descriptor */
   SLstat     *stat;             /**< Connection state information */
   SLlog      *log;              /**< Logging parameters */
 } SLCD;
@@ -531,6 +534,7 @@ extern uint8_t sl_littleendianhost (void);
 extern int sl_doy2md (int year, int jday, int *month, int *mday);
 extern int sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor);
 extern int sl_checkslcd (const SLCD *slconn);
+extern char *sl_protocol_details (LIBPROTOCOL protocol, uint8_t *major, uint8_t *minor);
 extern const char *sl_formatstr (char format, char subformat);
 extern const char *sl_strerror(void);
 extern int64_t sl_nstime (void);

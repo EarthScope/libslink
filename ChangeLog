@@ -8,6 +8,12 @@
 	formats are supported when reading.
 	- Stream list file support for both NET_STA syntax and legacy format.
 
+	- Warning messages for non-support of features for ancient server
+	versions < 3 are removed.  Capoabilty is not reduced, but the library
+	will not prevent issuing commands against very old servers, which
+	should return errors for unsupported commands.
+
+
 	API changes:
 	* sl_newslcd() now takes two arguments of client name and version.
 	* sl_collect() now takes a buffer provided by the caller as a

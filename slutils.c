@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
+ * Copyright (C) 2022:
  * @author Chad Trabant, IRIS Data Management Center
  ***************************************************************************/
 
@@ -323,8 +323,8 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
         /* Read next header */
         if (slconn->stat->stream_state == HEADER)
         {
-          if ((slconn->proto_major <= 3 && bytesavailable >= SLHEADSIZE) ||
-              (slconn->proto_major == 4 && bytesavailable >= SLHEADSIZE_EXT))
+          if ((slconn->protocol & SLPROTO3X && bytesavailable >= SLHEADSIZE) ||
+              (slconn->protocol & SLPROTO40 && bytesavailable >= SLHEADSIZE_EXT))
           {
             slconn->stat->packetinfo.netstaidlength = 0;
             slconn->stat->packetinfo.netstaid[0] = '\0';
@@ -402,11 +402,11 @@ sl_receive (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint32_t *plbyt
         if (slconn->stat->stream_state == PAYLOAD)
         {
           bytesread = 0;
-          if (slconn->proto_major <= 3)
+          if (slconn->protocol & SLPROTO3X)
           {
             bytesread = receive_v3payload (slconn, plbuffer, plbuffersize, bytesavailable);
           }
-          else if (slconn->proto_major == 4)
+          else if (slconn->protocol & SLPROTO40)
           {
             bytesread = receive_v4payload (slconn, plbuffer, plbuffersize, bytesavailable);
           }
@@ -577,20 +577,22 @@ receive_header (SLCD *slconn, int bytesavailable)
   if (!slconn)
     return -1;
 
-  if (slconn->proto_major <= 3 && bytesavailable >= SLHEADSIZE)
+  if (slconn->protocol & SLPROTO3X && bytesavailable >= SLHEADSIZE)
   {
     readsize = SLHEADSIZE;
     memset(slconn->stat->packetinfo.header + SLHEADSIZE, 0,
            sizeof(slconn->stat->packetinfo.header) - SLHEADSIZE);
   }
-  else if (slconn->proto_major == 4 && bytesavailable >= SLHEADSIZE_EXT)
+  else if (slconn->protocol & SLPROTO40 && bytesavailable >= SLHEADSIZE_EXT)
   {
     readsize = SLHEADSIZE_EXT;
   }
   else
   {
-    sl_log_r (slconn, 2, 0, "[%s] %s() cannot determine read size, proto_major: %d, bytesavailable: %d\n",
-              slconn->sladdr, __func__, slconn->proto_major, bytesavailable);
+    sl_log_r (slconn, 2, 0, "[%s] %s() cannot determine read size, protocol: %s, bytesavailable: %d\n",
+              slconn->sladdr, __func__,
+              sl_protocol_details (slconn->protocol, NULL, NULL),
+              bytesavailable);
     return -1;
   }
 
@@ -1182,10 +1184,8 @@ sl_newslcd (const char *clientname, const char *clientversion)
   slconn->info          = NULL;
   slconn->clientname    = NULL;
   slconn->clientversion = NULL;
-  slconn->proto_major   = 0;
-  slconn->proto_minor   = 0;
-  slconn->server_major  = 0;
-  slconn->server_minor  = 0;
+  slconn->protocol      = UNSET_PROTO;
+  slconn->server_protocols = 0;
 
   /* Allocate the associated persistent state struct */
   slconn->stat = (SLstat *)malloc (sizeof (SLstat));
