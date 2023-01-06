@@ -44,7 +44,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Copyright (C) 2020 Chad Trabant, IRIS Data Management Center
+Copyright (C) 2022 Chad Trabant, EarthScope Data Services
 
 ## Acknowlegements --
 
@@ -53,4 +53,5 @@ patches submitted by others.  Individual acknowlegements are included
 in the ChangeLog.  Thank you!
 
 Initial development at the ORFEUS Data Center/EC MEREDIAN Project
-Continuing maintenance at the IRIS Data Management Center
+Continuing maintenance at the IRIS Data Management Center, now
+EarthScope Data Services.
