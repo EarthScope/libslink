@@ -1,3 +1,6 @@
+2023.007:
+	- Return configured station count from sl_read_streamlist() as intended.
+
 2022.074: version 2.7
 	- Add buffer scanning limit fix from andrei.akimov@berkeley.edu.
 

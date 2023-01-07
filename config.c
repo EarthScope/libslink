@@ -131,7 +131,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     return -1;
   }
 
-  return count;
+  return stacount;
 } /* End of sl_read_streamlist() */
 
 /***************************************************************************
