@@ -172,11 +172,11 @@ extern "C" {
 /** @brief Logging parameters */
 typedef struct SLlog_s
 {
-  void (*log_print) ();   /**< Log message printing function */
-  const char *logprefix;  /**< Log message message prefix */
-  void (*diag_print) ();  /**< Warning & error message printing function */
-  const char *errprefix;  /**< Warning & error message prefix */
-  int verbosity;          /**< Logging verbosity */
+  void (*log_print) (const char *);  /**< Log message printing function */
+  const char *logprefix;             /**< Log message message prefix */
+  void (*diag_print) (const char *); /**< Warning & error message printing function */
+  const char *errprefix;             /**< Warning & error message prefix */
+  int verbosity;                     /**< Logging verbosity */
 } SLlog;
 /** @} */
 
