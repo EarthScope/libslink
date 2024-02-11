@@ -76,9 +76,9 @@ $(LIBMBEDTLS): $(LIBMBEDx509)
 $(LIBMBEDx509): $(LIBMBEDCRYPTO)
 $(LIBMBEDCRYPTO):
 	@# Set modification times of mbedtls source files to containing directory
-	@find mbedtls -name '*.c' -exec touch -c -m -r mbedtls {} \;
+	@find mbedtls -type f -exec touch -c -m -r mbedtls {} \;
 	@echo "Building mbedtls"
-	@$(MAKE) -C mbedtls/library static
+	@$(MAKE) GEN_FILES= -C mbedtls/library static
 
 test check: static FORCE
 	@$(MAKE) -C test test
