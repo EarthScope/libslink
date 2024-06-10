@@ -12,6 +12,8 @@ MINOR_VER = $(shell grep -E 'LIBSLINK_VERSION_MINOR[ \t]+[0-9]+' libslink.h | gr
 PATCH_VER = $(shell grep -E 'LIBSLINK_VERSION_PATCH[ \t]+[0-9]+' libslink.h | grep -Eo '[0-9]+')
 COMPAT_VER = $(MAJOR_VER).0.0
 
+CFLAGS += -Imbedtls/include
+
 # Default settings for install target
 PREFIX ?= /usr/local
 EXEC_PREFIX ?= $(PREFIX)
@@ -69,9 +71,13 @@ $(LIB_SO): $(LIB_LOBJS) mbedtls
 	ln -s $(LIB_SO) $(LIB_SO_MAJOR)
 
 # Build mbedtls library for needed objects
+# Set modification times of mbedtls source files to containing directory
+# to avoid triggering generation of build files.
+mbedtls: CFLAGS += -fPIC
 mbedtls: FORCE
+	@find mbedtls -type f -exec touch -c -m -r mbedtls {} \;
 	@echo "Building mbedtls"
-	@$(MAKE) -C mbedtls lib
+	@$(MAKE) GEN_FILES= -C mbedtls lib
 
 test check: static FORCE
 	@$(MAKE) -C test test
