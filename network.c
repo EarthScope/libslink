@@ -32,20 +32,201 @@
 
 #include "libslink.h"
 
+#include "mbedtls/include/mbedtls/debug.h"
+#include "mbedtls/include/mbedtls/net_sockets.h"
+#include "mbedtls/include/mbedtls/ssl.h"
+#include "mbedtls/include/mbedtls/entropy.h"
+#include "mbedtls/include/mbedtls/ctr_drbg.h"
+#include "mbedtls/include/mbedtls/error.h"
+
+/* Some portable macros to test error conditions */
+#if defined(SLP_WIN)
+#define IS_EINTR(X) ((X) == WSAEINTR)
+#define IS_EWOULDBLOCK() (WSAGetLastError() == WSAEWOULDBLOCK)
+#define IS_ECONNRESET() (WSAGetLastError()== WSAECONNRESET)
+#else
+#define IS_EINTR(X) ((X) == EINTR)
+#define IS_EWOULDBLOCK() (errno == EWOULDBLOCK)
+#define IS_ECONNRESET() (errno == ECONNRESET)
+#endif
+
 /* Functions only used in this source file */
 static int sayhello_int (SLCD *slconn);
 static int batchmode_int (SLCD *slconn);
 static int negotiate_uni_v3 (SLCD *slconn);
 static int negotiate_multi_v3 (SLCD *slconn);
 static int negotiate_v4 (SLCD *slconn);
-static int checksock_int (SOCKET sock, int tosec, int tousec);
-
 static int sockstartup_int (void);
 static int sockconnect_int (SOCKET sock, struct sockaddr *inetaddr, int addrlen);
-static int sockclose_int (SOCKET sock);
 static int socknoblock_int (SOCKET sock);
-static int noblockcheck_int (void);
 static int setsocktimeo_int (SOCKET socket, int timeout);
+static int load_ca_certs (SLCD *slconn);
+
+/* Data structures for TLS connection context */
+typedef struct
+{
+  mbedtls_net_context server_fd;
+  mbedtls_ssl_context ssl;
+  mbedtls_ssl_config conf;
+  mbedtls_ctr_drbg_context ctr_drbg;
+  mbedtls_entropy_context entropy;
+  mbedtls_x509_crt cacert;
+} TLSCTX;
+
+/* Debug output for TLS to stderr */
+void
+tls_debug (void *ctx, int level, const char *file, int line, const char *str)
+{
+  ((void)level);
+  ((void)ctx);
+
+  fprintf (stderr, "%s:%04d: %s", file, line, str);
+}
+
+/* Configure TLS on connection, return 0 on success */
+int
+tls_configure (SLCD *slconn, const char *nodename)
+{
+  TLSCTX *tlsctx         = NULL;
+  const char *seed_value = (slconn->clientname) ? slconn->clientname : "SeedLink Client";
+  char *evalue           = NULL;
+  uint32_t flags;
+  int debug_level = 0;
+  int ret;
+  psa_status_t status;
+
+  sl_log_r (slconn, 1, 1, "[%s] Configuring TLS\n", slconn->sladdr);
+
+  /* Allocate TLS data structure context */
+  if ((slconn->tlsctx = (TLSCTX *)malloc (sizeof (TLSCTX))) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "cannot allocate memory for TLS context\n");
+    return -1;
+  }
+
+  tlsctx = (TLSCTX *)slconn->tlsctx;
+
+  /* Set debug level from environment variable if set */
+  if ((evalue = getenv ("LIBSLINK_TLS_DEBUG")) != NULL)
+  {
+    debug_level = (int)strtol (evalue, NULL, 10);
+    sl_log_r (slconn, 1, 0, "[%s] configuring debug level %d (from LIBSLINK_TLS_DEBUG)\n",
+              slconn->sladdr, debug_level);
+
+    if (debug_level > 0)
+    {
+      mbedtls_debug_set_threshold (debug_level);
+    }
+  }
+
+  tlsctx->server_fd.fd = slconn->link;
+  mbedtls_ssl_init (&tlsctx->ssl);
+  mbedtls_ssl_config_init (&tlsctx->conf);
+  mbedtls_x509_crt_init (&tlsctx->cacert);
+  mbedtls_ctr_drbg_init (&tlsctx->ctr_drbg);
+  mbedtls_entropy_init (&tlsctx->entropy);
+
+  if ((status = psa_crypto_init ()) != PSA_SUCCESS)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] Failed to initialize PSA Crypto implementation: %d\n",
+              slconn->sladdr, (int)status);
+    return -1;
+  }
+
+  if ((ret = mbedtls_ctr_drbg_seed (&tlsctx->ctr_drbg, mbedtls_entropy_func,
+                                    &tlsctx->entropy,
+                                    (const unsigned char *)seed_value,
+                                    strlen (seed_value))) != 0)
+  {
+    sl_log_r (slconn, 2, 0, "mbedtls_ctr_drbg_seed() returned %d\n", ret);
+    return -1;
+  }
+
+  /* Load Certificate Authority certificates */
+  if (load_ca_certs(slconn) == 0)
+  {
+    sl_log_r (slconn, 1, 0, "[%s] No trusted CA certificates found, connections may not work\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 0, "[%s]   CA cert locations can be specified with the following environment variables:\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 0, "[%s]   LIBSLINK_TLS_CERT_FILE and LIBSLINK_TLS_CERT_PATH\n", slconn->sladdr);
+  }
+
+  if ((ret = mbedtls_ssl_config_defaults (&tlsctx->conf,
+                                          MBEDTLS_SSL_IS_CLIENT,
+                                          MBEDTLS_SSL_TRANSPORT_STREAM,
+                                          MBEDTLS_SSL_PRESET_DEFAULT)) != 0)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_config_defaults() returned %d\n",
+              slconn->sladdr, ret);
+    return -1;
+  }
+
+  mbedtls_ssl_conf_authmode (&tlsctx->conf, MBEDTLS_SSL_VERIFY_OPTIONAL);
+  mbedtls_ssl_conf_ca_chain (&tlsctx->conf, &tlsctx->cacert, NULL);
+  mbedtls_ssl_conf_rng (&tlsctx->conf, mbedtls_ctr_drbg_random, &tlsctx->ctr_drbg);
+  mbedtls_ssl_conf_dbg (&tlsctx->conf, tls_debug, NULL);
+
+  if ((ret = mbedtls_ssl_setup (&tlsctx->ssl, &tlsctx->conf)) != 0)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_setup() returned %d\n",
+              slconn->sladdr, ret);
+    return -1;
+  }
+
+  if ((ret = mbedtls_ssl_set_hostname (&tlsctx->ssl, nodename)) != 0)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_set_hostname() returned %d\n",
+              slconn->sladdr, ret);
+    return -1;
+  }
+
+  mbedtls_ssl_set_bio (&tlsctx->ssl, &tlsctx->server_fd,
+                       mbedtls_net_send, mbedtls_net_recv, NULL);
+
+  sl_log_r (slconn, 1, 2, "[%s] Starting TLS handshake\n", slconn->sladdr);
+
+  while ((ret = mbedtls_ssl_handshake (&tlsctx->ssl)) != 0)
+  {
+    if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
+        ret != MBEDTLS_ERR_SSL_WANT_WRITE &&
+        ret != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
+    {
+      sl_log_r (slconn, 2, 0, " [%s] mbedtls_ssl_handshake() returned -0x%x\n",
+                slconn->sladdr, (unsigned int)-ret);
+      return -1;
+    }
+
+    /* Wait for socket availability for 1 second */
+    sl_poll (slconn, 1, 1, 1000);
+  }
+
+  sl_log_r (slconn, 1, 2, "[%s] Verifying TLS server certificate\n", slconn->sladdr);
+
+  if ((flags = mbedtls_ssl_get_verify_result (&tlsctx->ssl)) != 0)
+  {
+    char vrfy_buf[512];
+    sl_log_r (slconn, 2, 0, "[%s] Certificate verification failed\n", slconn->sladdr);
+
+    mbedtls_x509_crt_verify_info (vrfy_buf, sizeof (vrfy_buf), "  ! ", flags);
+    sl_log_r (slconn, 2, 0, "VERIFY INFO: %s\n", vrfy_buf);
+
+    /* Check if continuing despite cerfication failure */
+    if ((evalue = getenv ("LIBSLINK_CERT_UNVERIFIED_OK")) != NULL)
+    {
+      sl_log_r (slconn, 1, 0, "[%s] Continuing with unverified cert [LIBSLINK_CERT_UNVERIFIED_OK]\n",
+                slconn->sladdr);
+    }
+    else
+    {
+      sl_log_r (slconn, 1, 0, "[%s] Connection refused due to certificate verification failure\n",
+                slconn->sladdr);
+      return -1;
+    }
+  }
+
+  sl_log_r (slconn, 1, 1, "[%s] TLS connection established\n", slconn->sladdr);
+
+  return 0;
+} /* End of TLS configuration */
 
 /***************************************************************************
  * sl_connect:
@@ -76,8 +257,7 @@ sl_connect (SLCD *slconn, int sayhello)
   struct addrinfo *addr0 = NULL;
   struct addrinfo *addr  = NULL;
   struct addrinfo hints;
-  SOCKET sock;
-  int on = 1;
+  int valueone = 1;
   int sockstat;
   long int nport;
   char nodename[300] = {0};
@@ -128,12 +308,18 @@ sl_connect (SLCD *slconn, int sayhello)
   }
 
   /* Sanity test the port number */
-  nport = strtoul (nodeport, &tail, 10);
+  nport = strtol (nodeport, &tail, 10);
   if (*tail || (nport <= 0 || nport > 0xffff))
   {
-    sl_log_r (slconn, 2, 0, "server port specified incorrectly\n");
+    sl_log_r (slconn, 2, 0, "server port specified is out of allowed range\n");
     slconn->terminate = 1;
     return -1;
+  }
+
+  /* Set TLS flag if port is the TLS default */
+  if (strcmp(nodeport, SL_SECURE_PORT) == 0)
+  {
+    slconn->tls = 1;
   }
 
   /* Resolve for either IPv4 or IPv6 (PF_UNSPEC) for a TCP stream (SOCK_STREAM) */
@@ -149,11 +335,11 @@ sl_connect (SLCD *slconn, int sayhello)
   }
 
   /* Traverse address results trying to connect */
-  sock = -1;
+  slconn->link = -1;
   for (addr = addr0; addr != NULL; addr = addr->ai_next)
   {
     /* Create socket */
-    if ((sock = socket (addr->ai_family, addr->ai_socktype, addr->ai_protocol)) < 0)
+    if ((slconn->link = socket (addr->ai_family, addr->ai_socktype, addr->ai_protocol)) < 0)
     {
       continue;
     }
@@ -163,7 +349,7 @@ sl_connect (SLCD *slconn, int sayhello)
     {
       timeout = (slconn->iotimeout > 0) ? slconn->iotimeout : -slconn->iotimeout;
 
-      if (setsocktimeo_int (sock, timeout) == 1)
+      if (setsocktimeo_int (slconn->link, timeout) == 1)
       {
         /* Negate timeout to indicate socket timeouts are set */
         slconn->iotimeout = -timeout;
@@ -171,20 +357,19 @@ sl_connect (SLCD *slconn, int sayhello)
     }
 
     /* Connect socket */
-    if ((sockconnect_int (sock, addr->ai_addr, addr->ai_addrlen)))
+    if ((sockconnect_int (slconn->link, addr->ai_addr, addr->ai_addrlen)))
     {
-      sockclose_int (sock);
-      sock = -1;
+      sl_disconnect (slconn);
       continue;
     }
 
     break;
   }
 
-  if (sock < 0)
+  if (slconn->link < 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] Cannot connect: %s\n", slconn->sladdr, sl_strerror ());
-    sockclose_int (sock);
+    sl_disconnect (slconn);
     freeaddrinfo (addr0);
     return -1;
   }
@@ -197,66 +382,76 @@ sl_connect (SLCD *slconn, int sayhello)
   }
 
   /* Set non-blocking IO */
-  if (socknoblock_int (sock))
+  if (socknoblock_int (slconn->link))
   {
-    sl_log_r (slconn, 2, 0, "Error setting socket to non-blocking\n");
-    sockclose_int (sock);
+    sl_log_r (slconn, 2, 0, "[%s] Error setting socket to non-blocking\n", slconn->sladdr);
+    sl_disconnect (slconn);
+    return -1;
   }
 
   /* Wait up to 10 seconds for the socket to be connected */
-  if ((sockstat = checksock_int (sock, 10, 0)) <= 0)
+  if ((sockstat = sl_poll (slconn, 0, 1, 10000)) <= 0)
   {
-    if (sockstat < 0)
-    { /* select() returned error */
+    if (sockstat < 0 && slconn->terminate == 0)
+    {
       sl_log_r (slconn, 2, 1, "[%s] socket connect error\n", slconn->sladdr);
     }
-    else
-    { /* socket time-out */
+    else if (sockstat == 0)
+    {
       sl_log_r (slconn, 2, 1, "[%s] socket connect time-out (10s)\n",
                 slconn->sladdr);
     }
 
-    sockclose_int (sock);
+    sl_disconnect (slconn);
     return -1;
   }
-  else if (!slconn->terminate)
-  { /* socket connected */
-    sl_log_r (slconn, 1, 1, "[%s] network socket opened\n", slconn->sladdr);
 
-    /* Set the SO_KEEPALIVE socket option, although not really useful */
-    if (setsockopt (sock, SOL_SOCKET, SO_KEEPALIVE, (char *)&on, sizeof (on)) < 0)
-      sl_log_r (slconn, 1, 1, "[%s] cannot set SO_KEEPALIVE socket option\n",
-                slconn->sladdr);
-
-    slconn->link = sock;
-
-    if (slconn->batchmode)
-      slconn->batchmode = 1;
-
-    /* Everything should be connected, get capabilities if requested */
-    if (sayhello)
-    {
-      if (sayhello_int (slconn) == -1)
-      {
-        sockclose_int (sock);
-        return -1;
-      }
-    }
-
-    /* Try to enter batch mode if requested */
-    if (slconn->batchmode)
-    {
-      if (batchmode_int (slconn) == -1)
-      {
-        sockclose_int (sock);
-        return -1;
-      }
-    }
-
-    return sock;
+  if (slconn->terminate) /* Check that terminate has not been requested */
+  {
+    sl_disconnect (slconn);
+    return -1;
   }
 
-  return -1;
+  sl_log_r (slconn, 1, 1, "[%s] network socket connected\n", slconn->sladdr);
+
+  /* Set the SO_KEEPALIVE socket option, although not really useful */
+  if (setsockopt (slconn->link, SOL_SOCKET, SO_KEEPALIVE, (void *)&valueone, sizeof (valueone)) < 0)
+    sl_log_r (slconn, 1, 1, "[%s] cannot set SO_KEEPALIVE socket option\n",
+              slconn->sladdr);
+
+  /* Make sure enabled batch mode is in an initial state */
+  if (slconn->batchmode)
+    slconn->batchmode = 1;
+
+  /* Configure TLS */
+  if (slconn->tls && tls_configure (slconn, nodename))
+  {
+    sl_log_r (slconn, 2, 0, "[%s] error configuring TLS\n", slconn->sladdr);
+    sl_disconnect (slconn);
+    return -1;
+  }
+
+  /* Everything should be connected, get capabilities if requested */
+  if (sayhello)
+  {
+    if (sayhello_int (slconn) == -1)
+    {
+      sl_disconnect (slconn);
+      return -1;
+    }
+  }
+
+  /* Try to enter batch mode if requested */
+  if (slconn->batchmode)
+  {
+    if (batchmode_int (slconn) == -1)
+    {
+      sl_disconnect (slconn);
+      return -1;
+    }
+  }
+
+  return slconn->link;
 } /* End of sl_connect() */
 
 /***************************************************************************
@@ -325,7 +520,8 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 /***************************************************************************
  * sl_disconnect:
  *
- * Close the network socket associated with connection
+ * Close the network socket associated with connection and free any
+ * memory allocated for TLS context.
  *
  * Returns -1, historically used to set the old descriptor
  ***************************************************************************/
@@ -334,14 +530,35 @@ sl_disconnect (SLCD *slconn)
 {
   if (slconn->link != -1)
   {
-    sockclose_int (slconn->link);
+#if defined(SLP_WIN)
+    return closesocket (slconn->link);
+#else
+    return close (slconn->link);
+#endif
+
     slconn->link = -1;
 
     sl_log_r (slconn, 1, 1, "[%s] network socket closed\n", slconn->sladdr);
   }
 
+  if (slconn->tlsctx)
+  {
+    TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
+
+    mbedtls_x509_crt_free (&tlsctx->cacert);
+    mbedtls_ssl_free (&tlsctx->ssl);
+    mbedtls_ssl_config_free (&tlsctx->conf);
+    mbedtls_ctr_drbg_free (&tlsctx->ctr_drbg);
+    mbedtls_entropy_free (&tlsctx->entropy);
+    mbedtls_psa_crypto_free();
+
+    free (slconn->tlsctx);
+    slconn->tlsctx = NULL;
+  }
+
   return -1;
 } /* End of sl_disconnect() */
+
 
 /***************************************************************************
  * sl_ping:
@@ -435,8 +652,31 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
              const char *ident, void *resp, int resplen)
 {
   int bytesread = 0; /* bytes read into resp */
+  ssize_t byteswritten;
 
-  if (send (slconn->link, buffer, buflen, 0) < 0)
+  if (slconn->tlsctx != NULL)
+  {
+    TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
+
+    while ((byteswritten = mbedtls_ssl_write (&tlsctx->ssl, buffer, buflen)) <= 0)
+    {
+      if (byteswritten != MBEDTLS_ERR_SSL_WANT_READ &&
+          byteswritten != MBEDTLS_ERR_SSL_WANT_WRITE &&
+          byteswritten != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
+      {
+        break;
+      }
+
+      /* Wait for socket write availability for 1 second */
+      sl_poll (slconn, 0, 1, 1000);
+    }
+  }
+  else
+  {
+    byteswritten = send (slconn->link, buffer, buflen, 0);
+  }
+
+  if (byteswritten < 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n",
               ident,
@@ -458,11 +698,11 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
 /***************************************************************************
  * sl_recvdata:
  *
- * recv() 'maxbytes' data from 'slconn->link' into a specified
- * 'buffer'.  'ident' is a string to be included in error messages for
+ * Read 'maxbytes' data from connection into a specified 'buffer'.
+ * The 'ident' is a string to be included in error messages for
  * identification, usually the address of the remote server.
  *
- * Returns -1 on error/EOF, 0 for no available data and the number
+ * Returns -1 on error, 0 for no available data and the number
  * of bytes read on success.
  ***************************************************************************/
 int64_t
@@ -476,34 +716,81 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
     return -1;
   }
 
-  bytesread = recv (slconn->link, buffer, maxbytes, 0);
-
-  if (bytesread == 0) /* should indicate TCP FIN or EOF */
+  if (slconn->tlsctx != NULL)
   {
-    sl_log_r (slconn, 1, 1, "[%s] recv():%" PRId64 " TCP FIN or EOF received\n",
-              ident, bytesread);
-    return -1;
+    TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
+
+    do
+    {
+      bytesread = mbedtls_ssl_read (&tlsctx->ssl, buffer, maxbytes);
+
+      if (bytesread == MBEDTLS_ERR_SSL_RECEIVED_NEW_SESSION_TICKET)
+      {
+        sl_log_r (slconn, 1, 3, "[%s] TLS 1.3 New Session Ticket received\n", slconn->sladdr);
+        continue;
+      }
+
+      break;
+    } while (1);
+  }
+  else
+  {
+    bytesread = recv (slconn->link, buffer, maxbytes, 0);
+  }
+
+  if (bytesread == 0) /* Indicates TCP FIN or EOF, connection closed */
+  {
+    /* Set termination flag to initial state if connection was closed */
+    slconn->terminate = 1;
+    return 0;
   }
   else if (bytesread < 0)
   {
-    if (noblockcheck_int ())
+    /* Return 0 when no data for nonblocking IO */
+    if ((slconn->tlsctx && (bytesread == MBEDTLS_ERR_SSL_WANT_READ ||
+                            bytesread == MBEDTLS_ERR_SSL_WANT_WRITE)) ||
+        IS_EWOULDBLOCK ())
     {
-      sl_log_r (slconn, 2, 0, "[%s] recv():%" PRId64 " %s\n", ident, bytesread,
-                sl_strerror ());
-      return -1;
+      return 0;
     }
 
-    /* no data available for NONBLOCKing IO */
-    return 0;
+    /* Set termination flag to initial state on connection reset */
+    if ((slconn->tlsctx && bytesread == MBEDTLS_ERR_NET_CONN_RESET) ||
+        IS_ECONNRESET ())
+    {
+      slconn->terminate = 1;
+    }
+    /* Handle all other errors */
+    else
+    {
+      if (slconn->tlsctx)
+      {
+        char error_message[100];
+        mbedtls_strerror (bytesread, error_message, sizeof (error_message));
+
+        sl_log_r (slconn, 2, 0, "[%s] %s(): %" PRId64 " (-0x%" PRIx64 "): %.*s\n",
+                  (ident) ? ident : "", __func__, bytesread, -bytesread,
+                  (int)sizeof (error_message), error_message);
+
+        return -1;
+      }
+      else
+      {
+        sl_log_r (slconn, 2, 0, "[%s] %s(): %" PRId64 ": %s\n",
+                  (ident) ? ident : "", __func__, bytesread, sl_strerror ());
+
+        return -1;
+      }
+    }
   }
 
-  return bytesread;
+  return (bytesread < 0) ? -1 : bytesread;
 } /* End of sl_recvdata() */
 
 /***************************************************************************
  * sl_recvresp:
  *
- * To receive a response to a command recv() one byte at a time until
+ * To receive a response to a command read one byte at a time until
  * '\r\n' or up to 'maxbytes' is read from 'slconn->link' into a
  * specified 'buffer'.  The function will wait up to 30 seconds for a
  * response to be recv'd.  'command' is a string to be included in
@@ -520,7 +807,6 @@ int
 sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
              const char *command, const char *ident)
 {
-
   int bytesread = 0;     /* total bytes read */
   int recvret   = 0;     /* return from sl_recvdata */
   int ackcnt    = 0;     /* counter for the read loop */
@@ -542,7 +828,7 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     /* Trap door for termination */
     if (slconn->terminate)
     {
-      return -1;
+      return 0;
     }
 
     if (recvret > 0)
@@ -588,6 +874,59 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
 } /* End of sl_recvresp() */
 
 /***************************************************************************
+ * Poll a socket for read and/or write ability using select() for a
+ * specified amount of time.
+ *
+ * The timeout is specified in milliseconds.
+ *
+ * Interrupted select() calls are retried until the timeout expires
+ * unless the connection termination flag is set (slconn->terminate).
+ *
+ * Returns:
+ * >=1 : success
+ *   0 : if time-out expires
+ *  <0 : errors
+ ***************************************************************************/
+int
+sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
+{
+  fd_set readset;
+  fd_set writeset;
+  struct timeval to;
+  int retries = 0;
+  int ret;
+
+  if (!slconn)
+    return -1;
+
+  if (timeout_ms < 0)
+    return -1;
+
+  FD_ZERO (&readset);
+  FD_ZERO (&writeset);
+
+  if (readability)
+    FD_SET (slconn->link, &readset);
+
+  if (writability)
+    FD_SET (slconn->link, &writeset);
+
+  to.tv_sec  = timeout_ms / 1000;
+  to.tv_usec = (timeout_ms % 1000) * 1000;
+
+  do
+  {
+    ret = select (slconn->link + 1, &readset, &writeset, NULL, &to);
+
+    /* Limit retries to 100 */
+    if (retries++ > 100)
+      break;
+  } while (IS_EINTR (ret) && slconn->terminate == 0);
+
+  return ret;
+}
+
+/***************************************************************************
  * sayhello_int:
  *
  * Send the HELLO and other commands to determine server capabilities.
@@ -605,7 +944,7 @@ sayhello_int (SLCD *slconn)
   int sitecnt = 0;
   char sendstr[100];   /* A buffer for command strings */
   char servstr[200];   /* The remote server ident */
-  char sitestr[100];   /* The site/data center ident */
+  char sitestr[200];   /* The site/data center ident */
   char servid[100];    /* Server ID string, i.e. 'SeedLink' */
   char *capptr;        /* Pointer to capabilities flags */
   char capflag = 0;    /* CAPABILITIES command is supported by server */
@@ -683,11 +1022,12 @@ sayhello_int (SLCD *slconn)
   sl_log_r (slconn, 1, 1, "[%s] connected to: %s\n", slconn->sladdr, servstr);
   sl_log_r (slconn, 1, 1, "[%s] organization: %s\n", slconn->sladdr, sitestr);
 
-  /* Parse old-school server ID and version from the returned string.
+  /* Parse server ID and version from the returned string.
    * The expected format at this point is:
    * "SeedLink v#.# <optional text>"
    * where 'SeedLink' is case insensitive and '#.#' is the server/protocol version.
    */
+
   /* Add a space to the end to allowing parsing when the optionals are not present */
   servstr[servcnt]     = ' ';
   servstr[servcnt + 1] = '\0';
@@ -795,45 +1135,33 @@ sayhello_int (SLCD *slconn)
 
     slconn->protocol = SLPROTO40;
   }
-  /* Default to SeedLink 3.x if no protocol promotion is possible */
+  /* Otherwise use SeedLink 3.x if supported */
   else if (slconn->server_protocols & SLPROTO3X)
   {
     slconn->protocol = SLPROTO3X;
   }
+  else
+  {
+    sl_log_r (slconn, 2, 0, "[%s] no supported protocol found\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 1, "[%s] server ID: %s\n", slconn->sladdr, servstr);
+    sl_log_r (slconn, 1, 1, "[%s] capabilities: %s\n", slconn->sladdr,
+              (slconn->capabilities) ? slconn->capabilities : "");
+    return -1;
+  }
 
-  /* Send GETCAPABILITIES if supported by server */
+  /* Request INFO CAPABILTIES if protocol 4.0 */
   if (slconn->protocol & SLPROTO40)
   {
-    /* Send GETCAPABILITIES and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: GETCAPABILITIES\n", slconn->sladdr);
-    bytesread = sl_senddata (slconn, "GETCAPABILITIES\r\n", 17, slconn->sladdr,
-                             readbuf, sizeof (readbuf));
-
-    if (bytesread < 0)
-    { /* Error from sl_senddata() */
-      return -1;
-    }
-
-    /* Response is a string of space-separated flags terminated with \r\n */
-    if (bytesread > 2)
-    {
-      char *cp = readbuf + (bytesread-1);
-
-      /* Trim space, \r, and \n while terminating response string */
-      while (*cp == ' ' || *cp == '\r' || *cp == '\n')
-        *cp-- = '\0';
-
-      if (slconn->capabilities)
-        free (slconn->capabilities);
-      if (slconn->caparray)
-        free (slconn->caparray);
-
-      slconn->capabilities = strdup(readbuf);
-      slconn->caparray = NULL;
-    }
+    // TODO, fetch INFO CAPABILITIES, parse JSON and extract capabilities string
   }
-  /* Otherwise, send CAPABILITIES flags if supported by server */
-  else if (capflag)
+
+  /* Report server capabilities */
+  if (slconn->capabilities)
+    sl_log_r (slconn, 1, 1, "[%s] server capabilities: %s\n", slconn->sladdr,
+              (slconn->capabilities) ? slconn->capabilities : "");
+
+  /* Send CAPABILITIES flags if supported by server and protocol 3.x */
+  if (capflag && slconn->protocol & SLPROTO3X)
   {
     char *term1, *term2;
     char *extreply = 0;
@@ -884,11 +1212,6 @@ sayhello_int (SLCD *slconn)
       return -1;
     }
   }
-
-  /* Report server capabilities */
-  if (slconn->capabilities)
-    sl_log_r (slconn, 1, 1, "[%s] capabilities: %s\n", slconn->sladdr,
-              (slconn->capabilities) ? slconn->capabilities : "");
 
   /* Send USERAGENT if protocol >= v4 */
   if (slconn->protocol & SLPROTO40)
@@ -1749,8 +2072,7 @@ negotiate_v4 (SLCD *slconn)
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "%s %" PRIu64 "%s%s%s\r",
-                  (slconn->dialup) ? "FETCH" : "DATA",
+                  "DATA %" PRIu64 "%s%s%s\r",
                   (curstream->seqnum + 1),
                   begin_time,
                   (end_time[0]) ? " " : "",
@@ -1759,8 +2081,7 @@ negotiate_v4 (SLCD *slconn)
       else
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "%s -1 %s%s%s\r",
-                  (slconn->dialup) ? "FETCH" : "DATA",
+                  "DATA -1 %s%s%s\r",
                   begin_time,
                   (end_time[0]) ? " " : "",
                   (end_time[0]) ? end_time : "");
@@ -1771,15 +2092,13 @@ negotiate_v4 (SLCD *slconn)
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "%s %" PRIu64 "\r",
-                  (slconn->dialup) ? "FETCH" : "DATA",
+                  "DATA %" PRIu64 "\r",
                   (curstream->seqnum + 1));
       }
       else
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "%s\r",
-                  (slconn->dialup) ? "FETCH" : "DATA");
+                  "DATA\r");
       }
     }
 
@@ -1864,8 +2183,8 @@ negotiate_v4 (SLCD *slconn)
     sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n",
               slconn->sladdr, stationcnt);
 
-    /* Issue END command to finalize stream selection and start streaming */
-    sprintf (sendstr, "END\r\n");
+    /* Issue END or ENDFETCH command to finalize stream selection and start streaming */
+    sprintf (sendstr, (slconn->dialup) ? "ENDFETCH" : "END\r\n");
 
     sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
               (int)strcspn (sendstr, "\r\n"), sendstr);
@@ -1888,49 +2207,6 @@ negotiate_v4 (SLCD *slconn)
 
   return (errorcnt) ? -1 : slconn->link;
 } /* End of negotiate_v4() */
-
-/***************************************************************************
- * Check a socket for write ability using select() and read ability
- * using recv(... MSG_PEEK).  Time-out values are also passed (seconds
- * and microseconds) for the select() call.
- *
- * Returns:
- *  1 = success
- *  0 = if time-out expires
- * -1 = errors
- ***************************************************************************/
-static int
-checksock_int (SOCKET sock, int tosec, int tousec)
-{
-  int sret;
-  int ret = -1; /* default is failure */
-  char testbuf[1];
-  fd_set checkset;
-  struct timeval to;
-
-  FD_ZERO (&checkset);
-  FD_SET (sock, &checkset);
-
-  to.tv_sec  = tosec;
-  to.tv_usec = tousec;
-
-  /* Check write ability with select() */
-  if ((sret = select (sock + 1, NULL, &checkset, NULL, &to)) > 0)
-    ret = 1;
-  else if (sret == 0)
-    ret = 0; /* time-out expired */
-
-  /* Check read ability with recv() */
-  if (ret && (recv (sock, testbuf, sizeof (char), MSG_PEEK)) <= 0)
-  {
-    if (!noblockcheck_int ())
-      ret = 1; /* no data for non-blocking IO */
-    else
-      ret = -1;
-  }
-
-  return ret;
-}
 
 /***************************************************************************
  * Startup the network socket layer.  At the moment this is only meaningful
@@ -1967,33 +2243,18 @@ sockconnect_int (SOCKET sock, struct sockaddr *inetaddr, int addrlen)
 #if defined(SLP_WIN)
   if ((connect (sock, inetaddr, addrlen)) == SOCKET_ERROR)
   {
-    if (WSAGetLastError () != WSAEWOULDBLOCK)
+    if (WSAGetLastError () != WSAEINPROGRESS && WSAGetLastError () != WSAEWOULDBLOCK)
       return -1;
   }
 #else
   if ((connect (sock, inetaddr, addrlen)) == -1)
   {
-    if (errno != EINPROGRESS)
+    if (errno != EINPROGRESS && errno != EWOULDBLOCK)
       return -1;
   }
 #endif
 
   return 0;
-}
-
-/***************************************************************************
- * Close a network socket.
- *
- * Returns -1 on errors and 0 on success.
- ***************************************************************************/
-static int
-sockclose_int (SOCKET sock)
-{
-#if defined(SLP_WIN)
-  return closesocket (sock);
-#else
-  return close (sock);
-#endif
 }
 
 /***************************************************************************
@@ -2019,29 +2280,6 @@ socknoblock_int (SOCKET sock)
 
 #endif
 
-  return 0;
-}
-
-/***************************************************************************
- * Check global status for wether blocking would occur.
- *
- * Return -1 on error and 0 on success (meaning no data for a non-blocking
- * socket).
- ***************************************************************************/
-static int
-noblockcheck_int (void)
-{
-#if defined(SLP_WIN)
-  if (WSAGetLastError () != WSAEWOULDBLOCK)
-    return -1;
-
-#else
-  if (errno != EWOULDBLOCK)
-    return -1;
-
-#endif
-
-  /* no data available for NONBLOCKing IO */
   return 0;
 }
 
@@ -2099,4 +2337,117 @@ setsocktimeo_int (SOCKET socket, int timeout)
 #endif
 
   return 1;
+}
+
+/***************************************************************************
+ * Load Certificate Authority certs for TLS connection cert verification.
+ *
+ * CA certs are loaded from the following locations (in order):
+ * - Environment variable LIBSLINK_TLS_CERT_FILE
+ * - Environment variable LIBSLINK_TLS_CERT_PATH (all files in path)
+ * - Known CA cert files and paths
+ *
+ * Returns number of CA certs files/paths loaded.
+ ***************************************************************************/
+static int
+load_ca_certs (SLCD *slconn)
+{
+  TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
+  int ca_loaded  = 0;
+  char *evalue   = NULL;
+  int ret;
+
+  /* Common locations for Certificate Authority files on Linux/BSD systems */
+  char *ca_known_files[] = {
+      "/etc/ssl/cert.pem",
+      "/etc/ssl/certs/ca-certificates.crt",
+      "/etc/pki/tls/certs/ca-bundle.crt",
+      "/etc/ssl/ca-bundle.pem",
+      "/etc/pki/tls/cacert.pem",
+      "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"};
+
+  char *ca_known_paths[] = {
+      "/etc/ssl/certs",
+      "/etc/pki/tls/certs"};
+
+  /* Read trusted CA file */
+  if ((evalue = getenv ("LIBSLINK_CA_CERT_FILE")) != NULL)
+  {
+    sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert(s) [LIBSLINK_CA_CERT_FILE] from (%s)\n",
+              slconn->sladdr, evalue);
+
+    if ((ret = mbedtls_x509_crt_parse_file (&tlsctx->cacert, evalue)) != 0)
+    {
+      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_file() returned -0x%x\n",
+                slconn->sladdr, (unsigned int)-ret);
+      return -1;
+    }
+
+    ca_loaded += 1;
+  }
+
+  /* Read trusted CA files from directory */
+  if ((evalue = getenv ("LIBSLINK_CA_CERT_PATH")) != NULL)
+  {
+    sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert(s) [LIBSLINK_CA_CERT_PATH] from path (%s)\n",
+              slconn->sladdr, evalue);
+
+    if ((ret = mbedtls_x509_crt_parse_path (&tlsctx->cacert, evalue)) != 0)
+    {
+      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_path() returned -0x%x\n",
+                slconn->sladdr, (unsigned int)-ret);
+      return -1;
+    }
+
+    ca_loaded += 1;
+  }
+
+  /* If no CA certs loaded yet, search for known locations and load */
+  if (ca_loaded == 0)
+  {
+    /* Search known CA file locations, stop after finding one */
+    for (int i = 0; i < sizeof(ca_known_files) / sizeof(ca_known_files[0]); i++)
+    {
+      if (access (ca_known_files[i], R_OK) != 0)
+      {
+        continue;
+      }
+
+      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert file (%s)\n",
+                slconn->sladdr, ca_known_files[i]);
+
+      if ((ret = mbedtls_x509_crt_parse_file (&tlsctx->cacert, ca_known_files[i])) != 0)
+      {
+        sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_file(%s) returned -0x%x\n",
+                  slconn->sladdr, ca_known_files[i], (unsigned int)-ret);
+        return -1;
+      }
+
+      ca_loaded += 1;
+      break;
+    }
+
+    /* Search known CA cert path locations, read all locations */
+    for (int i = 0; i < sizeof(ca_known_paths) / sizeof(ca_known_paths[0]); i++)
+    {
+      if (access (ca_known_paths[i], R_OK | X_OK) != 0)
+      {
+        continue;
+      }
+
+      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert files from path (%s)\n",
+                slconn->sladdr, ca_known_paths[i]);
+
+      if ((ret = mbedtls_x509_crt_parse_path (&tlsctx->cacert, ca_known_paths[i])) != 0)
+      {
+        sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_path(%s) returned -0x%x\n",
+                  slconn->sladdr, ca_known_paths[i], (unsigned int)-ret);
+        return -1;
+      }
+
+      ca_loaded += 1;
+    }
+  }
+
+  return ca_loaded;
 }

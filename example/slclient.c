@@ -46,7 +46,7 @@ static short int verbose  = 0;
 static short int ppackets = 0;
 static char *statefile    = 0; /* state file for saving/restoring state */
 
-static SLCD *slconn; /* connection parameters */
+static SLCD *slconn = NULL; /* connection parameters */
 
 static void packet_handler (const SLpacketinfo *packetinfo,
                             const char *payload, uint32_t payloadlen);
@@ -57,9 +57,8 @@ int
 main (int argc, char **argv)
 {
   const SLpacketinfo *packetinfo = NULL;
-  uint32_t maxpayloadsize = 262144;
-  uint32_t plbuffersize = 0;
   char *plbuffer = NULL;
+  uint32_t plbuffersize = 16384;
   int status;
 
 #ifndef WIN32
@@ -90,6 +89,13 @@ main (int argc, char **argv)
     return -1;
   }
 
+  /* Allocate payload buffer */
+  if ((plbuffer = (char *)malloc (plbuffersize)) == NULL)
+  {
+    sl_log (2, 0, "Memory allocation failed\n");
+    return -1;
+  }
+
   /* Connection options can be set */
   //slconn->dialup = 1;
   //slconn->noblock = 1;
@@ -97,8 +103,7 @@ main (int argc, char **argv)
 
   /* Loop with the connection manager */
   while ((status = sl_collect (slconn, &packetinfo,
-                               &plbuffer, &plbuffersize,
-                               maxpayloadsize)) != SLTERMINATE)
+                               plbuffer, plbuffersize)) != SLTERMINATE)
   {
     if (status == SLPACKET)
     {
@@ -107,9 +112,12 @@ main (int argc, char **argv)
     }
     else if (status == SLTOOLARGE)
     {
-      /* Here we could increase the maxpayloadsize to accommodate if desired */
+      /* Here we could increase the payload buffer size to accommodate if desired.
+       * If you wish to increase the buffer size be sure to copy any data that might
+       * have already been collected from the old buffer to the new.  realloc() does this. */
       sl_log (2, 0, "received payload length %u too large for max buffer of %u\n",
-              packetinfo->payloadlength, maxpayloadsize);
+              packetinfo->payloadlength, plbuffersize);
+
       break;
     }
     else if (status == SLNOPACKET)
@@ -123,11 +131,13 @@ main (int argc, char **argv)
   }
 
   /* Make sure everything is shut down and save the state file */
-  if (slconn->link != -1)
-    sl_disconnect (slconn);
+  sl_disconnect (slconn);
 
   if (statefile)
     sl_savestate (slconn, statefile);
+
+  sl_freeslcd (slconn);
+  free (plbuffer);
 
   return 0;
 } /* End of main() */
@@ -175,7 +185,7 @@ packet_handler (const SLpacketinfo *packetinfo,
                   packetinfo->payloadlength);
 
     if (verbose || ppackets)
-      sl_msr_print (slconn->log, msr, ppackets);
+      sl_msr_print (slconn->log, msr, ppackets - 1);
   }
   else
   {
@@ -259,9 +269,9 @@ parameter_proc (int argcount, char **argvec)
       fprintf (stderr, "Unknown option: %s\n", argvec[optind]);
       exit (1);
     }
-    else if (!slconn->sladdr)
+    else if (slconn->sladdr == NULL)
     {
-      slconn->sladdr = argvec[optind];
+      slconn->sladdr = strdup(argvec[optind]);
     }
     else
     {
@@ -292,10 +302,6 @@ parameter_proc (int argcount, char **argvec)
     usage ();
     exit (1);
   }
-
-  /* If verbosity is 2 or greater print detailed packet infor */
-  if (verbose >= 2)
-    ppackets = 1;
 
   /* Load the stream list from a file if specified */
   if (streamfile)

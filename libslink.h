@@ -105,6 +105,7 @@ extern "C" {
     #define snprintf _snprintf
     #define vsnprintf _vsnprintf
     #define strncasecmp _strnicmp
+    #define access _access
   #endif
 
 #elif defined(__sun__) || defined(__sun)
@@ -184,23 +185,23 @@ typedef struct SLlog_s
     @brief Definitions and functions related to SeedLink connections
     @{ */
 
-#define SL_DEFAULT_HOST "localhost"  /**< Default host for libslink */
-#define SL_DEFAULT_PORT "18000"      /**< Default port for libslink */
+#define SL_DEFAULT_HOST  "localhost" /**< Default host for libslink */
+#define SL_DEFAULT_PORT  "18000"     /**< Default port for libslink */
+#define SL_SECURE_PORT   "18500"     /**< Recognized TLS port */
 
-#define SLHEADSIZE          8        /**< V3 Standard SeedLink header size */
-#define SLHEADSIZE_EXT      17       /**< V4 Extended SeedLink header prefix size */
-#define SIGNATURE           "SL"     /**< Standard SeedLink header signature */
-#define SIGNATURE_EXT       "SE"     /**< Extended SeedLink header signature */
-#define INFOSIGNATURE       "SLINFO" /**< SeedLink INFO packet signature */
+#define SLHEADSIZE_V3        8        /**< V3 SeedLink header size */
+#define SLHEADSIZE_V4       17       /**< V4 SeedLink header size */
+#define SIGNATURE_V3        "SL"     /**< V3 SeedLink header signature */
+#define SIGNATURE_V4        "SE"     /**< V4 SeedLink header signature */
+#define INFOSIGNATURE       "SLINFO" /**< SeedLink V3 INFO packet signature */
 #define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
-
-#define SL_MIN_BUFFER       48       /**< Minimum data for payload detection and tracking */
+#define SL_MIN_PAYLOAD      64       /**< Minimum data for payload detection and tracking */
 
 typedef enum /**< Protocols supported by the library */
 {
-  UNSET_PROTO = 0,            /*<< Unset value */
-  SLPROTO3X   = 1u << 0,      /*<< SeedLink 3.x */
-  SLPROTO40   = 1u << 1,      /*<< SeedLink 4.0 */
+  UNSET_PROTO = 0, /*<< Unset value */
+  SLPROTO3X   = 1, /*<< SeedLink 3.x */
+  SLPROTO40   = 2, /*<< SeedLink 4.0 */
 } LIBPROTOCOL;
 /** @} */
 
@@ -262,7 +263,6 @@ typedef enum /**< Protocols supported by the library */
 /** @brief SeedLink packet information */
 typedef struct slpacketinfo_s
 {
-  char  header[SLHEADSIZE_EXT]; /**< Raw packet header */
   uint64_t seqnum;              /**< Packet sequence number */
   uint32_t payloadlength;       /**< Packet payload length */
   uint32_t payloadcollected;    /**< Packet payload collected so far */
@@ -275,11 +275,11 @@ typedef struct slpacketinfo_s
 /** @brief Stream information */
 typedef struct slstream_s
 {
-  char    netstaid[22];         /**< Station ID in NET_STA format */
-  char   *selectors;	          /**< SeedLink style selectors for this station */
+  char     netstaid[22];        /**< Station ID in NET_STA format */
+  char    *selectors;	          /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
-  char    timestamp[31];        /**< Time stamp of last packet received */
-  struct  slstream_s *next;     /**< The next station in the chain */
+  char     timestamp[31];       /**< Time stamp of last packet received */
+  struct   slstream_s *next;    /**< The next station in the chain */
 } SLstream;
 
 /** @brief Connection state information */
@@ -289,8 +289,6 @@ typedef struct stat_s
   int64_t keepalive_time;       /**< Keepalive time stamp */
   int64_t netto_time;           /**< Network timeout time stamp */
   int64_t netdly_time;          /**< Network re-connect delay time stamp */
-
-  char *payload;                /**< Pointer to start of payload buffer */
 
   enum                          /**< Connection state */
   {
@@ -312,24 +310,24 @@ typedef struct stat_s
 /** @brief SeedLink connection description */
 typedef struct slcd_s
 {
-  SLstream   *streams;		      /**< Pointer to stream chain (a linked list of structs) */
+  SLstream   *streams;		      /**< Pointer to list of streams */
   char       *sladdr;           /**< The host:port of SeedLink server */
   char       *begin_time;     	/**< Beginning of time window */
   char       *end_time;		      /**< End of time window */
 
-  int         keepalive;        /**< Interval to send keepalive/heartbeat (secs) */
+  int         keepalive;        /**< Interval to send keepalive/heartbeat (seconds) */
   int         iotimeout;        /**< Timeout for network I/O operations (seconds) */
-  int         netto;            /**< Idle network timeout (secs) */
-  int         netdly;           /**< Network reconnect delay (secs) */
+  int         netto;            /**< Idle network timeout (seconds) */
+  int         netdly;           /**< Network reconnect delay (seconds) */
 
   int8_t      noblock;          /**< Control blocking on collection */
   int8_t      dialup;           /**< Boolean flag to indicate dial-up mode */
   int8_t      batchmode;        /**< Batch mode (1 - requested, 2 - activated) */
 
   int8_t      lastpkttime;      /**< Boolean flag to control last packet time usage */
-  int8_t      terminate;        /**< Boolean flag to control connection termination */
+  int8_t      terminate;        /**< Flag to control connection termination */
   int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
-  int8_t      multistation;     /**< Boolean flag to indicate multistation mode */
+  int8_t      multistation;     /**< Boolean flag to indicate v3 multistation mode */
 
   LIBPROTOCOL protocol;         /**< Protocol in use */
   uint32_t    server_protocols; /**< Server protocol versions supported by library */
@@ -338,17 +336,18 @@ typedef struct slcd_s
   const char *info;             /**< INFO request to send */
   char       *clientname;       /**< Client program name */
   char       *clientversion;    /**< Client program version */
-  SOCKET      link;		          /**< The network socket descriptor */
+  SOCKET      link;             /**< The network socket descriptor */
+  int         tls;              /**< TLS connection flag */
+  void       *tlsctx;           /**< TLS context */
   SLstat     *stat;             /**< Connection state information */
   SLlog      *log;              /**< Logging parameters */
+
+  uint8_t     recvbuffer[16384];/**< Network receive buffer */
+  uint32_t    recvdatalen;      /**< Length of data in receive buffer */
 } SLCD;
 
 extern int sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
-                       char **plbuffer, uint32_t *plbuffersize,
-                       uint32_t maxbuffersize);
-
-extern const SLpacketinfo *sl_receive (SLCD *slconn, char *plbuffer,
-                                       uint32_t plbufferlength, uint32_t *plbytes);
+                       char *plbuffer, uint32_t plbuffersize);
 extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
 extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
@@ -378,6 +377,7 @@ extern int64_t sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
                             const char *ident);
 extern int sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
                         const char *command, const char *ident);
+extern int sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms);
 /** @} */
 
 /** @addtogroup logging

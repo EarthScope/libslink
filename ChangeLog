@@ -1,4 +1,4 @@
-2022.02x:
+2024.02x:
 	- Update internal sequence numbers to unsigned 64-bit values.
 	- Header contains separate major, minor, patch versioning,
         thanks @yensoon2!
@@ -12,6 +12,14 @@
 	versions < 3 are removed.  Capoabilty is not reduced, but the library
 	will not prevent issuing commands against very old servers, which
 	should return errors for unsupported commands.
+	
+	- Add TLS (SSL) support for encrypted connections.  The following
+	environment variables allow for debugging and providing locations of
+	Certificate Authorities to use:
+	LIBSLINK_CA_CERT_FILE = location of a CA cert file to load
+	LIBSLINK_CA_CERT_PATH = path to CA cert files to load
+	LIBSLINK_TLS_DEBUG = TLS debugging output level (integer)
+	LIBSLINK_CERT_UNVERIFIED_OK = Allow unverified certs (for TLS 1.2)
 
 
 	API changes:

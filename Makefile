@@ -32,11 +32,8 @@ LIB_LOBJS = $(LIB_SRCS:.c=.lo)
 LIB_NAME = libslink
 LIB_A = $(LIB_NAME).a
 
-LIBMBEDTLS = mbedtls/library/libmbedtls.a
-LIBMBEDx509 = mbedtls/library/libmbedx509.a
-LIBMBEDCRYPTO = mbedtls/library/libmbedcrypto.a
-
 OS := $(shell uname -s)
+ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 
 # Build dynamic (.dylib) on macOS/Darwin, otherwise shared (.so)
 ifeq ($(OS), Darwin)
@@ -58,34 +55,30 @@ static: $(LIB_A)
 shared dynamic: $(LIB_SO)
 
 # Build static library
-$(LIB_A): $(LIB_OBJS) $(LIBMBEDTLS) $(LIBMBEDx509) $(LIBMBEDCRYPTO)
+$(LIB_A): $(LIB_OBJS) mbedtls
 	@echo "Building static library $(LIB_A)"
 	$(RM) -f $(LIB_A)
-	$(AR) -crs $(LIB_A) $(LIB_OBJS) $(LIBMBEDTLS) $(LIBMBEDx509) $(LIBMBEDCRYPTO)
+	$(AR) -crs $(LIB_A) $(LIB_OBJS) $(wildcard mbedtls/library/*.o)
 
 # Build shared/dynamic library
-$(LIB_SO): $(LIB_LOBJS)
+$(LIB_SO): $(LIB_LOBJS) mbedtls
 	@echo "Building shared library $(LIB_SO)"
 	$(RM) -f $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LIB_OPTS) -o $(LIB_SO) $(LIB_LOBJS)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(LIB_OPTS) -o $(LIB_SO) $(LIB_LOBJS) $(wildcard mbedtls/library/*.o)
 	ln -s $(LIB_SO) $(LIB_SO_BASE)
 	ln -s $(LIB_SO) $(LIB_SO_MAJOR)
 
-# Build static mbedtls components
-$(LIBMBEDTLS): $(LIBMBEDx509)
-$(LIBMBEDx509): $(LIBMBEDCRYPTO)
-$(LIBMBEDCRYPTO):
-	@# Set modification times of mbedtls source files to containing directory
-	@find mbedtls -type f -exec touch -c -m -r mbedtls {} \;
+# Build mbedtls library for needed objects
+mbedtls: FORCE
 	@echo "Building mbedtls"
-	@$(MAKE) GEN_FILES= -C mbedtls/library static
+	@$(MAKE) -C mbedtls lib
 
 test check: static FORCE
 	@$(MAKE) -C test test
 
 clean:
 	@$(RM) $(LIB_OBJS) $(LIB_LOBJS) $(LIB_A) $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE)
-	@$(MAKE) -C mbedtls/library clean
+	@$(MAKE) -C mbedtls clean
 	@echo "All clean."
 
 install: shared
