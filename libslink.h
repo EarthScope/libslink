@@ -75,6 +75,8 @@ extern "C" {
   #include <process.h>
   #include <io.h>
 
+  #define R_OK 4
+
   /* For MSVC 2012 and earlier define standard int types, otherwise use inttypes.h */
   #if defined(_MSC_VER) && _MSC_VER <= 1700
     typedef signed char int8_t;

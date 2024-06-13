@@ -12,8 +12,6 @@ MINOR_VER = $(shell grep -E 'LIBSLINK_VERSION_MINOR[ \t]+[0-9]+' libslink.h | gr
 PATCH_VER = $(shell grep -E 'LIBSLINK_VERSION_PATCH[ \t]+[0-9]+' libslink.h | grep -Eo '[0-9]+')
 COMPAT_VER = $(MAJOR_VER).0.0
 
-CFLAGS += -Imbedtls/include
-
 # Default settings for install target
 PREFIX ?= /usr/local
 EXEC_PREFIX ?= $(PREFIX)
@@ -33,6 +31,8 @@ LIB_LOBJS = $(LIB_SRCS:.c=.lo)
 
 LIB_NAME = libslink
 LIB_A = $(LIB_NAME).a
+
+CFLAGS += -Imbedtls/include
 
 OS := $(shell uname -s)
 ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))

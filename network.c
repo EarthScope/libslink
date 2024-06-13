@@ -652,7 +652,7 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
              const char *ident, void *resp, int resplen)
 {
   int bytesread = 0; /* bytes read into resp */
-  ssize_t byteswritten;
+  int64_t byteswritten;
 
   if (slconn->tlsctx != NULL)
   {
@@ -2430,7 +2430,7 @@ load_ca_certs (SLCD *slconn)
     /* Search known CA cert path locations, read all locations */
     for (int i = 0; i < sizeof(ca_known_paths) / sizeof(ca_known_paths[0]); i++)
     {
-      if (access (ca_known_paths[i], R_OK | X_OK) != 0)
+      if (access (ca_known_paths[i], R_OK) != 0)
       {
         continue;
       }

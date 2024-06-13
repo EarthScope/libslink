@@ -4,34 +4,39 @@
 
 NODEBUG=1
 
-INCS = /I.
+INCS = /I. /Imbedtls\include
 OPTS = /O2 /D_CRT_SECURE_NO_WARNINGS
 LIB = libslink.lib
 DLL = libslink.dll
 
 OBJS=	gswap.obj	\
-	unpack.obj	\
+	unpack.obj		\
 	msrecord.obj	\
 	genutils.obj	\
 	strutils.obj	\
-	logging.obj	\
-	network.obj	\
+	logging.obj		\
+	network.obj		\
 	statefile.obj	\
-	config.obj	\
-	slutils.obj	\
+	config.obj		\
+	slutils.obj		\
 	globmatch.obj
 
-all: lib
+all: mbedtls-lib lib
+
+# Build mbedtls library by running cmake to build NMake files and then nmake
+mbedtls-lib:
+	@pushd mbedtls && cmake -DENABLE_TESTING=Off -DENABLE_PROGRAMS=Off -G "NMake Makefiles" -S . -B build && $(MAKE) /NOLOGO /f Makefile lib /$(MAKEFLAGS) & popd
 
 lib: $(OBJS)
-	link.exe /lib /nologo /out:$(LIB) $(OBJS)
+	link.exe /lib /nologo /out:$(LIB) $(OBJS) mbedtls\library\CMakeFiles\mbedtls.dir\*.obj mbedtls\library\CMakeFiles\mbedx509.dir\*.obj mbedtls\library\CMakeFiles\mbedcrypto.dir\*.obj
 
 dll: $(OBJS)
-	link.exe /dll /nologo /out:$(DLL) $(OBJS)
+	link.exe /dll /nologo /out:$(DLL) $(OBJS) mbedtls\library\CMakeFiles\mbedtls.dir\*.obj mbedtls\library\CMakeFiles\mbedx509.dir\*.obj mbedtls\library\CMakeFiles\mbedcrypto.dir\*.obj
 
 .c.obj:
-   $(CC) /nologo $(CFLAGS) $(INCS) $(OPTS) /c $< 
+   $(CC) /nologo $(CFLAGS) $(INCS) $(OPTS) /c $<
 
 # Clean-up directives
 clean:
 	-del a.out core *.o *.obj *% *~ $(LIB) $(DLL)
+	@pushd mbedtls && $(MAKE) /NOLOGO /f Makefile clean /$(MAKEFLAGS) & popd
