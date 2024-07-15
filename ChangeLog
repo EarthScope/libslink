@@ -21,6 +21,9 @@
 	LIBSLINK_TLS_DEBUG = TLS debugging output level (integer)
 	LIBSLINK_CERT_UNVERIFIED_OK = Allow unverified certs (for TLS 1.2)
 
+	- Add sl_payload_summary() and sl_payload_info() for extracting
+	basic details from known payload types.
+
 
 	API changes:
 	* sl_newslcd() now takes two arguments of client name and version.
@@ -44,6 +47,7 @@
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
 	* sl_addstream() takes NET_STA ID instead of separeate net and sta.
 	* Remove sl_gswap3() and all sl_gswapXa() routines.
+	* Remove all miniSEED specific routines and structures.
 
 2020.048:
 	- Support M SEED quality code.

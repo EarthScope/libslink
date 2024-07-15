@@ -678,119 +678,68 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 static int
 update_stream (SLCD *slconn, const char *payload)
 {
+  SLpacketinfo *packetinfo = NULL;
   SLstream *curstream;
-  int swapflag = 0;
   int updates  = 0;
 
-  uint16_t year;
-  uint16_t yday;
-  uint16_t fsec;
-  uint32_t nsec;
-  uint8_t hour;
-  uint8_t min;
-  uint8_t sec;
-  int month = 0;
-  int mday  = 0;
-
-  char timestamp[64] = {0};
+  char timestamp[32] = {0};
+  char sourceid[64] = {0};
   char *cp;
   int count;
 
+  if (!slconn || !payload)
+    return -1;
+
+  packetinfo = &slconn->stat->packetinfo;
+
   /* No updates for info and error packets */
-  if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO ||
-      slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
-      (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
-       (slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO ||
-        slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_ERROR)))
+  if (packetinfo->payloadformat == SLPAYLOAD_MSEED2INFO ||
+      packetinfo->payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
+      (packetinfo->payloadformat == SLPAYLOAD_JSON &&
+       (packetinfo->payloadsubformat == SLPAYLOAD_JSON_INFO ||
+        packetinfo->payloadsubformat == SLPAYLOAD_JSON_ERROR)))
   {
     return 0;
   }
 
-  /* miniSEED 2 */
-  if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2)
+  /* Extract start time stamp and source ID (if needed) from payload if miniSEED */
+  if (packetinfo->payloadformat == SLPAYLOAD_MSEED2 ||
+      packetinfo->payloadformat == SLPAYLOAD_MSEED3)
   {
-    /* Copy time fields from fixed header */
-    memcpy (&year, payload + 20, sizeof (uint16_t));
-    memcpy (&yday, payload + 22, sizeof (uint16_t));
-    hour = payload[24];
-    min = payload[25];
-    sec = payload[26];
-    memcpy (&fsec, payload + 28, sizeof (uint16_t));
-
-    /* Determine if byte swapping is needed by testing for bogus year/day values */
-    if (year < 1900 || year > 2100 || yday < 1 || yday > 366)
-      swapflag = 1;
-
-    if (swapflag)
+    if (sl_payload_info (slconn->log, packetinfo,
+                         payload, packetinfo->payloadlength,
+                         (packetinfo->netstaidlength == 0) ? sourceid : NULL, sizeof (sourceid),
+                         timestamp, sizeof (timestamp),
+                         NULL, NULL) == -1)
     {
-      sl_gswap2 (&year);
-      sl_gswap2 (&yday);
-      sl_gswap2 (&fsec);
+      sl_log_r (slconn, 2, 0, "[%s] %s(): cannot extract payload info for miniSEED\n",
+                slconn->sladdr, __func__);
+      return -1;
     }
 
-    sl_doy2md (year, yday, &month, &mday);
-
-    snprintf (timestamp, sizeof(timestamp),
-              "%04d-%02d-%02dT%02d:%02d:%02d.%04dZ",
-              year, month, mday, hour, min, sec, fsec);
-
-    /* Generate NET_STA string if not already set */
-    if (slconn->stat->packetinfo.netstaidlength == 0)
+    /* Set NET_STA ID if it was not included in SeedLink header (e.g. v3 protocol) */
+    if (packetinfo->netstaidlength == 0)
     {
-      count = sl_strncpclean (slconn->stat->packetinfo.netstaid,
-                              payload + 18, 2);
-      slconn->stat->packetinfo.netstaid[count++] = '_';
-      count += sl_strncpclean (slconn->stat->packetinfo.netstaid + count,
-                               payload + 8, 5);
-      slconn->stat->packetinfo.netstaidlength = count;
-    }
-  }
-  /* miniSEED 3 */
-  else if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED3)
-  {
-    /* Copy time fields from fixed header */
-    memcpy (&year, payload + 8, sizeof (uint16_t));
-    memcpy (&yday, payload + 10, sizeof (uint16_t));
-    hour = payload[12];
-    min = payload[13];
-    sec = payload[14];
-    memcpy (&nsec, payload + 4, sizeof (uint32_t));
-
-    /* Determine if byte swapping is needed by testing for host endianness */
-    if (!sl_littleendianhost())
-      swapflag = 1;
-
-    if (swapflag)
-    {
-      sl_gswap2 (&year);
-      sl_gswap2 (&yday);
-      sl_gswap4 (&nsec);
-    }
-
-    sl_doy2md (year, yday, &month, &mday);
-
-    snprintf (timestamp, sizeof(timestamp),
-              "%04d-%02d-%02dT%02d:%02d:%02d.%09dZ",
-              year, month, mday, hour, min, sec, nsec);
-
-    /* Extract NET_STA string from FDSN Source Identifier */
-    if (slconn->stat->packetinfo.netstaidlength == 0 &&
-        payload[33] > 10 &&
-        !memcmp (payload + 40, "FDSN:", 5))
-    {
-      /* Copy from ':' to 2nd '_' */
-      if ((cp = strchr (payload + 45, '_')))
+      /* Extract NET_STA from FDSN Source Identifier returned by sl_payload_info() */
+      if (strlen (sourceid) >= 8 && strncmp (sourceid, "FDSN:", 5) == 0)
       {
-        if ((cp = strchr (cp + 1, '_')))
+        /* Copy from ':' to 2nd '_' from "FDSN:NET_STA_LOC_B_S_SS" */
+        if ((cp = strchr (sourceid + 5, '_')))
         {
-          slconn->stat->packetinfo.netstaidlength = cp - payload + 40;
-
-          if (slconn->stat->packetinfo.netstaidlength <
-              sizeof (slconn->stat->packetinfo.netstaid))
+          if ((cp = strchr (cp + 1, '_')))
           {
-            memcpy (slconn->stat->packetinfo.netstaid,
-                    payload + 40,
-                    slconn->stat->packetinfo.netstaidlength);
+            count = (cp - sourceid) - 5;
+
+            if (count >= sizeof (packetinfo->netstaid))
+            {
+              sl_log_r (slconn, 2, 0, "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%d)\n",
+                        slconn->sladdr, __func__, count);
+              return -1;
+            }
+
+            memcpy (packetinfo->netstaid, sourceid + 5, sizeof (packetinfo->netstaid));
+            packetinfo->netstaid[count] = '\0';
+            packetinfo->netstaidlength = count;
           }
         }
       }
@@ -803,7 +752,7 @@ update_stream (SLCD *slconn, const char *payload)
   if (curstream != NULL &&
       strcmp (curstream->netstaid, UNINETSTAID) == 0)
   {
-    curstream->seqnum = slconn->stat->packetinfo.seqnum;
+    curstream->seqnum = packetinfo->seqnum;
     strcpy (curstream->timestamp, timestamp);
 
     return 0;
@@ -813,9 +762,9 @@ update_stream (SLCD *slconn, const char *payload)
   while (curstream != NULL)
   {
     /* Use glob matching to match wildcarded station ID codes */
-    if (sl_globmatch (slconn->stat->packetinfo.netstaid, curstream->netstaid))
+    if (sl_globmatch (packetinfo->netstaid, curstream->netstaid))
     {
-      curstream->seqnum = slconn->stat->packetinfo.seqnum;
+      curstream->seqnum = packetinfo->seqnum;
       strcpy (curstream->timestamp, timestamp);
 
       updates++;
@@ -827,11 +776,10 @@ update_stream (SLCD *slconn, const char *payload)
   /* If no updates then no match was found */
   if (updates == 0)
     sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n",
-              slconn->sladdr, slconn->stat->packetinfo.netstaid);
+              slconn->sladdr, packetinfo->netstaid);
 
   return (updates == 0) ? -1 : 0;
-} /* End of update_stream() */
-
+  } /* End of update_stream() */
 
 /***********************************************************************/ /**
  * @brief Initialize a new ::SLCD

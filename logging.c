@@ -32,7 +32,7 @@ void sl_loginit_main (SLlog *logp, int verbosity,
                       void (*log_print) (const char *), const char *logprefix,
                       void (*diag_print) (const char *), const char *errprefix);
 
-int sl_log_main (SLlog *logp, int level, int verb, const char *format, va_list *varlist);
+int sl_log_main (const SLlog *logp, int level, int verb, const char *format, va_list *varlist);
 
 /* Initialize the global logging parameters */
 SLlog gSLlog = {NULL, NULL, NULL, NULL, 0};
@@ -250,11 +250,11 @@ sl_log_r (const SLCD *slconn, int level, int verb, const char *format, ...)
  * See sl_log_main() description for return values.
  ***************************************************************************/
 int
-sl_log_rl (SLlog *log, int level, int verb, const char *format, ...)
+sl_log_rl (const SLlog *log, int level, int verb, const char *format, ...)
 {
   int retval;
   va_list varlist;
-  SLlog *logp;
+  const SLlog *logp;
 
   if (!log)
     logp = &gSLlog;
@@ -308,7 +308,7 @@ sl_log_rl (SLlog *log, int level, int verb, const char *format, ...)
  * a negative value on error.
  ***************************************************************************/
 int
-sl_log_main (SLlog *logp, int level, int verb, const char *format, va_list *varlist)
+sl_log_main (const SLlog *logp, int level, int verb, const char *format, va_list *varlist)
 {
   static char message[MAX_LOG_MSG_LENGTH];
   int retvalue = 0;

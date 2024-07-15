@@ -150,8 +150,7 @@ static void
 packet_handler (const SLpacketinfo *packetinfo,
                 const char *payload, uint32_t payloadlength)
 {
-  static SLMSrecord *msr = NULL;
-
+  char payloadsummary[128] = {0};
   double dtime;   /* Epoch time */
   double secfrac; /* Fractional part of epoch time */
   time_t itime;   /* Integer part of epoch time */
@@ -178,19 +177,15 @@ packet_handler (const SLpacketinfo *packetinfo,
           timestamp, packetinfo->seqnum, payloadlength,
           sl_formatstr(packetinfo->payloadformat, packetinfo->payloadsubformat));
 
-  /* Process waveform data */
-  if (packetinfo->payloadformat == SLPAYLOAD_MSEED2)
+  /* Print summary of the payload */
+  if (sl_payload_summary (slconn->log, packetinfo, payload, payloadlength,
+                          payloadsummary, sizeof (payloadsummary)) != -1)
   {
-    sl_msr_parse (slconn->log, (const char *)payload, &msr, 1, 0,
-                  packetinfo->payloadlength);
-
-    if (verbose || ppackets)
-      sl_msr_print (slconn->log, msr, ppackets - 1);
+    sl_log (1, 1, "%s\n", payloadsummary);
   }
   else
   {
-    sl_log (1, 1, "Unsupported payload format: %c, subformat: %c\n",
-            packetinfo->payloadformat, packetinfo->payloadsubformat);
+    sl_log (1, 1, "%s() Error generating payload summary\n", __func__);
   }
 
 } /* End of packet_handler() */

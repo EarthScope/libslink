@@ -191,13 +191,15 @@ typedef struct SLlog_s
 #define SL_DEFAULT_PORT  "18000"     /**< Default port for libslink */
 #define SL_SECURE_PORT   "18500"     /**< Recognized TLS port */
 
-#define SLHEADSIZE_V3        8        /**< V3 SeedLink header size */
+#define SLHEADSIZE_V3        8       /**< V3 SeedLink header size */
 #define SLHEADSIZE_V4       17       /**< V4 SeedLink header size */
 #define SIGNATURE_V3        "SL"     /**< V3 SeedLink header signature */
 #define SIGNATURE_V4        "SE"     /**< V4 SeedLink header signature */
 #define INFOSIGNATURE       "SLINFO" /**< SeedLink V3 INFO packet signature */
 #define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
 #define SL_MIN_PAYLOAD      64       /**< Minimum data for payload detection and tracking */
+#define SL_MAX_PAYLOAD      16384    /**< Maximum data for payload detection and tracking */
+#define SL_MAX_NETSTAID     22       /**< Maximum length of NET_STA station ID */
 
 typedef enum /**< Protocols supported by the library */
 {
@@ -268,7 +270,7 @@ typedef struct slpacketinfo_s
   uint64_t seqnum;              /**< Packet sequence number */
   uint32_t payloadlength;       /**< Packet payload length */
   uint32_t payloadcollected;    /**< Packet payload collected so far */
-  char     netstaid[22];        /**< Station ID in NET_STA format */
+  char     netstaid[SL_MAX_NETSTAID]; /**< Station ID in NET_STA format */
   char     payloadformat;       /**< Packet payload format */
   char     payloadsubformat;    /**< Packet payload subformat */
   uint8_t  netstaidlength;      /**< Station ID length */
@@ -277,10 +279,10 @@ typedef struct slpacketinfo_s
 /** @brief Stream information */
 typedef struct slstream_s
 {
-  char     netstaid[22];        /**< Station ID in NET_STA format */
+  char     netstaid[SL_MAX_NETSTAID]; /**< Station ID in NET_STA format */
   char    *selectors;	          /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
-  char     timestamp[31];       /**< Time stamp of last packet received */
+  char     timestamp[32];       /**< Time stamp of last packet received */
   struct   slstream_s *next;    /**< The next station in the chain */
 } SLstream;
 
@@ -344,7 +346,7 @@ typedef struct slcd_s
   SLstat     *stat;             /**< Connection state information */
   SLlog      *log;              /**< Logging parameters */
 
-  uint8_t     recvbuffer[16384];/**< Network receive buffer */
+  uint8_t     recvbuffer[SL_MAX_PAYLOAD]; /**< Network receive buffer */
   uint32_t    recvdatalen;      /**< Length of data in receive buffer */
 } SLCD;
 
@@ -397,7 +399,7 @@ extern int sl_log_r (const SLCD * slconn, int level, int verb, const char *forma
 __attribute__ ((__format__ (__printf__, 4, 5)))
 #endif
 
-extern int sl_log_rl (SLlog *log, int level, int verb, const char *format, ...);
+extern int sl_log_rl (const SLlog *log, int level, int verb, const char *format, ...);
 extern void sl_loginit (int verbosity,
                         void (*log_print) (const char *), const char *logprefix,
                         void (*diag_print) (const char *), const char *errprefix);
@@ -417,121 +419,20 @@ extern int sl_recoverstate (SLCD *slconn, const char *statefile);
 extern int sl_savestate (SLCD *slconn, const char *statefile);
 /** @} */
 
-/** @addtogroup miniseed-record
-    @brief Basic functionality for handling mini SEED records
-
-    @{ */
-
-/** @brief Generic struct for header of miniSEED 2 blockettes */
-struct sl_blkt_head_s
-{
-  uint16_t  blkt_type;
-  uint16_t  next_blkt;
-} SLP_PACKED;
-
-/** @brief SEED binary time (10 bytes) */
-struct sl_btime_s
-{
-  uint16_t  year;
-  uint16_t  day;
-  uint8_t   hour;
-  uint8_t   min;
-  uint8_t   sec;
-  uint8_t   unused;
-  uint16_t  fract;
-} SLP_PACKED;
-
-/** @brief 100 Blockette (12 bytes) */
-struct sl_blkt_100_s
-{
-  uint16_t  blkt_type;
-  uint16_t  next_blkt;
-  float     sample_rate;
-  int8_t    flags;
-  uint8_t   reserved[3];
-} SLP_PACKED;
-
-/** @brief 1000 Blockette (8 bytes) */
-struct sl_blkt_1000_s
-{
-  uint16_t  blkt_type;
-  uint16_t  next_blkt;
-  uint8_t   encoding;
-  uint8_t   word_swap;
-  uint8_t   rec_len;
-  uint8_t   reserved;
-} SLP_PACKED;
-
-/** @brief 1001 Blockette (8 bytes) */
-struct sl_blkt_1001_s
-{
-  uint16_t  blkt_type;
-  uint16_t  next_blkt;
-  int8_t    timing_qual;
-  int8_t    usec;
-  uint8_t   reserved;
-  int8_t    frame_cnt;
-} SLP_PACKED;
-
-/** @brief Fixed section of data header for miniSEED 2 (48 bytes) */
-struct sl_fsdh_s
-{
-  char        sequence_number[6];
-  char        dhq_indicator;
-  char        reserved;
-  char        station[5];
-  char        location[2];
-  char        channel[3];
-  char        network[2];
-  struct sl_btime_s start_time;
-  uint16_t    num_samples;
-  int16_t     samprate_fact;
-  int16_t     samprate_mult;
-  uint8_t     act_flags;
-  uint8_t     io_flags;
-  uint8_t     dq_flags;
-  uint8_t     num_blockettes;
-  int32_t     time_correct;
-  uint16_t    begin_data;
-  uint16_t    begin_blockette;
-} SLP_PACKED;
-
-/* Unpacking/decompression error flag values */
-#define MSD_NOERROR          0        /**< No errors */
-#define MSD_UNKNOWNFORMAT   -1        /**< Unknown data format */
-#define MSD_SAMPMISMATCH    -2        /**< Num. samples in header is not the number unpacked */
-#define MSD_BADSAMPCOUNT    -4        /**< Sample count is bad, negative? */
-#define MSD_STBADLASTMATCH  -5        /**< Steim, last sample does not match */
-#define MSD_STBADCOMPFLAG   -6        /**< Steim, invalid compression flag(s) */
-
-typedef struct SLMSrecord_s {
-  const char            *msrecord;    /**< Pointer to original record */
-  struct sl_fsdh_s       fsdh;        /**< Fixed Section of Data Header */
-  struct sl_blkt_100_s  *Blkt100;     /**< Blockette 100, if present */
-  struct sl_blkt_1000_s *Blkt1000;    /**< Blockette 1000, if present */
-  struct sl_blkt_1001_s *Blkt1001;    /**< Blockette 1001, if present */
-  int32_t               *datasamples; /**< Unpacked 32-bit data samples */
-  int32_t                numsamples;  /**< Number of unpacked samples */
-  int8_t                 unpackerr;   /**< Unpacking/decompression error flag */
-} SLMSrecord;
-
-extern SLMSrecord *sl_msr_new (void);
-extern void sl_msr_free (SLMSrecord **msr);
-extern SLMSrecord *sl_msr_parse (SLlog *log, const char *msrecord, SLMSrecord **msr,
-                                 int8_t blktflag, int8_t unpackflag, int maxreclen);
-extern int sl_msr_print (SLlog *log, SLMSrecord *msr, int details);
-extern char *sl_msr_srcname (SLMSrecord *msr, char *srcname, int8_t quality);
-extern int sl_msr_dsamprate (SLMSrecord *msr, double *samprate);
-extern double sl_msr_dnomsamprate (SLMSrecord *msr);
-extern double sl_msr_depochstime (SLMSrecord *msr);
-/** @} */
-
 /** @addtogroup utility-functions
     @brief General utilities
 
     Utilities and portable wrappers where system differences are present
 
     @{ */
+extern int sl_payload_summary (const SLlog *log, const SLpacketinfo *packetinfo,
+                               const char *plbuffer, uint32_t plbuffer_size,
+                               char *summary, size_t summary_size);
+extern int sl_payload_info (const SLlog *log, const SLpacketinfo *packetinfo,
+                 const char *plbuffer, uint32_t plbuffer_size,
+                 char *sourceid, size_t sourceid_size,
+                 char *starttimestr, size_t starttimestr_size,
+                 double *samplerate,  uint32_t *samplecount);
 extern uint8_t sl_littleendianhost (void);
 extern int sl_doy2md (int year, int jday, int *month, int *mday);
 extern int sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor);
