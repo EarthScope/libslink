@@ -667,7 +667,7 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 /***************************************************************************
  * update_stream:
  *
- * Update the appropriate stream chain entries.  Length of the payload
+ * Update the appropriate stream list entries.  Length of the payload
  * must be at least enough to determine stream details.
  *
  * The slconn->stat->packetinfo.netstaid value is also populated from
@@ -758,7 +758,7 @@ update_stream (SLCD *slconn, const char *payload)
     return 0;
   }
 
-  /* For multi-station mode, search the stream chain and update all matching entries */
+  /* For multi-station mode, search the stream list and update all matching entries */
   while (curstream != NULL)
   {
     /* Use glob matching to match wildcarded station ID codes */
@@ -879,7 +879,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
  * sl_freeslcd:
  *
  * Free all memory associated with a SLCD struct including the
- * associated stream chain and persistent connection state.
+ * associated stream list and persistent connection state.
  *
  ***************************************************************************/
 void
@@ -890,7 +890,7 @@ sl_freeslcd (SLCD *slconn)
 
   curstream = slconn->streams;
 
-  /* Traverse the stream chain and free memory */
+  /* Traverse the stream list and free memory */
   while (curstream != NULL)
   {
     nextstream = curstream->next;
@@ -961,8 +961,12 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
 /***************************************************************************
  * sl_addstream:
  *
- * Add a new stream entry to the stream chain for the given SLCD
+ * Add a new stream entry to the stream list for the given SLCD
  * struct.  No checking is done for duplicate streams.
+ *
+ * The stream list is sorted alphanumerically by network-station ID,
+ * and partitioned by the presence of wildcard characters in the
+ * network-station ID, starting with more specific entries first.
  *
  *  - selectors should be NULL if there are none to use
  *  - seqnum should be SL_UNSETSEQUENCE to start at the next data
@@ -977,26 +981,22 @@ sl_addstream (SLCD *slconn, const char *netstaid,
 {
   SLstream *curstream;
   SLstream *newstream;
-  SLstream *laststream = NULL;
+  SLstream *followstream = NULL;
+  int newparitition = 0;
+  int partition = 0;
 
-  curstream = slconn->streams;
+  if (!slconn || !netstaid)
+    return -1;
 
   /* Sanity, check for a uni-station mode entry */
-  if (curstream)
+  if (slconn->streams)
   {
-    if (strcmp (curstream->netstaid, UNINETSTAID) == 0)
+    if (strcmp (slconn->streams->netstaid, UNINETSTAID) == 0)
     {
       sl_log_r (slconn, 2, 0, "[%s] %s(): uni-station mode already configured!\n",
                 slconn->sladdr, __func__);
       return -1;
     }
-  }
-
-  /* Search the stream chain */
-  while (curstream != NULL)
-  {
-    laststream = curstream;
-    curstream  = curstream->next;
   }
 
   newstream = (SLstream *)malloc (sizeof (SLstream));
@@ -1033,15 +1033,50 @@ sl_addstream (SLCD *slconn, const char *netstaid,
     }
   }
 
-  newstream->next = NULL;
+  /* Search the stream list to find the proper insertion point.
+   * The resulting list is sorted alphanumerically and partitioned by:
+   * 1) no-wildcards in NET_STA, followed by
+   * 2) ? wildcards in NET_STA, followed by
+   * 3) * wildcards in NET_STA. */
+  newparitition = (strchr (netstaid, '*')) ? 3 : (strchr (netstaid, '?')) ? 2 : 1;
+  curstream = slconn->streams;
+  while (curstream)
+  {
+    /* Determine wildcard partition */
+    partition = (strchr (curstream->netstaid, '*')) ? 3 : (strchr (curstream->netstaid, '?')) ? 2 : 1;
 
-  if (slconn->streams == NULL)
-  {
-    slconn->streams = newstream;
+    /* Compare partitions */
+    if (newparitition < partition)
+    {
+      break;
+    }
+    else if (newparitition > partition)
+    {
+      followstream = curstream;
+      curstream = curstream->next;
+      continue;
+    }
+
+    /* Compare alphanumerically */
+    if (strcmp (curstream->netstaid, netstaid) > 0)
+    {
+      break;
+    }
+
+    followstream = curstream;
+    curstream  = curstream->next;
   }
-  else if (laststream)
+
+  /* Add new entry to the list */
+  if (followstream)
   {
-    laststream->next = newstream;
+    newstream->next    = followstream->next;
+    followstream->next = newstream;
+  }
+  else
+  {
+    newstream->next = slconn->streams;
+    slconn->streams = newstream;
   }
 
   slconn->multistation = 1;

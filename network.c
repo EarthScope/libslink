@@ -1365,7 +1365,6 @@ negotiate_uni_v3 (SLCD *slconn)
     }
   }
 
-  /* Point to the stream chain */
   curstream = slconn->streams;
 
   /* Send the selector(s) and check the response(s) */
@@ -1581,10 +1580,9 @@ negotiate_multi_v3 (SLCD *slconn)
     }
   }
 
-  /* Point to the stream chain */
   curstream = slconn->streams;
 
-  /* Loop through the stream chain */
+  /* Loop through the stream list */
   while (curstream != NULL)
   {
     /* Generate independent network and station strings from NET_STA */
@@ -1855,10 +1853,9 @@ negotiate_multi_v3 (SLCD *slconn)
       }
     }
 
-    /* Point to the next stream */
     curstream = curstream->next;
 
-  } /* End of stream and selector config (end of stream chain). */
+  } /* End of stream and selector config (end of stream list). */
 
   /* Fail if no stations were accepted */
   if (!acceptsta)
@@ -1954,10 +1951,9 @@ negotiate_v4 (SLCD *slconn)
     }
   }
 
-  /* Point to the stream chain */
   curstream = slconn->streams;
 
-  /* Loop through the stream chain */
+  /* Loop through the stream list */
   while (curstream != NULL)
   {
     /* Allocate new command in list */
@@ -2114,7 +2110,6 @@ negotiate_v4 (SLCD *slconn)
       }
     }
 
-    /* Point to the next stream */
     curstream = curstream->next;
   } /* End of stream and selector config */
 
