@@ -463,6 +463,102 @@ sl_commadatetime (char *commadatetime, const char *datetime)
   return commadatetime;
 } /* End of sl_commadatetime() */
 
+/**********************************************************************/ /**
+ * @brief Convert SeedLink v3 to v4 selector string if possible
+ *
+ * SeedLink v3 seletcors are recognized in the following form:
+ *
+ *   [LL]CCC[.T]  (where LL and .T are optional)
+ *
+ * Example convesions:
+ *  00BHZ  ->  00_B_H_Z
+ *  BHZ    ->  _B_H_Z
+ *  EH?.D  ->  _E_H_?.D
+ *
+ * This routine does very little validation, invalid input may result in
+ * invalid conversions.
+ *
+ * The output buffer must be large enough to accomodate the converted
+ * selector, a pragmatic maximum is 32 characters.
+ *
+ * @param[out] v4selector Buffer to write v4 selector string
+ * @param[in] selector Input selector
+ *
+ * @returns SeedLink v4 selector string
+ * @retval Pointer to v4 selector string on success
+ * @retval NULL when no conversion was possible
+ ***************************************************************************/
+char *
+sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
+{
+  size_t streamidlength;
+  char *type = NULL;
+  int printed;
+  int idx;
+
+  if (v4selector == NULL || selector == NULL)
+    return NULL;
+
+  /* Check if type is included */
+  if ((type = strchr (selector, '.')))
+  {
+    streamidlength = type - selector;
+  }
+  else
+  {
+    streamidlength = strlen (selector);
+  }
+
+  /* Check for valid v4 stream ID characters */
+  for (idx = 0; idx < streamidlength; idx++)
+  {
+    if (isalnum ((int)selector[idx]) == 0 &&
+        selector[idx] != '?' &&
+        selector[idx] != '*')
+    {
+      return NULL;
+    }
+  }
+
+  /* CCC[.T] -> _B_S_SS[.T] */
+  if (streamidlength == 3)
+  {
+    printed = snprintf (v4selector, v4selectorlength, "_%c_%c_%c%s",
+                        selector[0], selector[1], selector[2],
+                        (type) ? type : "");
+
+    if (printed >= v4selectorlength)
+      return NULL;
+    else
+      return v4selector;
+  }
+  /* LCCC[.T] -> L_B_S_SS[.T] */
+  else if (streamidlength == 4)
+  {
+    printed = snprintf (v4selector, v4selectorlength, "%c_%c_%c_%c%s",
+                        selector[0], selector[1], selector[2], selector[3],
+                        (type) ? type : "");
+
+    if (printed >= v4selectorlength)
+      return NULL;
+    else
+      return v4selector;
+  }
+  /* LLCCC[.T] -> LL_B_S_SS[.T] */
+  else if (streamidlength == 5)
+  {
+    printed = snprintf (v4selector, v4selectorlength, "%c%c_%c_%c_%c%s",
+                        selector[0], selector[1], selector[2], selector[3], selector[4],
+                        (type) ? type : "");
+
+    if (printed >= v4selectorlength)
+      return NULL;
+    else
+      return v4selector;
+  }
+
+  return NULL;
+} /* End of sl_v3to4selector() */
 
 /***************************************************************************
  * sl_usleep:

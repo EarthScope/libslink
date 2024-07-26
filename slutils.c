@@ -1009,14 +1009,14 @@ sl_addstream (SLCD *slconn, const char *netstaid,
 
   strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid) - 1);
 
-  if (selectors == 0 || selectors == NULL)
-    newstream->selectors = 0;
+  if (!selectors)
+    newstream->selectors = NULL;
   else
     newstream->selectors = strdup (selectors);
 
   newstream->seqnum = seqnum;
 
-  if (timestamp == 0 || timestamp == NULL)
+  if (!timestamp)
     newstream->timestamp[0] = '\0';
   else
     strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
@@ -1142,6 +1142,10 @@ sl_request_info (SLCD *slconn, const char *infostr)
  *
  * The server capabilities returned during connection negotiation are
  * searched for matches to the specified \a capability.
+ *
+ * NOTE: Only the capabilities listed in the response to the \a HELLO
+ * command are available for checking.  Full server capabilities are
+ * available with a \a INFO request.
  *
  * @param[in] slconn     SeedLink connection description
  * @param[in] capability Capabilty string to search for (case sensitive)

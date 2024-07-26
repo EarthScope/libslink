@@ -335,7 +335,7 @@ typedef struct slcd_s
 
   LIBPROTOCOL protocol;         /**< Protocol in use */
   uint32_t    server_protocols; /**< Server protocol versions supported by library */
-  char       *capabilities;     /**< Capabilities supported by server */
+  char       *capabilities;     /**< HELLO capabilities supported by server (incomplete) */
   char       *caparray;         /**< Array of capabilities */
   const char *info;             /**< INFO request to send */
   char       *clientname;       /**< Client program name */
@@ -443,6 +443,7 @@ extern const char *sl_strerror(void);
 extern int64_t sl_nstime (void);
 extern char *sl_isodatetime (char *isodatetime, const char *datetime);
 extern char *sl_commadatetime (char *commadatetime, const char *datetime);
+extern char *sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector);
 extern void sl_usleep(unsigned long int useconds);
 
 /*@ @brief For a linked list of strings, as filled by strparse() */

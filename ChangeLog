@@ -7,6 +7,7 @@
 	- Saved state file now using NET_STA syntax. Both new and old
 	formats are supported when reading.
 	- Stream list file support for both NET_STA syntax and legacy format.
+	- Convert v3 selector syntax to v4 when protocol v4 is negotiated.
 
 	- Warning messages for non-support of features for ancient server
 	versions < 3 are removed.  Capoabilty is not reduced, but the library

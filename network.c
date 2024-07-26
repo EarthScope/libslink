@@ -1149,12 +1149,6 @@ sayhello_int (SLCD *slconn)
     return -1;
   }
 
-  /* Request INFO CAPABILTIES if protocol 4.0 */
-  if (slconn->protocol & SLPROTO40)
-  {
-    // TODO, fetch INFO CAPABILITIES, parse JSON and extract capabilities string
-  }
-
   /* Report server capabilities */
   if (slconn->capabilities)
     sl_log_r (slconn, 1, 1, "[%s] server capabilities: %s\n", slconn->sladdr,
@@ -1328,7 +1322,7 @@ batchmode_int (SLCD *slconn)
  * issue the DATA command.  This is compatible with SeedLink Protocol
  * version 2 or greater.
  *
- * If 'selectors' != 0 then the string is parsed on space and each
+ * If 'selectors' is set then the string is parsed on space and each
  * selector is sent.
  *
  * If 'seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume' flag is true
@@ -1374,13 +1368,15 @@ negotiate_uni_v3 (SLCD *slconn)
   /* Point to the stream chain */
   curstream = slconn->streams;
 
-  selptr = curstream->selectors;
-
   /* Send the selector(s) and check the response(s) */
-  if (curstream->selectors != 0)
+  if (curstream->selectors)
   {
+    selptr = curstream->selectors;
+    sellen = 0;
+
     while (1)
     {
+      /* Parse space-separated selectors and submit individually */
       selptr += sellen;
       selptr += strspn (selptr, " ");
       sellen = strcspn (selptr, " ");
@@ -1538,7 +1534,7 @@ negotiate_uni_v3 (SLCD *slconn)
  * Negotiate stream selection with protocol 3 in multi-station mode
  * and issue the END command to start streaming.
  *
- * If 'curstream->selectors' != 0 then the string is parsed on space
+ * If 'curstream->selectors' is set then the string is parsed on spaces
  * and each selector is sent.
  *
  * If 'curstream->seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume'
@@ -1652,14 +1648,15 @@ negotiate_multi_v3 (SLCD *slconn)
       }
     }
 
-    selptr = curstream->selectors;
-    sellen = 0;
-
     /* Send the selector(s) and check the response(s) */
-    if (curstream->selectors != 0)
+    if (curstream->selectors)
     {
+      selptr = curstream->selectors;
+      sellen = 0;
+
       while (1)
       {
+        /* Parse space-separated selectors and submit individually */
         selptr += sellen;
         selptr += strspn (selptr, " ");
         sellen = strcspn (selptr, " ");
@@ -1897,7 +1894,7 @@ negotiate_multi_v3 (SLCD *slconn)
  * Negotiate stream selection with protocol 4 and issue the END
  * command to start streaming.
  *
- * If 'curstream->selectors' != 0 then the string is parsed on space
+ * If 'curstream->selectors' is set then the string is parsed on spaces
  * and each selector is sent.
  *
  * If 'curstream->seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume'
@@ -1908,13 +1905,15 @@ negotiate_multi_v3 (SLCD *slconn)
 static SOCKET
 negotiate_v4 (SLCD *slconn)
 {
-  int time_capability = 0; /* Flag: server supports TIME capability */
   int stationcnt      = 0; /* Station count */
   int errorcnt        = 0; /* Error count */
   int bytesread       = 0;
   int sellen          = 0;
   char *selptr;
   char *cp;
+  char *cmd_selector;
+  char selector[32]   = {0};
+  char v4selector[32] = {0};
   char begin_time[31] = {0};
   char end_time[31]   = {0};
   char sendstr[10];  /* A buffer for small command strings */
@@ -1958,12 +1957,6 @@ negotiate_v4 (SLCD *slconn)
   /* Point to the stream chain */
   curstream = slconn->streams;
 
-  /* Determine if server supports TIME capability */
-  if (sl_hascapability (slconn, "TIME"))
-  {
-    time_capability = 1;
-  }
-
   /* Loop through the stream chain */
   while (curstream != NULL)
   {
@@ -2002,24 +1995,45 @@ negotiate_v4 (SLCD *slconn)
 
     stationcnt++;
 
-    selptr = curstream->selectors;
-    sellen = 0;
-
     /* Send the selector(s) */
-    if (curstream->selectors != 0)
+    if (curstream->selectors)
     {
+      selptr = curstream->selectors;
+      sellen = 0;
+
       while (1)
       {
+      /* Parse space-separated selectors and submit individually */
         selptr += sellen;
         selptr += strspn (selptr, " ");
         sellen = strcspn (selptr, " ");
+
+        if (sellen >= sizeof (selector))
+        {
+          sl_log_r (slconn, 2, 0, "%s() Selector too long: %s\n", __func__, selptr);
+
+          return -1;
+        }
 
         if (sellen == 0)
           break; /* end of while loop */
         else
         {
+          strncpy (selector, selptr, sellen);
+          selector[sellen] = '\0';
+
+          /* Convert selector from v3 to v4 if necessary */
+          if (sl_v3to4selector (v4selector, sizeof (v4selector), selector))
+          {
+            cmd_selector = v4selector;
+          }
+          else
+          {
+            cmd_selector = selector;
+          }
+
           /* Allocate new command in list */
-          if ((cmdptr = (struct cmd_s *)malloc(sizeof(struct cmd_s))) == NULL)
+          if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
           {
             sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
             while (cmdlist)
@@ -2039,8 +2053,8 @@ negotiate_v4 (SLCD *slconn)
 
           /* Generate SELECT command */
           snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                    "SELECT %.*s\r",
-                    sellen, selptr);
+                    "SELECT %s\r",
+                    cmd_selector);
         }
       }
     } /* End of selector processing */
@@ -2064,10 +2078,8 @@ negotiate_v4 (SLCD *slconn)
     strcpy (cmdtail->nsid, curstream->netstaid);
     cmdtail->next = NULL;
 
-    /* Generate DATA or FETCH command with:
-     *   - optional sequence number, INCREMENTED
-     *   - optional time window if supported by server */
-    if (time_capability && begin_time[0])
+    /* Generate DATA or FETCH command with INCREMENTED sequence number */
+    if (begin_time[0])
     {
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
