@@ -9,7 +9,7 @@ OPTS = /O2 /D_CRT_SECURE_NO_WARNINGS
 LIB = libslink.lib
 DLL = libslink.dll
 
-OBJS=	gswap.obj	\
+OBJS= \
 	unpack.obj		\
 	msrecord.obj	\
 	genutils.obj	\

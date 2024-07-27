@@ -448,26 +448,50 @@ extern char *sl_commadatetime (char *commadatetime, const char *datetime);
 extern char *sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector);
 extern void sl_usleep(unsigned long int useconds);
 
-/*@ @brief For a linked list of strings, as filled by strparse() */
-typedef struct SLstrlist_s {
-  char               *element;
-  struct SLstrlist_s *next;
-} SLstrlist;
-
-extern int sl_strparse (const char *string, const char *delim, SLstrlist **list);
 extern int sl_strncpclean (char *dest, const char *source, int length);
 
-/* Generic byte swapping routines */
-extern void sl_gswap2 (void *data2);
-extern void sl_gswap4 (void *data4);
-extern void sl_gswap8 (void *data8);
+/** In-place byte swapping of 2 byte quantity */
+static inline void
+sl_gswap2 (void *data2)
+{
+  uint16_t dat;
 
-/* Byte swap macro for the BTime struct */
-#define SL_SWAPBTIME(x) \
-  sl_gswap2 (x.year);   \
-  sl_gswap2 (x.day);    \
-  sl_gswap2 (x.fract);
-/** @} */
+  memcpy (&dat, data2, 2);
+
+  dat = ((dat & 0xff00) >> 8) | ((dat & 0x00ff) << 8);
+
+  memcpy (data2, &dat, 2);
+}
+
+/** In-place byte swapping of 4 byte quantity */
+static inline void
+sl_gswap4 (void *data4)
+{
+  uint32_t dat;
+
+  memcpy (&dat, data4, 4);
+
+  dat = ((dat & 0xff000000) >> 24) | ((dat & 0x000000ff) << 24) |
+        ((dat & 0x00ff0000) >>  8) | ((dat & 0x0000ff00) <<  8);
+
+  memcpy (data4, &dat, 4);
+}
+
+/** In-place byte swapping of 8 byte quantity */
+static inline void
+sl_gswap8 (void *data8)
+{
+  uint64_t dat;
+
+  memcpy (&dat, data8, sizeof(uint64_t));
+
+  dat = ((dat & 0xff00000000000000) >> 56) | ((dat & 0x00000000000000ff) << 56) |
+        ((dat & 0x00ff000000000000) >> 40) | ((dat & 0x000000000000ff00) << 40) |
+        ((dat & 0x0000ff0000000000) >> 24) | ((dat & 0x0000000000ff0000) << 24) |
+        ((dat & 0x000000ff00000000) >>  8) | ((dat & 0x00000000ff000000) <<  8);
+
+  memcpy (data8, &dat, sizeof(uint64_t));
+}
 
 #ifdef __cplusplus
 }
