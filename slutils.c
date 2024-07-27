@@ -1324,11 +1324,16 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
   {
     *payloadformat = SLPAYLOAD_MSEED3;
 
-    //TODO swap for operation on big endian sid:8, extra:16, payload:32
-    reclen = MS3FSDH_LENGTH                   /* Length of fixed portion of header */
-             + *pMS3FSDH_SIDLENGTH (buffer)   /* Length of source identifier */
-             + *pMS3FSDH_EXTRALENGTH (buffer) /* Length of extra headers */
-             + *pMS3FSDH_DATALENGTH (buffer); /* Length of data payload */
+    if (!sl_littleendianhost ())
+      swapflag = 1;
+
+    uint16_t extralength = HO2u(*pMS3FSDH_EXTRALENGTH (buffer), swapflag);
+    uint32_t datalength = HO2u(*pMS3FSDH_DATALENGTH (buffer), swapflag);
+
+    reclen = MS3FSDH_LENGTH                 /* Length of fixed portion of header */
+             + *pMS3FSDH_SIDLENGTH (buffer) /* Length of source identifier */
+             + extralength                  /* Length of extra headers */
+             + datalength;                  /* Length of data payload */
   }
   else if (MS2_ISVALIDHEADER (buffer))
   {
