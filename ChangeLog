@@ -37,17 +37,14 @@
 	maximum buffer size, the function increases the buffer size as
 	needed to accomodate packets.
 	* sl_collect_nb() removed, non-blocking collection can be performed
-	using sl_collect() or sl_receive() when SLCD.noblock is set.
-	* sl_receive() new fundamental routine receives and parses packet
-	headers and writes payload data to a supplied buffer.  The routine
-	can return partial packets. sl_collect() provides a wrapper that
-	manages a receive buffer for complete packets.
+	using sl_collect() when SLCD.noblock is set.
         * sl_packettype() and sl_sequence() removed, similar details are
 	provided in an SLpacketinfo strucuture.  The historic packet type
 	is no longer derived as the heuristic of blockette discovery is
 	unreliable.
 	to packet payload types and no longer based on an unreliable
 	heuristic of blockette discovery.
+	* sl_checkversion() and sl_checkslcd() removed.
 	* sl_openfile() and sl_readline() removed.
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
 	* sl_addstream() takes NET_STA ID instead of separeate net and sta.

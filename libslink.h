@@ -439,8 +439,6 @@ extern int sl_payload_info (const SLlog *log, const SLpacketinfo *packetinfo,
                  double *samplerate,  uint32_t *samplecount);
 extern uint8_t sl_littleendianhost (void);
 extern int sl_doy2md (int year, int jday, int *month, int *mday);
-extern int sl_checkversion (const SLCD *slconn, uint8_t major, uint8_t minor);
-extern int sl_checkslcd (const SLCD *slconn);
 extern char *sl_protocol_details (LIBPROTOCOL protocol, uint8_t *major, uint8_t *minor);
 extern const char *sl_formatstr (char format, char subformat);
 extern const char *sl_strerror(void);

@@ -95,27 +95,6 @@ sl_doy2md (int year, int jday, int *month, int *mday)
   return 0;
 } /* End of sl_doy2md() */
 
-/***************************************************************************
- * sl_checkslcd:
- *
- * Check a SeedLink connection description (SLCD struct).
- *
- * Returns 0 if pass and -1 if problems were identified.
- ***************************************************************************/
-int
-sl_checkslcd (const SLCD *slconn)
-{
-  int retval = 0;
-
-  if (slconn->streams == NULL && slconn->info == NULL)
-  {
-    sl_log_r (slconn, 2, 0, "%s(): stream chain AND info type are empty\n", __func__);
-    retval = -1;
-  }
-
-  return retval;
-} /* End of sl_checkslconn() */
-
 /***********************************************************************/ /**
  * @brief Return protocol details for a specified type
  *
