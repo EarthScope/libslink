@@ -63,7 +63,7 @@ static int setsocktimeo_int (SOCKET socket, int timeout);
 static int load_ca_certs (SLCD *slconn);
 
 /* Data structures for TLS connection context */
-typedef struct
+typedef struct TLSCTX
 {
   mbedtls_net_context server_fd;
   mbedtls_ssl_context ssl;

@@ -128,7 +128,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
       continue;
     }
 
-    /* Add this stream to the stream chain */
+    /* Add this stream to the stream list */
     if (fields == 2)
     {
       sl_addstream (slconn, netstaid, selectors, SL_UNSETSEQUENCE, NULL);
@@ -176,6 +176,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
  * For example:
  * "IU_COLA:*_B_H_? *_L_H_?"
  * "IU_KONO:B_H_E B_H_N,GE_WLF,MN_AQU:H_H_?"
+ * "IU_KONO:B_H_?:3,GE_WLF:*:3"
  *
  * Returns the number of streams configured or -1 on error.
  ***************************************************************************/
@@ -183,82 +184,45 @@ int
 sl_parse_streamlist (SLCD *slconn, const char *streamlist,
                      const char *defselect)
 {
-  int count = 0;
-  int fields;
+  char *parselist;
+  char *stream;
+  char *nextstream;
+  char *selectors;
+  int streamcount = 0;
 
-  const char *staselect;
-  char *netstaid;
+  if (!slconn || !streamlist)
+    return -1;
 
-  SLstrlist *strlist = NULL; /* split streamlist on ',' */
-  SLstrlist *reqlist = NULL; /* split strlist on ':' */
+  /* Make a copy that can freely be modified */
+  parselist = strdup (streamlist);
 
-  SLstrlist *ringptr = NULL;
-  SLstrlist *reqptr  = NULL;
-
-  /* Parse the streams and selectors */
-  sl_strparse (streamlist, ",", &strlist);
-  ringptr = strlist;
-
-  while (ringptr != 0)
+  stream = parselist;
+  while (stream)
   {
-    staselect = NULL;
-
-    /* Parse reqlist (the 'NET_STA:selector' part) */
-    fields = sl_strparse (ringptr->element, ":", &reqlist);
-    reqptr = reqlist;
-
-    netstaid = reqptr->element;
-
-    if (strlen(netstaid) < 3 || strchr(netstaid, '_') == NULL)
+    /* Determine start of next stream and terminate current stream */
+    if ((nextstream = strchr (stream, ',')) != NULL)
     {
-      sl_log_r (slconn, 2, 0, "not in NET_STA format: %s\n", netstaid);
-      count = -1;
+      *nextstream = '\0';
+      nextstream++;
     }
 
-    if (fields > 1) /* Selectors were included following the ':' */
+    /* Check for first ':' denoting trailing selector(s) */
+    if ((selectors = strchr (stream, ':')) != NULL)
     {
-      reqptr = reqptr->next;
-      staselect = reqptr->element;
-
-      if (strlen (reqptr->element) == 0)
-      {
-        sl_log_r (slconn, 2, 0, "empty selector: %s\n", reqptr->element);
-        count = -1;
-      }
-    }
-    else /* If no specific selectors, use the default */
-    {
-      staselect = defselect;
+      *selectors = '\0';
+      selectors++;
     }
 
-    /* Add to the stream chain */
-    if (count != -1)
-    {
-      sl_addstream (slconn, netstaid, staselect, SL_UNSETSEQUENCE, NULL);
-      count++;
-    }
+    /* Add to the stream list, using default selectors if none parsed */
+    sl_addstream (slconn, stream,
+                  (selectors) ? selectors : defselect,
+                  SL_UNSETSEQUENCE, NULL);
 
-    sl_strparse (NULL, NULL, &reqlist);
-
-    ringptr = ringptr->next;
+    streamcount++;
+    stream = nextstream;
   }
 
-  if (reqlist != NULL)
-  {
-    sl_strparse (NULL, NULL, &reqlist);
-  }
+  free (parselist);
 
-  if (count == 0)
-  {
-    sl_log_r (slconn, 2, 0, "no streams defined in stream list\n");
-  }
-  else if (count > 0)
-  {
-    sl_log_r (slconn, 1, 2, "Parsed %d streams from stream list\n", count);
-  }
-
-  /* Free the ring list */
-  sl_strparse (NULL, NULL, &strlist);
-
-  return count;
+  return streamcount;
 } /* End of sl_parse_streamlist() */
