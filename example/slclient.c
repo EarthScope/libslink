@@ -51,7 +51,12 @@ static SLCD *slconn = NULL; /* connection parameters */
 static void packet_handler (const SLpacketinfo *packetinfo,
                             const char *payload, uint32_t payloadlen);
 static int parameter_proc (int argcount, char **argvec);
+static const char *auth_value (const char *server, void *data);
+static void auth_finish  (const char *server, void *data);
 static void usage (void);
+
+static char auth_buffer[1024] = {0};
+
 
 int
 main (int argc, char **argv)
@@ -231,6 +236,11 @@ parameter_proc (int argcount, char **argvec)
     {
       ppackets = 1;
     }
+    else if (strcmp (argvec[optind], "-A") == 0)
+    {
+      slconn->auth_value = auth_value;
+      slconn->auth_finish = auth_finish;
+    }
     else if (strcmp (argvec[optind], "-nt") == 0)
     {
       slconn->netto = atoi (argvec[++optind]);
@@ -326,6 +336,66 @@ parameter_proc (int argcount, char **argvec)
 } /* End of parameter_proc() */
 
 /***************************************************************************
+ * auth_value:
+ *
+ * A callback function registered at SLCD.auth_value() that should return
+ * a string to be sumitted with the SeedLink AUTH command.
+ *
+ * In this case, the function prompts the user for a username and password
+ * for interactive input.
+ *
+ * Returns authorization value string on success, and NULL on failure
+ ***************************************************************************/
+static const char *
+auth_value (const char *server, void *data)
+{
+  (void)data; /* User-supplied data is not used in this case */
+  char username[256] = {0};
+  char password[256] = {0};
+  int printed;
+
+  fprintf (stderr, "Enter username for %s: ", server);
+  fgets (username, sizeof (username), stdin);
+  username[strlen (username) - 1] = '\0';
+
+  fprintf (stderr, "Enter password: ");
+  fgets (password, sizeof (password), stdin);
+  password[strlen (password) - 1] = '\0';
+
+  /* Create AUTH value of "USERPASS <username> <password>" */
+  printed = snprintf (auth_buffer, sizeof (auth_buffer),
+                      "USERPASS %s %s",
+                      username, password);
+
+  if (printed >= sizeof (auth_buffer))
+  {
+    fprintf (stderr, "%s() Auth value is too large (%d bytes)\n", __func__, printed);
+
+    return NULL;
+  }
+
+  return auth_buffer;
+}
+
+/***************************************************************************
+ * auth_finish:
+ *
+ * A callback function registered at SLCD.auth_finish() that is called
+ * after the AUTH command has been sent to the server.
+ *
+ * In this case, the function clears the memory used to store the
+ * username and password populated by auth_value().
+ ***************************************************************************/
+static void
+auth_finish (const char *server, void *data)
+{
+  (void)data; /* User-supplied data is not used in this case */
+
+  /* Clear memory used to store auth value */
+  memset (auth_buffer, 0, sizeof (auth_buffer));
+}
+
+/***************************************************************************
  * usage:
  * Print the usage message and exit.
  ***************************************************************************/
@@ -338,7 +408,9 @@ usage (void)
            " -V             report program version\n"
            " -h             show this usage message\n"
            " -v             be more verbose, multiple flags can be used\n"
-           " -p             print details of data packets\n\n"
+           " -p             print details of data packets\n"
+           " -A             prompt for authentication details (v4 only)\n"
+           "\n"
            " -nd delay      network re-connect delay (seconds), default 30\n"
            " -nt timeout    network timeout (seconds), re-establish connection if no\n"
            "                  data/keepalives are received in this time, default 600\n"

@@ -333,6 +333,10 @@ typedef struct slcd_s
   int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
   int8_t      multistation;     /**< Boolean flag to indicate v3 multistation mode */
 
+  const char *(*auth_value)(const char *server, void *auth_data); /**< Authorization callback, return authorization value */
+  void      (*auth_finish)(const char *server, void *auth_data); /**< Authorization finish, to free data, etc. */
+  void       *auth_data;        /**< Authorization callback data */
+
   LIBPROTOCOL protocol;         /**< Protocol in use */
   uint32_t    server_protocols; /**< Server protocol versions supported by library */
   char       *capabilities;     /**< HELLO capabilities supported by server (incomplete) */

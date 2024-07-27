@@ -813,6 +813,10 @@ sl_newslcd (const char *clientname, const char *clientversion)
   slconn->begin_time = NULL;
   slconn->end_time   = NULL;
 
+  slconn->auth_value  = NULL;
+  slconn->auth_finish = NULL;
+  slconn->auth_data   = NULL;
+
   slconn->noblock      = 0;
   slconn->dialup       = 0;
   slconn->batchmode    = 0;

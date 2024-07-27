@@ -942,7 +942,7 @@ sayhello_int (SLCD *slconn)
   int ret     = 0;
   int servcnt = 0;
   int sitecnt = 0;
-  char sendstr[100];   /* A buffer for command strings */
+  char sendstr[1024];  /* A buffer for command strings */
   char servstr[200];   /* The remote server ident */
   char sitestr[200];   /* The site/data center ident */
   char servid[100];    /* Server ID string, i.e. 'SeedLink' */
@@ -1252,6 +1252,74 @@ sayhello_int (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0,
                 "[%s] invalid response to USERAGENT command: %.*s\n",
+                slconn->sladdr, bytesread, readbuf);
+      return -1;
+    }
+  }
+
+  /* Send AUTH if auth_value() callback set and protocol >= v4 */
+  if (slconn->auth_value &&
+      slconn->protocol & SLPROTO40)
+  {
+    /* Call user-supplied callback function that returns authorization value */
+    const char *auth_value = slconn->auth_value (slconn->sladdr, slconn->auth_data);
+
+    if (strlen(auth_value) > sizeof (sendstr) - 10)
+    {
+      sl_log_r (slconn, 2, 0, "[%s] authorization value too large (%d bytes), maximum: %d bytes\n",
+                slconn->sladdr, (int)strlen (auth_value), (int)sizeof (sendstr) - 10);
+
+      if (slconn->auth_finish)
+        slconn->auth_finish (slconn->sladdr, slconn->auth_data);
+
+      return -1;
+    }
+
+    /* Create full AUTH command */
+    sprintf (sendstr,
+             "AUTH %s\r\n",
+             auth_value);
+
+    /* Call user-supplied finish callback function */
+    if (slconn->auth_finish)
+      slconn->auth_finish (slconn->sladdr, slconn->auth_data);
+
+    /* Send AUTH and recv response */
+    sl_log_r (slconn, 1, 2, "[%s] sending: AUTH ...\n", slconn->sladdr);
+
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
+                             readbuf, sizeof (readbuf));
+
+    /* Clear memory with authorization value */
+    memset (sendstr, 0, sizeof (sendstr));
+
+    if (bytesread < 0)
+    { /* Error from sl_senddata() */
+      return -1;
+    }
+
+    /* Check response to AUTH */
+    if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
+    {
+      sl_log_r (slconn, 1, 2, "[%s] AUTH accepted\n",
+                slconn->sladdr);
+    }
+    else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
+    {
+      char *cp = readbuf + (bytesread-1);
+
+      /* Trim space, \r, and \n while terminating response string */
+      while (*cp == ' ' || *cp == '\r' || *cp == '\n')
+        *cp-- = '\0';
+
+      sl_log_r (slconn, 1, 2, "[%s] AUTH not accepted: %s\n", slconn->sladdr,
+                readbuf+6);
+      return -1;
+    }
+    else
+    {
+      sl_log_r (slconn, 2, 0,
+                "[%s] invalid response to AUTH command: %.*s\n",
                 slconn->sladdr, bytesread, readbuf);
       return -1;
     }
