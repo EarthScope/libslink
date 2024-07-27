@@ -447,7 +447,6 @@ extern char *sl_isodatetime (char *isodatetime, const char *datetime);
 extern char *sl_commadatetime (char *commadatetime, const char *datetime);
 extern char *sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector);
 extern void sl_usleep(unsigned long int useconds);
-
 extern int sl_strncpclean (char *dest, const char *source, int length);
 
 /** In-place byte swapping of 2 byte quantity */

@@ -22,9 +22,8 @@ DOCDIR ?= $(DATAROOTDIR)/doc/libslink
 MANDIR ?= $(DATAROOTDIR)/man
 MAN3DIR ?= $(MANDIR)/man3
 
-LIB_SRCS = payload.c genutils.c strutils.c \
-           logging.c network.c statefile.c config.c \
-           globmatch.c slutils.c
+LIB_SRCS = payload.c genutils.c logging.c network.c statefile.c \
+           config.c globmatch.c slutils.c
 
 LIB_OBJS = $(LIB_SRCS:.c=.o)
 LIB_LOBJS = $(LIB_SRCS:.c=.lo)

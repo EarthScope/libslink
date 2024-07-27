@@ -563,3 +563,34 @@ sl_usleep (unsigned long int useconds)
 
 #endif
 } /* End of sl_usleep() */
+
+/**********************************************************************/ /**
+ * @brief Copy 'source' string to 'dest' while removing spaces.
+ *
+ * Copy 'length' characters from 'source' to 'dest' while removing all
+ * spaces.  The result is left justified and always null terminated.
+ * The source string must have at least 'length' characters and the
+ * destination string must have enough room needed for the non-space
+ * characters within 'length' and the null terminator.
+ *
+ * @return The number of characters (not including the null terminator) in
+ * the destination string.
+ ***************************************************************************/
+int
+sl_strncpclean (char *dest, const char *source, int length)
+{
+  int sidx, didx;
+
+  for (sidx = 0, didx = 0; sidx < length; sidx++)
+  {
+    if (*(source + sidx) != ' ')
+    {
+      *(dest + didx) = *(source + sidx);
+      didx++;
+    }
+  }
+
+  *(dest + didx) = '\0';
+
+  return didx;
+} /* End of sl_strncpclean() */

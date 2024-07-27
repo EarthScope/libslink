@@ -13,7 +13,6 @@ OBJS= \
 	unpack.obj		\
 	msrecord.obj	\
 	genutils.obj	\
-	strutils.obj	\
 	logging.obj		\
 	network.obj		\
 	statefile.obj	\
