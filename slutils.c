@@ -781,7 +781,7 @@ update_stream (SLCD *slconn, const char *payload)
   return (updates == 0) ? -1 : 0;
   } /* End of update_stream() */
 
-/***********************************************************************/ /**
+/**********************************************************************/ /**
  * @brief Initialize a new ::SLCD
  *
  * Allocate a new ::SLCD and initialize values to default startup
@@ -875,12 +875,13 @@ sl_newslcd (const char *clientname, const char *clientversion)
 } /* End of sl_newslcd() */
 
 
-/***************************************************************************
- * sl_freeslcd:
+/**********************************************************************/ /**
+ * @brief Free all memory associated with a ::SLCD
  *
  * Free all memory associated with a SLCD struct including the
  * associated stream list and persistent connection state.
  *
+ * @param[in] slconn     SeedLink connection description
  ***************************************************************************/
 void
 sl_freeslcd (SLCD *slconn)
@@ -915,13 +916,17 @@ sl_freeslcd (SLCD *slconn)
 } /* End of sl_freeslcd() */
 
 
-/***********************************************************************/ /**
+/**********************************************************************/ /**
  * @brief Set client name and version reported to server (v4 only)
  *
  * Set the program name and, optionally, version that will be send to
  * the server in protocol v4 version.  These values will be combined
  * into a value with the pattern:
  *   NAME[/VERSION]
+ *
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] name       Name of the client program
+ * @param[in] version    Version of the client program
  *
  * @retval  0 : success
  * @retval -1 : error
@@ -957,8 +962,7 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
   return 0;
 } /* End of sl_setclientname() */
 
-
-/***************************************************************************
+/**********************************************************************/ /**
  * sl_addstream:
  *
  * Add a new stream entry to the stream list for the given SLCD
@@ -968,11 +972,14 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
  * and partitioned by the presence of wildcard characters in the
  * network-station ID, starting with more specific entries first.
  *
- *  - selectors should be NULL if there are none to use
- *  - seqnum should be SL_UNSETSEQUENCE to start at the next data
- *  - timestamp should be NULL if it should not be used
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] netstaid   Network-Station ID
+ * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
+ * @param[in] seqnum     Last received sequence number or ::SL_UNSETSEQUENCE
+ * @param[in] timestamp  Start time for the stream, NULL if not used
  *
- * Returns 0 if successfully added or -1 on error.
+ * @retval  0 : success
+ * @retval -1 : error
  ***************************************************************************/
 int
 sl_addstream (SLCD *slconn, const char *netstaid,
@@ -1009,17 +1016,17 @@ sl_addstream (SLCD *slconn, const char *netstaid,
 
   strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid) - 1);
 
-  if (!selectors)
-    newstream->selectors = NULL;
-  else
+  if (selectors)
     newstream->selectors = strdup (selectors);
+  else
+    newstream->selectors = NULL;
 
   newstream->seqnum = seqnum;
 
-  if (!timestamp)
-    newstream->timestamp[0] = '\0';
-  else
+  if (timestamp)
     strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
+  else
+    newstream->timestamp[0] = '\0';
 
   /* Convert old comma-delimited date-time to ISO-compatible format if needed
    * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
@@ -1085,19 +1092,22 @@ sl_addstream (SLCD *slconn, const char *netstaid,
 } /* End of sl_addstream() */
 
 
-/***************************************************************************
- * sl_setuniparams:
+/**********************************************************************/ /**
+ * @brief Set the parameters for a uni-station mode connection
  *
  * Set the parameters for a uni-station mode connection for the
  * given SLCD struct.  If the stream entry already exists, overwrite
  * the previous settings.
- * Also sets the multistation flag to 0 (false).
  *
- *  - selectors should be 0 if there are none to use
- *  - seqnum should be SL_UNSETSEQUENCE to start at the next data
- *  - timestamp should be 0 if it should not be used
+ * Also sets the multistation flag to false (0).
  *
- * Returns 0 if successfully added or -1 on error.
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
+ * @param[in] seqnum     Last received sequence number or ::SL_UNSETSEQUENCE
+ * @param[in] timestamp  Start time for the stream, NULL if not used
+ *
+ * @retval  0 : success
+ * @retval -1 : error
  ***************************************************************************/
 int
 sl_setuniparams (SLCD *slconn, const char *selectors,
@@ -1126,17 +1136,29 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
 
   strncpy (newstream->netstaid, UNINETSTAID, sizeof (newstream->netstaid));
 
-  if (selectors == 0 || selectors == NULL)
-    newstream->selectors = 0;
-  else
+  if (selectors)
     newstream->selectors = strdup (selectors);
+  else
+    newstream->selectors = NULL;
 
   newstream->seqnum = seqnum;
 
-  if (timestamp == 0 || timestamp == NULL)
-    newstream->timestamp[0] = '\0';
+  if (timestamp)
+    strncpy (newstream->timestamp, timestamp, sizeof (newstream->timestamp) - 1);
   else
-    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
+    newstream->timestamp[0] = '\0';
+
+  /* Convert old comma-delimited date-time to ISO-compatible format if needed
+   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+  if (newstream->timestamp[0])
+  {
+    if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): could not parse timestamp for uni-station mode: '%s'\n",
+                __func__, newstream->timestamp);
+      return -1;
+    }
+  }
 
   newstream->next = NULL;
 
@@ -1148,12 +1170,16 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
 } /* End of sl_setuniparams() */
 
 
-/***************************************************************************
- * sl_request_info:
+/**********************************************************************/ /**
+ * @brief Submit an INFO request to the server at the next opportunity
  *
  * Add an INFO request to the SeedLink Connection Description.
  *
- * Returns 0 if successful and -1 if error.
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] infostr    INFO level to request
+ *
+ * @retval  0 : success
+ * @retval -1 : error
  ***************************************************************************/
 int
 sl_request_info (SLCD *slconn, const char *infostr)
@@ -1172,7 +1198,7 @@ sl_request_info (SLCD *slconn, const char *infostr)
 } /* End of sl_request_info() */
 
 
-/***************************************************************************
+/**********************************************************************/ /**
  * @brief Check if server capabilities include specified value
  *
  * The server capabilities returned during connection negotiation are
@@ -1235,10 +1261,13 @@ sl_hascapability (SLCD *slconn, char *capability)
 } /* End of sl_hascapablity() */
 
 
-/***************************************************************************
- * sl_terminate:
+/**********************************************************************/ /**
+ * @brief Trigger a termination of the SeedLink connection
  *
- * Set the terminate flag in the SLCD.
+ * Set the terminate flag in the SLCD, which will cause the
+ * connection to be terminated at the next opportunity.
+ *
+ * @param[in] slconn     SeedLink connection description
  ***************************************************************************/
 void
 sl_terminate (SLCD *slconn)
@@ -1249,7 +1278,7 @@ sl_terminate (SLCD *slconn)
 } /* End of sl_terminate() */
 
 
-/***************************************************************/ /**
+/**********************************************************************/ /**
  * @brief Detect miniSEED record in buffer
  *
  * Determine if the buffer contains a miniSEED data record by
@@ -1267,7 +1296,7 @@ sl_terminate (SLCD *slconn)
  * @retval -1 Data record not detected or error
  * @retval 0 Data record detected but could not determine length
  * @retval >0 Size of the record in bytes
- *********************************************************************/
+ ***************************************************************************/
 static int64_t
 detect (const char *buffer, uint64_t buflen, char *payloadformat)
 {
