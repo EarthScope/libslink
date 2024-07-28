@@ -213,10 +213,13 @@ sl_parse_streamlist (SLCD *slconn, const char *streamlist,
       selectors++;
     }
 
-    /* Add to the stream list, using default selectors if none parsed */
-    sl_addstream (slconn, stream,
-                  (selectors) ? selectors : defselect,
-                  SL_UNSETSEQUENCE, NULL);
+    /* Add non-empty streams to list, using default selectors if none parsed */
+    if (strlen (stream) > 0)
+    {
+      sl_addstream (slconn, stream,
+                    (selectors) ? selectors : defselect,
+                    SL_UNSETSEQUENCE, NULL);
+    }
 
     streamcount++;
     stream = nextstream;
