@@ -11,7 +11,11 @@
 	- Sort the stream list alphanumerically and from more to less
 	specific regarding wildcards.  Ensuring that wildcards in NET_STA
 	selections are sent after those without wildcards.
-	- Add callback functions to handle authorization with v4.
+	- Add callback function hooks to support caller-provided 
+	authorization with v4.
+	- Do not interpret the version following SeedLink in the HELLO
+	response as a protocol verison, instead parse SLPROTO declarations
+	and default to 3.x if no recognized protocols are found.
 
 	- Warning messages for non-support of features for ancient server
 	versions < 3 are removed.  Capoabilty is not reduced, but the library

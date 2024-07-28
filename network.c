@@ -945,7 +945,6 @@ sayhello_int (SLCD *slconn)
   char sendstr[1024];  /* A buffer for command strings */
   char servstr[200];   /* The remote server ident */
   char sitestr[200];   /* The site/data center ident */
-  char servid[100];    /* Server ID string, i.e. 'SeedLink' */
   char *capptr;        /* Pointer to capabilities flags */
   char capflag = 0;    /* CAPABILITIES command is supported by server */
 
@@ -1022,42 +1021,23 @@ sayhello_int (SLCD *slconn)
   sl_log_r (slconn, 1, 1, "[%s] connected to: %s\n", slconn->sladdr, servstr);
   sl_log_r (slconn, 1, 1, "[%s] organization: %s\n", slconn->sladdr, sitestr);
 
-  /* Parse server ID and version from the returned string.
-   * The expected format at this point is:
-   * "SeedLink v#.# <optional text>"
-   * where 'SeedLink' is case insensitive and '#.#' is the server/protocol version.
-   */
-
-  /* Add a space to the end to allowing parsing when the optionals are not present */
-  servstr[servcnt]     = ' ';
-  servstr[servcnt + 1] = '\0';
-  ret                  = sscanf (servstr, "%s v%" SCNu8 ".%" SCNu8,
-                                 &servid[0],
-                                 &server_major,
-                                 &server_minor);
-
-  if (strncasecmp (servid, "SEEDLINK", 8))
+  /* Validate that the server ID starts with "SeedLink" */
+  if (strncasecmp (servstr, "SEEDLINK", 8))
   {
     sl_log_r (slconn, 2, 0,
               "[%s] unrecognized server identification: '%s'\n",
-              slconn->sladdr, servid);
+              slconn->sladdr, servstr);
     return -1;
   }
 
-  /* Set server protocol supported from version in server identification */
-  if (server_major == 3)
-    slconn->server_protocols |= SLPROTO3X;
-  else if (server_major == 4 && server_minor == 0)
-    slconn->server_protocols |= SLPROTO40;
-
   /* Check capability flags included in HELLO response */
   capptr = slconn->capabilities;
-  while (*capptr)
+  while (capptr && *capptr)
   {
     while (*capptr == ' ')
       capptr++;
 
-    if (!strncmp (capptr, "SLPROTO:", 8))
+    if (strncmp (capptr, "SLPROTO:", 8) == 0)
     {
       ret = sscanf (capptr, "SLPROTO:%" SCNu8 ".%" SCNu8,
                     &server_major,
@@ -1077,16 +1057,32 @@ sayhello_int (SLCD *slconn)
       {
         slconn->server_protocols |= SLPROTO40;
       }
+      /* Fallback to protocol v4.0 for unrecognized (future) minor versions */
+      else if (server_major == 4)
+      {
+        sl_log_r (slconn, 1, 1, "[%s] using protocol v4.0 instead of (unsupported) v%d.%d\n",
+                  slconn->sladdr, server_major, server_minor);
+
+        slconn->server_protocols |= SLPROTO40;
+      }
 
       capptr += 8;
     }
-    else if (!strncmp (capptr, "CAP", 3))
+    else if (strncmp (capptr, "CAP", 3) == 0)
     {
       capptr += 3;
       capflag = 1;
     }
 
     capptr++;
+  }
+
+  /* Default to SeedLink 3.x if no protocols advertised by server are recognized */
+  if (slconn->server_protocols == 0)
+  {
+    sl_log_r (slconn, 1, 1, "[%s] no recognized protocol version, defaulting to 3.x\n", slconn->sladdr);
+
+    slconn->server_protocols = SLPROTO3X;
   }
 
   /* Promote protocol if supported by server */
