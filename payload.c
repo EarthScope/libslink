@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2020:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <stdio.h>
@@ -30,16 +30,21 @@
 #include "mseedformat.h"
 
 
-/***************************************************************************
- * sl_payload_summary:
+/**********************************************************************/ /**
+ * @brief Generate a summary string for a specified packet
  *
- * Generate a summary string for a specified packet.  The summary generally
- * includes the source identifier, number of samples, sample rate, start time,
- * and latency (based on the system time in UTC).
+ * The summary generally includes the source identifier, number of samples,
+ * sample rate, and start time.
  *
- * Return the number of bytes that would have been written to the summary
- * string if the size were unlimited.
- * Return -1 on error.
+ * @param[in] log Use the logging parameters specified in ::SLlog
+ * @param[in] packetinfo The packet information structure
+ * @param[in] plbuffer A buffer containing the packet payload
+ * @param[in] plbuffer_size The size of the payload buffer in bytes
+ * @param[out] summary A buffer to hold the summary string
+ * @param[out] summary_size The size of the summary buffer in bytes
+ *
+ * @returns The number of bytes that would have been written to the summary
+ * string if the size were unlimited on success, -1 on error.
  ***************************************************************************/
 int
 sl_payload_summary (const SLlog *log, const SLpacketinfo *packetinfo,
@@ -70,8 +75,8 @@ sl_payload_summary (const SLlog *log, const SLpacketinfo *packetinfo,
                    sourceid, samplecount, samplerate, starttimestr);
 } /* End of sl_payload_summary() */
 
-/***************************************************************************
- * sl_payload_info:
+/**********************************************************************/ /**
+ * @brief Return selected values (if possible) from a SeedLink packet
  *
  * Parses a SeedLink packet payload and optiionally return extracted values.
  * Values that can be returned inclue:
@@ -83,7 +88,18 @@ sl_payload_summary (const SLlog *log, const SLpacketinfo *packetinfo,
  * The returned strings are truncated to fit within the specified size,
  * and are always null terminated.
  *
- * Return 0 on sucess, -1 on error.
+ * @param[in] log Use the logging parameters specified in ::SLlog
+ * @param[in] packetinfo The packet information structure
+ * @param[in] plbuffer A buffer containing the packet payload
+ * @param[in] plbuffer_size The size of the payload buffer in bytes
+ * @param[out] sourceid A buffer to hold the source identifier string
+ * @param[out] sourceid_size The size of the source identifier buffer in bytes
+ * @param[out] starttimestr A buffer to hold the start time string
+ * @param[out] starttimestr_size The size of the start time buffer in bytes
+ * @param[out] samplerate A pointer to a double to store the sample rate in Hz
+ * @param[out] samplecount A pointer to a uint32_t to store the number of samples
+ *
+ * @returns 0 on sucess, -1 on error.
  ***************************************************************************/
 int
 sl_payload_info (const SLlog *log, const SLpacketinfo *packetinfo,

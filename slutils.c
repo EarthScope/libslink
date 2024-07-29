@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2022:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <errno.h>
@@ -792,6 +792,9 @@ update_stream (SLCD *slconn, const char *payload)
  * optional and should be the version of the client program.  These
  * values are passed directly to sl_setclientname().
  *
+ * @param[in] clientname     Name of the client program
+ * @param[in] clientversion  Version of the client program
+ *
  * @returns An initialized ::SLCD on success, NULL on error.
  ***************************************************************************/
 SLCD *
@@ -885,7 +888,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
  * Free all memory associated with a SLCD struct including the
  * associated stream list and persistent connection state.
  *
- * @param[in] slconn     SeedLink connection description
+ * @param[in] slconn     SeedLink connection description to free
  ***************************************************************************/
 void
 sl_freeslcd (SLCD *slconn)

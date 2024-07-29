@@ -16,8 +16,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <errno.h>
@@ -30,14 +30,13 @@
 #include "libslink.h"
 
 
-/***************************************************************************
- * sl_littleendianhost:
+/**********************************************************************/ /**
+ * @brief Return true is the byte order of the host is little endian
  *
- * Determine the byte order of the host machine.  Due to the lack of
- * portable defines to determine host byte order this run-time test is
- * provided.  This function originated from a similar function in libmseed.
+ * Due to the lack of portable defines to determine host byte order this
+ * run-time test is provided.
  *
- * Returns 1 if the host is little endian, otherwise 0.
+ * @returns 1 if the host is little endian, otherwise 0.
  ***************************************************************************/
 uint8_t
 sl_littleendianhost (void)
@@ -46,12 +45,10 @@ sl_littleendianhost (void)
   return *((uint8_t *)(&host));
 } /* End of sl_littleendianhost() */
 
-/***************************************************************************
- * sl_doy2md:
+/**********************************************************************/ /**
+ * @brief Compute the month and day-of-month from a year and day-of-year.
  *
- * Compute the month and day-of-month from a year and day-of-year.
- *
- * Returns 0 on success and -1 on error.
+ * @returns 0 on success and -1 on error.
  ***************************************************************************/
 int
 sl_doy2md (int year, int jday, int *month, int *mday)
@@ -100,7 +97,7 @@ sl_doy2md (int year, int jday, int *month, int *mday)
  *
  * @param protocol Protocol identifier
  * @param major Pointer to value for major protocol version (optional)
- * @param major Pointer to value for minor protocol version (optional)
+ * @param minor Pointer to value for minor protocol version (optional)
  *
  * @return Pointer to string description of protocol version.
  ***************************************************************************/
@@ -192,8 +189,8 @@ sl_formatstr (char format, char subformat)
   }
 } /* End of sl_typestr() */
 
-/***************************************************************************
- * sl_strerror:
+/**********************************************************************/ /**
+ * @brief Return desriptive error message for system errno
  *
  * Return a description of the last system error, in the case of Win32
  * this will be the last Windows Sockets error.
@@ -461,6 +458,7 @@ sl_commadatetime (char *commadatetime, const char *datetime)
  * selector, a pragmatic maximum is 32 characters.
  *
  * @param[out] v4selector Buffer to write v4 selector string
+ * @param[in] v4selectorlength Length of v4selector buffer
  * @param[in] selector Input selector
  *
  * @returns SeedLink v4 selector string
@@ -539,11 +537,8 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   return NULL;
 } /* End of sl_v3to4selector() */
 
-/***************************************************************************
- * sl_usleep:
- *
- * Sleep for a given number of microseconds.  Under Win32 use SleepEx()
- * and for all others use the POSIX.4 nanosleep().
+/**********************************************************************/ /**
+ * @brief Sleep for a given number of microseconds
  ***************************************************************************/
 void
 sl_usleep (unsigned long int useconds)

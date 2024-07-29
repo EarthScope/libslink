@@ -18,8 +18,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <errno.h>
@@ -28,13 +28,13 @@
 
 #include "libslink.h"
 
-/***************************************************************************
- * sl_read_streamlist:
+/**********************************************************************/ /**
+ * @brief Read a list of streams and selectors from a file
  *
- * Read a list of streams and selectors from a file and add them to the
- * stream chain for configuring a multi-station connection.
+ * Streams and selectors are added to the stream list for the ::SLCD
+ * for configuring a multi-station connection.
  *
- * If 'defselect' is not NULL it will be used as the default selectors
+ * If \a defselect is not NULL it will be used as the default selectors
  * for entries will no specific selectors indicated.
  *
  * The file is expected to be repeating lines of the form:
@@ -51,7 +51,11 @@
  * The legacy format, in which NET and STA are separated by
  * whitespace, is also supported.
  *
- * Returns the number of streams configured or -1 on error.
+ * @param slconn The ::SLCD to which to add streams
+ * @param streamfile The file containing the stream list
+ * @param defselect Default selectors to use when not specified (optional)
+ *
+ * @returns the number of streams configured or -1 on error.
  ***************************************************************************/
 int
 sl_read_streamlist (SLCD *slconn, const char *streamfile,
@@ -164,11 +168,11 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   return streamcount;
 } /* End of sl_read_streamlist() */
 
-/***************************************************************************
- * sl_parse_streamlist:
+/**********************************************************************/ /**
+ * @brief Parse a string of streams and selectors
  *
- * Parse a string of streams and selectors and add them to the stream
- * chain for configuring a multi-station connection.
+ * Parsed streams and selectors are added to the stream list for configuring
+ * a multi-station connection.
  *
  * The string should be of the following form:
  * "stream1[:selectors1],stream2[:selectors2],..."
@@ -178,7 +182,11 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
  * "IU_KONO:B_H_E B_H_N,GE_WLF,MN_AQU:H_H_?"
  * "IU_KONO:B_H_?:3,GE_WLF:*:3"
  *
- * Returns the number of streams configured or -1 on error.
+ * @param slconn The ::SLCD to which to add streams
+ * @param streamlist A string bufffer containing the stream list
+ * @param defselect Default selectors to use when not specified (optional)
+ *
+ * @returns the number of streams configured or -1 on error.
  ***************************************************************************/
 int
 sl_parse_streamlist (SLCD *slconn, const char *streamlist,

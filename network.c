@@ -20,8 +20,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <errno.h>
@@ -63,6 +63,7 @@ static int setsocktimeo_int (SOCKET socket, int timeout);
 static int load_ca_certs (SLCD *slconn);
 
 /* Data structures for TLS connection context */
+/* @cond */
 typedef struct TLSCTX
 {
   mbedtls_net_context server_fd;
@@ -72,6 +73,7 @@ typedef struct TLSCTX
   mbedtls_entropy_context entropy;
   mbedtls_x509_crt cacert;
 } TLSCTX;
+/* @endcond */
 
 /* Debug output for TLS to stderr */
 void
@@ -228,18 +230,17 @@ tls_configure (SLCD *slconn, const char *nodename)
   return 0;
 } /* End of TLS configuration */
 
-/***************************************************************************
- * sl_connect:
+/**********************************************************************/ /**
+ * @brief Connect to a SeedLink server
  *
- * Open a network socket connection to a SeedLink server and set
- * 'slconn->link' to the new descriptor.  Expects 'slconn->sladdr' to
- * be in 'host:port' format.  Either the host, port or both are
- * optional, if the host is not specified 'localhost' is assumed, if
- * the port is not specified '18000' is assumed, if neither is
- * specified (only a colon) then 'localhost' and port '18000' are
- * assumed.
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
  *
- * If 'sayhello' is true, commands will be sent to the server
+ * The SLCD.sladdr value is expected to be in 'host:port' format.  Either
+ * the host, port or both are optional.  If the host is not specified
+ * 'localhost' is assumed.  If the port is not specified '18000' is assumed.
+ *
+ * If \a sayhello is true, commands will be sent to the server
  * to determine server features and set features supported by the
  * library.  This includes upgrading the protocol to the maximum
  * version supported by both server and client.  Unless you wish to do
@@ -249,7 +250,12 @@ tls_configure (SLCD *slconn, const char *nodename)
  * slconn->terminate flag will be set so the sl_collect() family of
  * routines will not continue trying to connect.
  *
- * Returns -1 on errors otherwise the socket descriptor created.
+ * @param slconn The ::SLCD connection to connect
+ * @param sayhello If true, send HELLO command to server
+ *
+ * @returns -1 on errors otherwise the socket descriptor created.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 SOCKET
 sl_connect (SLCD *slconn, int sayhello)
@@ -454,15 +460,20 @@ sl_connect (SLCD *slconn, int sayhello)
   return slconn->link;
 } /* End of sl_connect() */
 
-/***************************************************************************
- * sl_configlink:
+/**********************************************************************/ /**
+ * @brief Configure and negotiate data selections with a SeedLink server
  *
- * Configure/negotiate data stream(s) with the remote SeedLink
- * server.  Negotiation will be either uni or multi-station
- * depending on the value of 'multistation' in the SLCD
- * struct.
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
  *
- * Returns -1 on errors, otherwise returns the link descriptor.
+ * Negotiation will be either uni or multi-station depending on the value
+ * of SLCD.multistation.
+ *
+ * @param slconn The ::SLCD connection to configure
+ *
+ * @returns -1 on errors, otherwise returns the link descriptor.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 SOCKET
 sl_configlink (SLCD *slconn)
@@ -488,14 +499,22 @@ sl_configlink (SLCD *slconn)
   return ret;
 } /* End of sl_configlink() */
 
-/***************************************************************************
- * sl_send_info:
+/**********************************************************************/ /**
+ * @brief Send a request for the specified INFO level
  *
- * Send a request for the specified INFO level.  The verbosity level
- * can be specified, allowing control of when the request should be
- * logged.
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
  *
- * Returns -1 on errors, otherwise the socket descriptor.
+ * The verbosity level can be specified, allowing control of when the
+ * request should be logged.
+ *
+ * @param slconn Send INFO to the connection associated with the ::SLCD
+ * @param infostr The INFO command to request
+ * @param verbose The verbosity level to use when logging the request
+ *
+ * @returns -1 on errors, otherwise the socket descriptor.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 int
 sl_send_info (SLCD *slconn, const char *infostr, int verbose)
@@ -517,13 +536,15 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
   return slconn->link;
 } /* End of sl_send_info() */
 
-/***************************************************************************
- * sl_disconnect:
+/**********************************************************************/ /**
+ * @brief Close a connction to a SeedLink server
  *
- * Close the network socket associated with connection and free any
- * memory allocated for TLS context.
+ * The network socket associated with ::SLCD is closed and all memory
+ * allocated for the TLS context is freed.
  *
- * Returns -1, historically used to set the old descriptor
+ * @param slconn Close the connection associated with the ::SLCD
+ *
+ * @returns -1, historically used to set the old descriptor
  ***************************************************************************/
 int
 sl_disconnect (SLCD *slconn)
@@ -560,18 +581,25 @@ sl_disconnect (SLCD *slconn)
 } /* End of sl_disconnect() */
 
 
-/***************************************************************************
- * sl_ping:
+/**********************************************************************/ /**
+ * @brief Connect to a SeedLink server, issue HELLO and parse response
  *
- * Connect to a server, issue the HELLO command, parse out the server
- * ID and organization resonse and disconnect.  The server ID and
- * site/organization strings are copied into serverid and site strings
- * which should have 100 characters of space each.
+ * This function serves as a convienence function to "ping" a SeedLink
+ * server and get the server ID and site/organization strings.  This
+ * verifies that the connection is possible and that the most basic
+ * SeedLink command is suppported.
  *
- * Returns:
- *   0  Success
- *  -1  Connection opened but invalid response to 'HELLO'.
- *  -2  Could not open network connection
+ * The server ID and site/organization strings in the response are
+ * copied into serverid and site strings which should have 100 characters
+ * of space each.
+ *
+ * @param[in] slconn The ::SLCD connection to ping
+ * @param[out] serverid The server ID string to be copied into
+ * @param[out] site The site/organization string to be copied into
+ *
+ * @retval  0  Success
+ * @retval -1  Connection opened but invalid response to 'HELLO'
+ * @retval -2  Could not open network connection
  ***************************************************************************/
 int
 sl_ping (SLCD *slconn, char *serverid, char *site)
@@ -634,18 +662,31 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   return 0;
 } /* End of sl_ping() */
 
-/***************************************************************************
- * sl_senddata:
+/**********************************************************************/ /**
+ * @brief Send specified data to a SeedLink server
  *
- * send() 'buflen' bytes from 'buffer' to 'slconn->link'.  'ident' is
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
+ *
+ * Send \a buflen bytes from \a buffer to server.  The \a ident value is
  * a string to include in error messages for identification, usually
- * the address of the remote server.  If 'resp' is not NULL then read
- * up to 'resplen' bytes into 'resp' after sending 'buffer'.  This is
+ * the address of the remote server.  If \a resp is not NULL then read
+ * up to \a resplen bytes into \a resp after sending \a buffer.  This is
  * only designed for small pieces of data, specifically the server
- * responses to commands terminated by '\r\n'.
+ * responses to commands terminated by `"\r\n"`.
  *
- * Returns -1 on error, and size (in bytes) of the response
- * received (0 if 'resp' == NULL).
+ * @param slconn The ::SLCD connection to send data
+ * @param buffer The data to send
+ * @param buflen The length of the data to send
+ * @param ident A string to include in error messages for identification
+ * @param resp A buffer to store the response
+ * @param resplen The length of the response buffer
+ *
+ * @retval -1 on error
+ * @retval  0 for no available data
+ * @retval >0 the number of bytes read on success.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 int
 sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
@@ -695,15 +736,26 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
   return bytesread;
 } /* End of sl_senddata() */
 
-/***************************************************************************
- * sl_recvdata:
+/**********************************************************************/ /**
+ * @brief Receive data from a SeedLink server
  *
- * Read 'maxbytes' data from connection into a specified 'buffer'.
- * The 'ident' is a string to be included in error messages for
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
+ *
+ * Read \a maxbytes data from connection into a specified \a buffer.
+ * The \a ident is a string to be included in error messages for
  * identification, usually the address of the remote server.
  *
- * Returns -1 on error, 0 for no available data and the number
- * of bytes read on success.
+ * @param slconn The ::SLCD connection to receive data from
+ * @param buffer The buffer to store the received data
+ * @param maxbytes The maximum number of bytes to read
+ * @param ident A string to include in error messages for identification
+ *
+ * @retval -1 on error
+ * @retval 0  for no available data
+ * @retval >0 the number of bytes read on success.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 int64_t
 sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
@@ -787,21 +839,33 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
   return (bytesread < 0) ? -1 : bytesread;
 } /* End of sl_recvdata() */
 
-/***************************************************************************
- * sl_recvresp:
+/**********************************************************************/ /**
+ * @brief Receive a response to a command from a SeedLink server
+ *
+ * The main SeedLink client entry point is \a sl_collect(), you probably
+ * should not call this directly.
  *
  * To receive a response to a command read one byte at a time until
- * '\r\n' or up to 'maxbytes' is read from 'slconn->link' into a
- * specified 'buffer'.  The function will wait up to 30 seconds for a
- * response to be recv'd.  'command' is a string to be included in
+ * `"\r\n"` or up to \a maxbytes is received and written into a
+ * specified \a buffer.  The function will wait up to 30 seconds for a
+ * response to be recv'd.  \a command is a string to be included in
  * error messages indicating which command the response is
- * for. 'ident' is a string to be included in error messages for
+ * for. \a ident is a string to be included in error messages for
  * identification, usually the address of the remote server.
  *
  * It should not be assumed that the populated buffer contains a
  * terminated string.
  *
- * Returns -1 on error/EOF and the number of bytes read on success.
+ * @param slconn The ::SLCD connection to receive data from
+ * @param buffer The buffer to store the received data
+ * @param maxbytes The maximum number of bytes to read
+ * @param command A string to include in error messages indicating the command
+ * @param ident A string to include in error messages for identification
+ *
+ * @retval -1  on error/EOF
+ * @retval >=0 the number of bytes read on success.
+ *
+ * @sa sl_collect()
  ***************************************************************************/
 int
 sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
@@ -873,19 +937,25 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
   return bytesread;
 } /* End of sl_recvresp() */
 
-/***************************************************************************
- * Poll a socket for read and/or write ability using select() for a
- * specified amount of time.
+/**********************************************************************/ /**
+ * @brief Poll the network connection associated with the ::SLCD
+ *
+ * Poll the connected socket for read and/or write ability using select()
+ * for a specified amount of time.
  *
  * The timeout is specified in milliseconds.
  *
  * Interrupted select() calls are retried until the timeout expires
  * unless the connection termination flag is set (slconn->terminate).
  *
- * Returns:
- * >=1 : success
- *   0 : if time-out expires
- *  <0 : errors
+ * @param slconn The ::SLCD connection to poll
+ * @param readability If true, poll for readability
+ * @param writability If true, poll for writability
+ * @param timeout_ms The timeout in milliseconds
+ *
+ * @retval >=1 : success
+ * @retval   0 : if time-out expires
+ * @retval  <0 : errors
  ***************************************************************************/
 int
 sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
@@ -1386,11 +1456,11 @@ batchmode_int (SLCD *slconn)
  * issue the DATA command.  This is compatible with SeedLink Protocol
  * version 2 or greater.
  *
- * If 'selectors' is set then the string is parsed on space and each
+ * If \a selectors is set then the string is parsed on space and each
  * selector is sent.
  *
- * If 'seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume' flag is true
- * then data is requested starting at seqnum.
+ * If \a seqnum is not `SL_UNSETSEQUENCE` and the SLCD \a resume flag is
+ * true then data is requested starting at seqnum.
  *
  * Returns -1 on errors, otherwise returns the link descriptor.
  ***************************************************************************/
@@ -1597,10 +1667,10 @@ negotiate_uni_v3 (SLCD *slconn)
  * Negotiate stream selection with protocol 3 in multi-station mode
  * and issue the END command to start streaming.
  *
- * If 'curstream->selectors' is set then the string is parsed on spaces
+ * If \a curstream->selectors is set then the string is parsed on spaces
  * and each selector is sent.
  *
- * If 'curstream->seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume'
+ * If \a curstream->seqnum is not `SL_UNSETSEQUENCE` and the SLCD \a resume
  * flag is true then data is requested starting at seqnum.
  *
  * Returns -1 on errors, otherwise returns the link descriptor.
@@ -1955,10 +2025,10 @@ negotiate_multi_v3 (SLCD *slconn)
  * Negotiate stream selection with protocol 4 and issue the END
  * command to start streaming.
  *
- * If 'curstream->selectors' is set then the string is parsed on spaces
+ * If \a curstream->selectors is set then the string is parsed on spaces
  * and each selector is sent.
  *
- * If 'curstream->seqnum' != SL_UNSETSEQUENCE and the SLCD 'resume'
+ * If \a curstream->seqnum is not `SL_UNSETSEQUENCE` and the SLCD \a resume
  * flag is true then data is requested starting at seqnum.
  *
  * Returns -1 on errors, otherwise returns the link descriptor.
@@ -2358,8 +2428,8 @@ socknoblock_int (SOCKET sock)
  * @brief Set socket I/O timeout
  *
  * Set socket I/O timeout if such an option exists.  On WIN and
- * other platforms where SO_RCVTIMEO and SO_SNDTIMEO are defined this
- * sets the SO_RCVTIMEO and SO_SNDTIMEO socket options using
+ * other platforms where `SO_RCVTIMEO` and `SO_SNDTIMEO` are defined this
+ * sets the `SO_RCVTIMEO` and `SO_SNDTIMEO` socket options using
  * setsockopt() to the @a timeout value (specified in seconds).
  *
  * Solaris does not implelement socket-level timeout options.

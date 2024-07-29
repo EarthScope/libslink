@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <errno.h>
@@ -27,15 +27,18 @@
 
 #include "libslink.h"
 
-/***************************************************************************
- * sl_savestate:
+/**********************************************************************/ /**
+ * @brief Save the sequence numbers and time stamps into the given state file.
  *
- * Save the all the current the sequence numbers and time stamps into the
- * given state file.
+ * The state file is a simple text file with one line per stream containing
+ * the station identifier, sequence number, and time stamp.  This information
+ * is intended to be used to re-start a connection and continue from where it
+ * left off.
  *
- * Returns:
- * -1 : error
- *  0 : completed successfully
+ * @param slconn    The ::SLCD connection to save state
+ * @param statefile The name of the state file to write
+ *
+ * @returns 0 on success and -1 on error
  ***************************************************************************/
 int
 sl_savestate (SLCD *slconn, const char *statefile)
@@ -92,16 +95,19 @@ sl_savestate (SLCD *slconn, const char *statefile)
   return 0;
 } /* End of sl_savestate() */
 
-/***************************************************************************
- * sl_recoverstate:
+/**********************************************************************/ /**
+ * @brief Recover the state of a SeedLink connection from a file.
  *
- * Recover the state file and put the sequence numbers and time stamps into
- * the pre-existing stream chain entries.
+ * The specified state file is read, and details of streams, selectors, etc.
+ * are added to the specified ::SLCD.
  *
- * Returns:
- * -1 : error
- *  0 : completed successfully
- *  1 : file could not be opened (probably not found)
+ * @param slconn    The ::SLCD connection to restore from a saved state
+ * @param statefile The name of the state file to read
+ *
+ * @returns status of the operation:
+ * @retval -1 : error
+ * @retval  0 : completed successfully
+ * @retval  1 : file could not be opened (probably not found)
  ***************************************************************************/
 int
 sl_recoverstate (SLCD *slconn, const char *statefile)
