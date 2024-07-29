@@ -17,8 +17,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #ifndef LIBSLINK_H
@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_RELEASE "2021.332"    /**< libslink release date */
+#define LIBSLINK_RELEASE "2024.210"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  3      /**< libslink major version */
 #define LIBSLINK_VERSION_MINOR  0      /**< libslink minor version */
 #define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
@@ -40,20 +40,13 @@ extern "C" {
                                 LIBSLINK_STRINGIFY(LIBSLINK_VERSION_MINOR) "." \
                                 LIBSLINK_STRINGIFY(LIBSLINK_VERSION_PATCH) "DEV"
 
+
 /** @defgroup seedlink-connection SeedLink Connection */
 /** @defgroup connection-state Connection State */
 /** @defgroup logging Central Logging */
 /** @defgroup miniseed-record miniSEED Records */
 /** @defgroup utility-functions General Utility Functions */
 
-
-/* Portability to the XScale (ARM) architecture requires a packed
- * attribute in certain places but this only works with GCC for now. */
-#if defined (__GNUC__)
-  #define SLP_PACKED __attribute__ ((packed))
-#else
-  #define SLP_PACKED
-#endif
 
 /* C99 standard headers */
 #include <stdlib.h>
@@ -148,7 +141,7 @@ extern "C" {
 /** @addtogroup logging
     @brief Central logging functions for the library and calling programs
 
-    This central logging facility is used for all logging performed by
+    This logging facility is used for all log messages produced by
     the library.
 
     The logging can be configured to send messages to arbitrary
@@ -201,18 +194,17 @@ typedef struct SLlog_s
 #define SL_MAX_PAYLOAD      16384    /**< Maximum data for payload detection and tracking */
 #define SL_MAX_NETSTAID     22       /**< Maximum length of NET_STA station ID */
 
-typedef enum /**< Protocols supported by the library */
+/** Protocols recognized by the library */
+typedef enum
 {
-  UNSET_PROTO = 0, /*<< Unset value */
-  SLPROTO3X   = 1, /*<< SeedLink 3.x */
-  SLPROTO40   = 2, /*<< SeedLink 4.0 */
+  UNSET_PROTO = 0, /**< Unset value */
+  SLPROTO3X   = 1, /**< SeedLink 3.x */
+  SLPROTO40   = 2, /**< SeedLink 4.0 */
 } LIBPROTOCOL;
-/** @} */
 
-/** @addtogroup payload-types
+/** @page payload-types
     @brief Packet payload format and sub-format type values
-
-    @{ */
+**/
 #define SLPAYLOAD_UNKNOWN        0  //!< Unknown payload
 #define SLPAYLOAD_MSEED2INFO     1  //!< miniSEED 2 with INFO payload
 #define SLPAYLOAD_MSEED2INFOTERM 2  //!< miniSEED 2 with INFO payload (terminated)
@@ -221,19 +213,16 @@ typedef enum /**< Protocols supported by the library */
 #define SLPAYLOAD_JSON          'J' //!< JSON payload
 #define SLPAYLOAD_XML           'X' //!< XML payload
 
-#define SLPAYLOAD_JSON_INFO     'I' //!< JSON payload, subformat INFO
-#define SLPAYLOAD_JSON_ERROR    'E' //!< JSON payload, subformat ERROR
-/** @} */
+#define SLPAYLOAD_JSON_INFO     'I' //!< JSON payload, subformat SeedLink INFO
+#define SLPAYLOAD_JSON_ERROR    'E' //!< JSON payload, subformat SeedLink ERROR
 
-/** @addtogroup collect-status
+/** @page collect-status
     @brief Return values for sl_collect()
-
-    @{ */
+**/
 #define SLPACKET                 1  //!< Complete packet returned
 #define SLTERMINATE              0  //!< Error or connection termination
 #define SLNOPACKET              -1  //!< No packet available for non-blocking
 #define SLTOOLARGE              -2  //!< Received packet is too large for buffer
-/** @} */
 
 /* The station ID used for uni-station mode */
 #define UNINETSTAID "XX_UNI"  /**< Station ID for uni-station mode */
@@ -294,17 +283,20 @@ typedef struct stat_s
   int64_t netto_time;           /**< Network timeout time stamp */
   int64_t netdly_time;          /**< Network re-connect delay time stamp */
 
-  enum                          /**< Connection state */
+  /** Connection state */
+  enum
   {
     DOWN, UP, STREAMING
   } conn_state;
 
-  enum                          /**< Stream state */
+  /** Stream state */
+  enum
   {
     HEADER, NETSTAID, PAYLOAD
   } stream_state;
 
-  enum                          /**< INFO query state */
+  /** INFO query state */
+  enum
   {
     NoQuery, InfoQuery, KeepAliveQuery
   } query_state;
@@ -491,6 +483,7 @@ sl_gswap8 (void *data8)
 
   memcpy (data8, &dat, sizeof(uint64_t));
 }
+/** @} */
 
 #ifdef __cplusplus
 }
