@@ -265,67 +265,33 @@ sl_connect (SLCD *slconn, int sayhello)
   struct addrinfo hints;
   int valueone = 1;
   int sockstat;
-  long int nport;
-  char nodename[300] = {0};
-  char nodeport[100] = {0};
-  char *ptr, *tail;
   int timeout;
+
+  if (!slconn)
+    return -1;
+
+  if (slconn->sladdr == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "no server address specified\n");
+    return -1;
+  }
+
+  /* Parse server host and port if needed */
+  if (slconn->slhost == NULL || slconn->slport == NULL)
+  {
+    fprintf (stderr, "DEBUG slconn->sladdr: %s\n", slconn->sladdr);
+    if (sl_setserveraddress (slconn, slconn->sladdr))
+    {
+      sl_log_r (slconn, 2, 0, "server address not in in recognized format: %s\n",
+                slconn->sladdr);
+      return -1;
+    }
+  }
 
   if (sockstartup_int ())
   {
     sl_log_r (slconn, 2, 0, "could not initialize network sockets\n");
     return -1;
-  }
-
-  /* Search address host-port separator, first for '@', then ':' */
-  if ((ptr = strchr (slconn->sladdr, '@')) == NULL && (ptr = strchr (slconn->sladdr, ':')))
-  {
-    /* If first ':' is not the last, this is not a separator */
-    if (strrchr (slconn->sladdr, ':') != ptr)
-      ptr = NULL;
-  }
-
-  /* If address begins with the separator */
-  if (slconn->sladdr == ptr)
-  {
-    if (slconn->sladdr[1] == '\0') /* Only a separator */
-    {
-      strcpy (nodename, SL_DEFAULT_HOST);
-      strcpy (nodeport, SL_DEFAULT_PORT);
-    }
-    else /* Only a port */
-    {
-      strcpy (nodename, SL_DEFAULT_HOST);
-      strncpy (nodeport, slconn->sladdr + 1, sizeof (nodeport) - 1);
-    }
-  }
-  /* Otherwise if no separator, use default port */
-  else if (ptr == NULL)
-  {
-    strncpy (nodename, slconn->sladdr, sizeof (nodename) - 1);
-    strcpy (nodeport, SL_DEFAULT_PORT);
-  }
-  /* Otherwise separate host and port */
-  else if ((ptr - slconn->sladdr) < sizeof (nodename))
-  {
-    strncpy (nodename, slconn->sladdr, (ptr - slconn->sladdr));
-    nodename[(ptr - slconn->sladdr)] = '\0';
-    strncpy (nodeport, ptr + 1, sizeof (nodeport) - 1);
-  }
-
-  /* Sanity test the port number */
-  nport = strtol (nodeport, &tail, 10);
-  if (*tail || (nport <= 0 || nport > 0xffff))
-  {
-    sl_log_r (slconn, 2, 0, "server port specified is out of allowed range\n");
-    slconn->terminate = 1;
-    return -1;
-  }
-
-  /* Set TLS flag if port is the TLS default */
-  if (strcmp(nodeport, SL_SECURE_PORT) == 0)
-  {
-    slconn->tls = 1;
   }
 
   /* Resolve for either IPv4 or IPv6 (PF_UNSPEC) for a TCP stream (SOCK_STREAM) */
@@ -334,9 +300,9 @@ sl_connect (SLCD *slconn, int sayhello)
   hints.ai_socktype = SOCK_STREAM;
 
   /* Resolve server address */
-  if (getaddrinfo (nodename, nodeport, &hints, &addr0))
+  if (getaddrinfo (slconn->slhost, slconn->slport, &hints, &addr0))
   {
-    sl_log_r (slconn, 2, 0, "cannot resolve hostname %s\n", nodename);
+    sl_log_r (slconn, 2, 0, "cannot resolve hostname %s\n", slconn->slhost);
     return -1;
   }
 
@@ -430,7 +396,7 @@ sl_connect (SLCD *slconn, int sayhello)
     slconn->batchmode = 1;
 
   /* Configure TLS */
-  if (slconn->tls && tls_configure (slconn, nodename))
+  if (slconn->tls && tls_configure (slconn, slconn->slhost))
   {
     sl_log_r (slconn, 2, 0, "[%s] error configuring TLS\n", slconn->sladdr);
     sl_disconnect (slconn);

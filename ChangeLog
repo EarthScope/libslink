@@ -32,6 +32,8 @@
 
 	- Add sl_payload_summary() and sl_payload_info() for extracting
 	basic details from known payload types.
+	- Add sl_setserveraddress() to set the server address, with support
+	for parsing addresses like raw IPv6 enclosed in square brackets.
 
 
 	API changes:

@@ -1,6 +1,6 @@
 /***************************************************************************
  * slutils.c
- *
+ *s
  * Routines for managing a connection with a SeedLink server
  *
  * This file is part of the SeedLink Library.
@@ -911,6 +911,8 @@ sl_freeslcd (SLCD *slconn)
   }
 
   free (slconn->sladdr);
+  free (slconn->slhost);
+  free (slconn->slport);
   free (slconn->begin_time);
   free (slconn->end_time);
   free (slconn->capabilities);
@@ -968,6 +970,146 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
 
   return 0;
 } /* End of sl_setclientname() */
+
+/**********************************************************************/ /**
+ * @brief Set SeedLink server address (and port)
+ *
+ * Set the address (and port) of the SeedLink server to connect to.  The
+ * \a server_address string should be in the following format:
+ *
+ *  \c HOST:PORT
+ *
+ * where \c HOST and \c PORT are both optional.  If \c HOST is not
+ * specified the value of \a SL_DEFAULT_HOST (usually "localhost") will
+ * be used.  If \c PORT is not specified the value of \a SL_DEFAULT_PORT
+ * (usually "18000") will be used.
+ *
+ * The \c HOST value can be an IPv4 or IPv6 address, or a hostname.  The
+ * \c PORT value must be a valid port number.
+ *
+ * The following variations are supported:
+ *
+ * \c 192.168.0.1
+ * \c :18000
+ * \c 192.168.0.1:18000
+ * \c seedlink.server.org:18500
+ * \c 2607:f8b0:400a:805::200e
+ * \c [2607:f8b0:400a:805::200e]:18000
+ *
+ * This routine will also set the \a tls flag if the port is the default
+ * for a secure connection, aka \a SL_SECURE_PORT.
+ *
+ * @param slconn          SeedLink connection description
+ * @param server_address  Server address in \c HOST:PORT format
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setserveraddress (SLCD *slconn, const char *server_address)
+{
+  char host[300] = {0};
+  char port[100] = {0};
+  const char *separator;
+  const char *search;
+  const char *open;
+  const char *close;
+
+  if (!slconn || !server_address)
+    return -1;
+
+  /* Check for host enclosed in square brackets, e.g. for raw IPv6 addresses */
+  if ((open = strchr (server_address, '[')) != NULL &&
+      (close = strchr (server_address, ']')) != NULL &&
+      open < close)
+  {
+    search = close + 1;
+  }
+  else
+  {
+    search = server_address;
+  }
+
+  /* Search address for host-port separator, i.e. last ':' */
+  if ((separator = strrchr (search, ':')) == NULL)
+  {
+    separator = NULL;
+  }
+
+  /* If address begins with the separator */
+  if (server_address == separator)
+  {
+    if (server_address[1] == '\0') /* Only a separator */
+    {
+      strncpy (host, SL_DEFAULT_HOST, sizeof (host) - 1);
+      strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+    }
+    else /* Only a port */
+    {
+      strncpy (host, SL_DEFAULT_HOST, sizeof (host) - 1);
+      strncpy (port, server_address + 1, sizeof (port) - 1);
+    }
+  }
+  /* Otherwise if no separator, use default port */
+  else if (separator == NULL)
+  {
+    strncpy (host, server_address, sizeof (host) - 1);
+    strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+  }
+  /* Otherwise separate host and port */
+  else
+  {
+    size_t minlen = (separator - server_address);
+
+    if (minlen > sizeof (host))
+      minlen = sizeof (host) - 1;
+
+    strncpy (host, server_address, minlen);
+
+    /* Handle case of separator present but nothing following */
+    if (strlen (separator + 1) > 0)
+      strncpy (port, separator + 1, sizeof (port) - 1);
+    else
+      strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+  }
+
+  /* Remove brackets from host if present, i.e. for raw IPv6 addresses */
+  if (host[0] == '[' && host[strlen (host) - 1] == ']')
+  {
+    memmove (host, host + 1, strlen (host) - 2);
+    host[strlen (host) - 2] = '\0';
+  }
+
+  /* Store the user-supplied address if not set directly */
+  if (server_address != slconn->sladdr)
+  {
+    free (slconn->sladdr);
+    slconn->sladdr = strdup (server_address);
+  }
+
+  free (slconn->slhost);
+  free (slconn->slport);
+
+  slconn->slhost = strdup (host);
+  slconn->slport = strdup (port);
+
+  if (slconn->sladdr == NULL ||
+      slconn->slhost == NULL ||
+      slconn->slport == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
+
+  /* Set TLS flag if port is the TLS default */
+  if (strcmp(slconn->slport, SL_SECURE_PORT) == 0)
+  {
+    slconn->tls = 1;
+  }
+
+  return 0;
+} /* End of sl_setserveraddress() */
+
 
 /**********************************************************************/ /**
  * sl_addstream:

@@ -44,7 +44,6 @@ extern "C" {
 /** @defgroup seedlink-connection SeedLink Connection */
 /** @defgroup connection-state Connection State */
 /** @defgroup logging Central Logging */
-/** @defgroup miniseed-record miniSEED Records */
 /** @defgroup utility-functions General Utility Functions */
 
 
@@ -307,7 +306,9 @@ typedef struct stat_s
 typedef struct slcd_s
 {
   SLstream   *streams;		      /**< Pointer to list of streams */
-  char       *sladdr;           /**< The host:port of SeedLink server */
+  char       *sladdr;           /**< Caller-supplied address of SeedLink server */
+  char       *slhost;           /**< The host of SeedLink server */
+  char       *slport;           /**< The port of SeedLink server */
   char       *begin_time;     	/**< Beginning of time window */
   char       *end_time;		      /**< End of time window */
 
@@ -351,6 +352,7 @@ extern int sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
 extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
 extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
+extern int sl_setserveraddress (SLCD *slconn, const char *server_address);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);
