@@ -309,7 +309,7 @@ typedef struct slcd_s
   char       *sladdr;           /**< Caller-supplied address of SeedLink server */
   char       *slhost;           /**< The host of SeedLink server */
   char       *slport;           /**< The port of SeedLink server */
-  char       *begin_time;     	/**< Beginning of time window */
+  char       *start_time;     	/**< Start of time window */
   char       *end_time;		      /**< End of time window */
 
   int         keepalive;        /**< Interval to send keepalive/heartbeat (seconds) */
@@ -353,6 +353,7 @@ extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
 extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
 extern int sl_setserveraddress (SLCD *slconn, const char *server_address);
+extern int sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);

@@ -1439,19 +1439,19 @@ negotiate_uni_v3 (SLCD *slconn)
   char *selptr;
   char *extreply = 0;
   char *term1, *term2;
-  char begin_time[31] = {0};
+  char start_time[31] = {0};
   char end_time[31]   = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
 
   /* Generate V3, legacy SeedLink style date-time strings */
-  if (slconn->begin_time)
+  if (slconn->start_time)
   {
-    if (sl_commadatetime (begin_time, slconn->begin_time) == NULL)
+    if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
-                __func__, slconn->begin_time);
+                __func__, slconn->start_time);
       return -1;
     }
   }
@@ -1551,15 +1551,15 @@ negotiate_uni_v3 (SLCD *slconn)
   /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
      optionally, stop time) takes precedence over the resumption from any
      previous sequence number. */
-  if (begin_time[0])
+  if (start_time[0])
   {
     if (end_time[0] == '\0')
     {
-      sprintf (sendstr, "TIME %.31s\r\n", begin_time);
+      sprintf (sendstr, "TIME %.31s\r\n", start_time);
     }
     else
     {
-      sprintf (sendstr, "TIME %.31s %.31s\r\n", begin_time, end_time);
+      sprintf (sendstr, "TIME %.31s %.31s\r\n", start_time, end_time);
     }
 
     sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
@@ -1651,7 +1651,7 @@ negotiate_multi_v3 (SLCD *slconn)
   char *selptr;
   char *term1, *term2;
   char *extreply      = 0;
-  char begin_time[31] = {0};
+  char start_time[31] = {0};
   char end_time[31]   = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
@@ -1661,12 +1661,12 @@ negotiate_multi_v3 (SLCD *slconn)
   char *sta;
 
   /* Generate V3, legacy SeedLink style date-time strings */
-  if (slconn->begin_time)
+  if (slconn->start_time)
   {
-    if (sl_commadatetime (begin_time, slconn->begin_time) == NULL)
+    if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
-                __func__, slconn->begin_time);
+                __func__, slconn->start_time);
       return -1;
     }
   }
@@ -1843,15 +1843,15 @@ negotiate_multi_v3 (SLCD *slconn)
     /* Issue the DATA, FETCH or TIME action commands.  A specified start (and
        optionally, stop time) takes precedence over the resumption from any
        previous sequence number. */
-    if (begin_time[0])
+    if (start_time[0])
     {
       if (end_time[0] == '\0')
       {
-        sprintf (sendstr, "TIME %.31s\r\n", begin_time);
+        sprintf (sendstr, "TIME %.31s\r\n", start_time);
       }
       else
       {
-        sprintf (sendstr, "TIME %.31s %.31s\r\n", begin_time, end_time);
+        sprintf (sendstr, "TIME %.31s %.31s\r\n", start_time, end_time);
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
                 curstream->netstaid);
@@ -2011,7 +2011,7 @@ negotiate_v4 (SLCD *slconn)
   char *cmd_selector;
   char selector[32]   = {0};
   char v4selector[32] = {0};
-  char begin_time[31] = {0};
+  char start_time[31] = {0};
   char end_time[31]   = {0};
   char sendstr[10];  /* A buffer for small command strings */
   char readbuf[200]; /* A buffer for responses */
@@ -2032,12 +2032,12 @@ negotiate_v4 (SLCD *slconn)
     return -1;
 
   /* Generate V4, ISO compatible date-time strings */
-  if (slconn->begin_time)
+  if (slconn->start_time)
   {
-    if (sl_isodatetime (begin_time, slconn->begin_time) == NULL)
+    if (sl_isodatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
-                __func__, slconn->begin_time);
+                __func__, slconn->start_time);
       return -1;
     }
   }
@@ -2175,22 +2175,22 @@ negotiate_v4 (SLCD *slconn)
     cmdtail->next = NULL;
 
     /* Generate DATA or FETCH command with INCREMENTED sequence number */
-    if (begin_time[0])
+    if (start_time[0])
     {
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
                   "DATA %" PRIu64 "%s%s%s\r",
                   (curstream->seqnum + 1),
-                  begin_time,
+                  start_time,
                   (end_time[0]) ? " " : "",
                   (end_time[0]) ? end_time : "");
       }
       else
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "DATA -1 %s%s%s\r",
-                  begin_time,
+                  "DATA ALL %s%s%s\r",
+                  start_time,
                   (end_time[0]) ? " " : "",
                   (end_time[0]) ? end_time : "");
       }

@@ -34,6 +34,7 @@
 	basic details from known payload types.
 	- Add sl_setserveraddress() to set the server address, with support
 	for parsing addresses like raw IPv6 enclosed in square brackets.
+	- Add sl_settimewindow() to set time range for the streams.
 
 
 	API changes:

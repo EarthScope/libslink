@@ -813,7 +813,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
   /* Set defaults */
   slconn->streams    = NULL;
   slconn->sladdr     = NULL;
-  slconn->begin_time = NULL;
+  slconn->start_time = NULL;
   slconn->end_time   = NULL;
 
   slconn->auth_value  = NULL;
@@ -913,7 +913,7 @@ sl_freeslcd (SLCD *slconn)
   free (slconn->sladdr);
   free (slconn->slhost);
   free (slconn->slport);
-  free (slconn->begin_time);
+  free (slconn->start_time);
   free (slconn->end_time);
   free (slconn->capabilities);
   free (slconn->caparray);
@@ -1109,6 +1109,50 @@ sl_setserveraddress (SLCD *slconn, const char *server_address)
 
   return 0;
 } /* End of sl_setserveraddress() */
+
+/**********************************************************************/ /**
+ * @brief Set SeedLink connection time window (begin and end times)
+ *
+ * Set the connection time window limits.  This will trigger the
+ * connection to be negotiated with the \c TIME command for v3 connections
+ * and a time range to be included with the \c DATA command of v4 connections.
+ *
+ * No validation of the time strings is done, so the user must ensure that
+ * the target SeedLink server supports time string format supplied.  A
+ * relatively safe format is \c yyyy-mm-ddTHH:MM:SS
+ *
+ * @param slconn      SeedLink connection description
+ * @param start_time  Starting time string in yyyy-mm-ddTHH:MM:SS format
+ * @param end_time    Ending time string in yyyy-mm-ddTHH:MM:SS format
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
+{
+    if (!slconn || (!start_time && !end_time))
+        return -1;
+
+    free (slconn->start_time);
+    free (slconn->end_time);
+    slconn->start_time = NULL;
+    slconn->end_time = NULL;
+
+    if (start_time && (slconn->start_time = strdup (start_time)) == NULL)
+    {
+        sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+        return -1;
+    }
+
+    if (end_time && (slconn->end_time = strdup (end_time)) == NULL)
+    {
+        sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+        return -1;
+    }
+
+    return 0;
+} /* End of sl_settimewindow() */
 
 
 /**********************************************************************/ /**
