@@ -1304,6 +1304,85 @@ sl_setreconnectdelay (SLCD *slconn, int reconnectdelay)
     return 0;
 } /* End of sl_setreconnectdelay() */
 
+/**********************************************************************/ /**
+ * @brief Set or unset the SeedLink connection blocking mode
+ *
+ * Set the SeedLink connction to block or non-blocking mode.  In blocking
+ * mode sl_collect() will block until data is received or the connection
+ * is closed.  In non-blocking mode sl_collect() will return quickly.
+ *
+ * By default, the connection is set to blocking mode.
+ *
+ * @param slconn        SeedLink connection description
+ * @param nonblock      Boolean flag, if non-zero set to non-blocking mode
+
+ * @retval  0 : success
+ * @retval -1 : error
+ *
+ * @sa sl_collect()
+ ***************************************************************************/
+int
+sl_setblockingmode (SLCD *slconn, int nonblock)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->noblock = (nonblock) ? 1 : 0;
+
+    return 0;
+} /* End of sl_setblockingmode() */
+
+/**********************************************************************/ /**
+ * @brief Set or unset the SeedLink connection dial-up mode
+ *
+ * Set the SeedLink connction to dial-up mode.  In dial-up mode the
+ * connection will be closed after the last data packet available
+ * from the server is transmitted.
+ *
+ * By default, the connection is set to remain open.
+ *
+ * @param slconn        SeedLink connection description
+ * @param dialup        Boolean flag, if non-zero set to dial-up mode
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setdialupmode (SLCD *slconn, int dialup)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->dialup = (dialup) ? 1 : 0;
+
+    return 0;
+} /* End of sl_setdialupmode() */
+
+/**********************************************************************/ /**
+ * @brief Set or unset the SeedLink connection batch mode (v3 only)
+ *
+ * Set the SeedLink connction to batch mode.  In batch mode the client
+ * can send multiple commands to the server before waiting for a response.
+ * The server will send the responses in the order the commands were received.
+ *
+ * By default, the connection is set to non-batch mode.
+ *
+ * @param slconn        SeedLink connection description
+ * @param batchmode     Boolean flag, if non-zero set to batch mode
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setbatchmode (SLCD *slconn, int batchmode)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->batchmode = (batchmode) ? 1 : 0;
+
+    return 0;
+} /* End of sl_setbatchmode() */
 
 /**********************************************************************/ /**
  * sl_addstream:

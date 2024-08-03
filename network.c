@@ -403,20 +403,10 @@ sl_connect (SLCD *slconn, int sayhello)
     return -1;
   }
 
-  /* Everything should be connected, get capabilities if requested */
+  /* Everything should be connected, get capabilities, etc. */
   if (sayhello)
   {
     if (sayhello_int (slconn) == -1)
-    {
-      sl_disconnect (slconn);
-      return -1;
-    }
-  }
-
-  /* Try to enter batch mode if requested */
-  if (slconn->batchmode)
-  {
-    if (batchmode_int (slconn) == -1)
     {
       sl_disconnect (slconn);
       return -1;
@@ -1353,6 +1343,16 @@ sayhello_int (SLCD *slconn)
       sl_log_r (slconn, 2, 0,
                 "[%s] invalid response to AUTH command: %.*s\n",
                 slconn->sladdr, bytesread, readbuf);
+      return -1;
+    }
+  }
+
+  /* Send BATCH if v3 and set */
+  if (slconn->protocol & SLPROTO3X &&
+      slconn->batchmode)
+  {
+    if (batchmode_int (slconn) < 0)
+    {
       return -1;
     }
   }

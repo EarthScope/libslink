@@ -366,6 +366,9 @@ extern int sl_setkeepalive (SLCD *slconn, int keepalive);
 extern int sl_setiotimeout (SLCD *slconn, int iotimeout);
 extern int sl_setidletimeout (SLCD *slconn, int idletimeout);
 extern int sl_setreconnectdelay (SLCD *slconn, int reconnectdelay);
+extern int sl_setblockingmode (SLCD *slconn, int nonblock);
+extern int sl_setdialupmode (SLCD *slconn, int dialup);
+extern int sl_setbatchmode (SLCD *slconn, int batchmode);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);

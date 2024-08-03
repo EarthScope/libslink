@@ -38,6 +38,9 @@
 	for parsing addresses like raw IPv6 enclosed in square brackets.
 	- Add sl_settimewindow() to set time range for the streams.
 	- Add sl_setauthparams() to set authentication parameters.
+	- Add sl_setkeepalive(), sl_setiotimeout(), sl_setidletimeout()
+	and sl_setreconnectdelay().
+	- Add sl_setblockingmode(), sl_setdialupmode(), and sl_setbachmode().
 
 
 	API changes:
