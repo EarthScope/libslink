@@ -1156,6 +1156,53 @@ sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
 
 
 /**********************************************************************/ /**
+ * @brief Set SeedLink connection authentication parameters (v4 only)
+ *
+ * Set the callback functions and callback data used for authentication
+ * of SeedLink connections.  This is only relevant for the v4 protocol.
+ *
+ * The \a auth_value callback is executed to retrieve the authentication
+ * value to be sent to the server.  This value is transmitted with the
+ * \c AUTH command for v4 connections.  The following values are specified
+ * by the v4 protocol:
+ *
+ *   \c USERPASS <username> <password>
+ *   \c JWT <token>
+ *
+ * The \a auth_finish callback is executed when authentication is complete.
+ * This can be used to free memory or perform other cleanup tasks.
+ *
+ * The \a auth_data parameter is a pointer to caller-supplied data that
+ * is passed to the callback functions.
+ *
+ * There is no requirement that servers must support authentication, so
+ * the user must ensure that the target server supports authentication.
+ *
+ * @param slconn        SeedLink connection description
+ * @param auth_value    Callback executed to retrieve the authentication value
+ * @param auth_finish   Callback executed when authentication is complete
+ * @param auth_data     Caller-supplied data passed to the callback functions
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setauthparams (SLCD *slconn,
+                  const char *(*auth_value) (const char *server, void *auth_data),
+                  void (*auth_finish) (const char *server, void *auth_data),
+                  void *auth_data)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->auth_value  = auth_value;
+    slconn->auth_finish = auth_finish;
+    slconn->auth_data   = auth_data;
+
+    return 0;
+} /* End of sl_setauthparams() */
+
+/**********************************************************************/ /**
  * sl_addstream:
  *
  * Add a new stream entry to the stream list for the given SLCD

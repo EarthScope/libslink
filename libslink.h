@@ -354,6 +354,10 @@ extern void sl_freeslcd (SLCD *slconn);
 extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
 extern int sl_setserveraddress (SLCD *slconn, const char *server_address);
 extern int sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time);
+extern int sl_setauthparams (SLCD *slconn,
+                             const char *(*auth_value) (const char *server, void *auth_data),
+                             void (*auth_finish) (const char *server, void *auth_data),
+                             void *auth_data);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);

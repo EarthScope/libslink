@@ -237,10 +237,9 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
     {
       ppackets = 1;
     }
-    else if (strcmp (argvec[optind], "-A") == 0)
+    else if (strcmp (argvec[optind], "-Ap") == 0)
     {
-      slconn->auth_value = auth_value;
-      slconn->auth_finish = auth_finish;
+      sl_setauthparams (slconn, auth_value, auth_finish, NULL);
     }
     else if (strcmp (argvec[optind], "-nt") == 0)
     {
@@ -412,7 +411,7 @@ usage (void)
            " -h             show this usage message\n"
            " -v             be more verbose, multiple flags can be used\n"
            " -p             print details of data packets\n"
-           " -A             prompt for authentication details (v4 only)\n"
+           " -Ap            prompt for authentication details (v4 only)\n"
            "\n"
            " -nd delay      network re-connect delay (seconds), default 30\n"
            " -nt timeout    network timeout (seconds), re-establish connection if no\n"

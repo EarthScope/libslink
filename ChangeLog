@@ -35,6 +35,7 @@
 	- Add sl_setserveraddress() to set the server address, with support
 	for parsing addresses like raw IPv6 enclosed in square brackets.
 	- Add sl_settimewindow() to set time range for the streams.
+	- Add sl_setauthparams() to set authentication parameters.
 
 
 	API changes:

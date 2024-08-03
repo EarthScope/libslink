@@ -1293,12 +1293,12 @@ sayhello_int (SLCD *slconn)
   if (slconn->auth_value &&
       slconn->protocol & SLPROTO40)
   {
-    /* Call user-supplied callback function that returns authorization value */
+    /* Call user-supplied callback function that returns authentication value */
     const char *auth_value = slconn->auth_value (slconn->sladdr, slconn->auth_data);
 
     if (strlen(auth_value) > sizeof (sendstr) - 10)
     {
-      sl_log_r (slconn, 2, 0, "[%s] authorization value too large (%d bytes), maximum: %d bytes\n",
+      sl_log_r (slconn, 2, 0, "[%s] authentication value too large (%d bytes), maximum: %d bytes\n",
                 slconn->sladdr, (int)strlen (auth_value), (int)sizeof (sendstr) - 10);
 
       if (slconn->auth_finish)
@@ -1322,7 +1322,7 @@ sayhello_int (SLCD *slconn)
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
                              readbuf, sizeof (readbuf));
 
-    /* Clear memory with authorization value */
+    /* Clear memory with authentication value */
     memset (sendstr, 0, sizeof (sendstr));
 
     if (bytesread < 0)
