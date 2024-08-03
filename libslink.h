@@ -362,6 +362,10 @@ extern int sl_setauthparams (SLCD *slconn,
                              const char *(*auth_value) (const char *server, void *auth_data),
                              void (*auth_finish) (const char *server, void *auth_data),
                              void *auth_data);
+extern int sl_setkeepalive (SLCD *slconn, int keepalive);
+extern int sl_setiotimeout (SLCD *slconn, int iotimeout);
+extern int sl_setidletimeout (SLCD *slconn, int idletimeout);
+extern int sl_setreconnectdelay (SLCD *slconn, int reconnectdelay);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);

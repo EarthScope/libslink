@@ -1203,6 +1203,109 @@ sl_setauthparams (SLCD *slconn,
 } /* End of sl_setauthparams() */
 
 /**********************************************************************/ /**
+ * @brief Set SeedLink connection keep alive interval in seconds
+ *
+ * Keep alive packets are sent to the server at the specified interval
+ * when no data is being received to maintain the connection.
+ *
+ * By default, keep alive packets are disabled.
+ *
+ * @param slconn       SeedLink connection description
+ * @param keepalive    Keep alive interval in seconds, 0 to disable
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setkeepalive (SLCD *slconn, int keepalive)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->keepalive = keepalive;
+
+    return 0;
+} /* End of sl_setkeepalive() */
+
+/**********************************************************************/ /**
+ * @brief Set SeedLink connection I/O timeout in seconds
+ *
+ * Set the I/O timeout for the SeedLink connection.  This is the maximum
+ * time allowed for a read or write operation to complete before the
+ * connection is considered to be in a failed state and disconnected.
+ *
+ * By default, the I/O timeout is set to 60 seconds.
+ *
+ * @param slconn       SeedLink connection description
+ * @param iotimeout    I/O timeout in seconds, 0 to disable
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setiotimeout (SLCD *slconn, int iotimeout)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->iotimeout = iotimeout;
+
+    return 0;
+} /* End of sl_setiotimeout() */
+
+/**********************************************************************/ /**
+ * @brief Set SeedLink connection idle timeout in seconds
+ *
+ * Set the idle connection timeout.  This is the maximum time allowed
+ * for a connection to be idle, after which it will be disconnected.
+ *
+ * By default, the network timeout is set to 600 seconds.
+ *
+ * @param slconn       SeedLink connection description
+ * @param netto        Network timeout in seconds, 0 to disable
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setidletimeout (SLCD *slconn, int idletimeout)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->netto = idletimeout;
+
+    return 0;
+} /* End of sl_setidletimeout() */
+
+/**********************************************************************/ /**
+ * @brief Set SeedLink re-connection delay in seconds
+ *
+ * Set the re-connection delay.  This is the number of seconds to wait
+ * before attempting to re-connect to the SeedLink server after a
+ * connection has been lost.
+ *
+ * By default, the network delay is set to 30 seconds.
+ *
+ * @param slconn       SeedLink connection description
+ * @param netdly       Network delay in seconds, 0 to disable
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_setreconnectdelay (SLCD *slconn, int reconnectdelay)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->netdly = reconnectdelay;
+
+    return 0;
+} /* End of sl_setreconnectdelay() */
+
+
+/**********************************************************************/ /**
  * sl_addstream:
  *
  * Add a new stream entry to the stream list for the given ::SLCD
