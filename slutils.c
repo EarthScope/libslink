@@ -1205,8 +1205,14 @@ sl_setauthparams (SLCD *slconn,
 /**********************************************************************/ /**
  * sl_addstream:
  *
- * Add a new stream entry to the stream list for the given SLCD
+ * Add a new stream entry to the stream list for the given ::SLCD
  * struct.  No checking is done for duplicate streams.
+ *
+ * The \a seqnum parameter should be the last received sequence number
+ * for the stream to resume the connection from previous data transfer.
+ * The \a seqnum can also be ::SL_UNSETSEQUENCE to start from the next
+ * available data.  The \a seqnum be ::SL_ALLDATASEQUENCE to request
+ * all available data from the server (v4 only).
  *
  * The stream list is sorted alphanumerically by network-station ID,
  * and partitioned by the presence of wildcard characters in the
@@ -1215,7 +1221,7 @@ sl_setauthparams (SLCD *slconn,
  * @param[in] slconn     SeedLink connection description
  * @param[in] netstaid   Network-Station ID
  * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
- * @param[in] seqnum     Last received sequence number or ::SL_UNSETSEQUENCE
+ * @param[in] seqnum     Last received sequence number or special value
  * @param[in] timestamp  Start time for the stream, NULL if not used
  *
  * @retval  0 : success

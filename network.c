@@ -1991,11 +1991,12 @@ negotiate_multi_v3 (SLCD *slconn)
  * Negotiate stream selection with protocol 4 and issue the END
  * command to start streaming.
  *
- * If \a curstream->selectors is set then the string is parsed on spaces
+ * If a stream's \a selectors is set then the string is parsed on spaces
  * and each selector is sent.
  *
- * If \a curstream->seqnum is not `SL_UNSETSEQUENCE` and the SLCD \a resume
- * flag is true then data is requested starting at seqnum.
+ * If a streams's \a seqnum is set to SL_ALLDATASEQUENCE all data will
+ * be requested.  Otherwise, if it is not set to SL_UNSETSEQUENCE and the
+ * SLCD.resume flag is true then data is requested starting at seqnum.
  *
  * Returns -1 on errors, otherwise returns the link descriptor.
  ***************************************************************************/
@@ -2197,16 +2198,21 @@ negotiate_v4 (SLCD *slconn)
     }
     else
     {
-      if (curstream->seqnum != SL_UNSETSEQUENCE)
+      if (curstream->seqnum == SL_UNSETSEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "DATA %" PRIu64 "\r",
-                  (curstream->seqnum + 1));
+                  "DATA\r");
+      }
+      else if (curstream->seqnum == SL_ALLDATASEQUENCE)
+      {
+        snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
+                  "DATA ALL\r");
       }
       else
       {
         snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
-                  "DATA\r");
+                  "DATA %" PRIu64 "\r",
+                  (curstream->seqnum + 1));
       }
     }
 

@@ -16,6 +16,8 @@
 	- Do not interpret the version following SeedLink in the HELLO
 	response as a protocol verison, instead parse SLPROTO declarations
 	and default to 3.x if no recognized protocols are found.
+	- Add special sequence number value SL_ALLDATASEQEUNCE to
+	request all data from a server for a stream (v4 only).
 
 	- Warning messages for non-support of features for ancient server
 	versions < 3 are removed.  Capoabilty is not reduced, but the library

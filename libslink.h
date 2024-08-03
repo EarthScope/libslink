@@ -230,6 +230,10 @@ typedef enum
     @brief Representation for unset sequence values. **/
 #define SL_UNSETSEQUENCE UINT64_MAX
 
+/** @def SL_ALLDATASEQUENCE
+    @brief Representation for a sequence value meaning "all data". **/
+#define SL_ALLDATASEQUENCE (UINT64_MAX - 1)
+
 /** @def SLTMODULUS
     @brief Define the high precision time tick interval as 1/modulus seconds
     corresponding to **nanoseconds**. **/
