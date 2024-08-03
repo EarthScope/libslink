@@ -1719,6 +1719,7 @@ void
 sl_printslcd (SLCD *slconn)
 {
   SLstream *curstream;
+  char sequence[32];
 
   if (!slconn)
     return;
@@ -1750,10 +1751,17 @@ sl_printslcd (SLCD *slconn)
   curstream = slconn->streams;
   while (curstream)
   {
-    sl_log_r (slconn, 0, 0, "    Network-Station ID: %s\n", curstream->netstaid);
-    sl_log_r (slconn, 0, 0, "                Selectors: %s\n", curstream->selectors ? curstream->selectors : "NULL");
-    sl_log_r (slconn, 0, 0, "                 Sequence: %" PRIu64 "\n", curstream->seqnum);
-    sl_log_r (slconn, 0, 0, "              Time stampe: %s\n", curstream->timestamp);
+    if (curstream->seqnum == SL_UNSETSEQUENCE)
+      strcpy (sequence, "UNSET");
+    else if (curstream->seqnum == SL_ALLDATASEQUENCE)
+      strcpy (sequence, "ALLDATA");
+    else
+      snprintf (sequence, sizeof(sequence), "%" PRIu64, curstream->seqnum);
+
+    sl_log_r (slconn, 0, 0, "      Network-Station ID: %s\n", curstream->netstaid);
+    sl_log_r (slconn, 0, 0, "                  Selectors: %s\n", curstream->selectors ? curstream->selectors : "NULL");
+    sl_log_r (slconn, 0, 0, "                   Sequence: %s\n", sequence);
+    sl_log_r (slconn, 0, 0, "                 Time stamp: %s\n", curstream->timestamp);
     curstream = curstream->next;
   }
 } /* End of sl_printslcd() */
