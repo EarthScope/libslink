@@ -41,6 +41,7 @@
 	- Add sl_setkeepalive(), sl_setiotimeout(), sl_setidletimeout()
 	and sl_setreconnectdelay().
 	- Add sl_setblockingmode(), sl_setdialupmode(), and sl_setbachmode().
+	- Add sl_printslcd() to print SLCD details.
 
 
 	API changes:

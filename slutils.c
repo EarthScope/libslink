@@ -1707,6 +1707,59 @@ sl_terminate (SLCD *slconn)
 
 
 /**********************************************************************/ /**
+ * @brief Print user parameters of the SeedLink connection description
+ *
+ * Useful for diagnostic purposes, this routine will print the
+ * details of the SeedLink connection description to the logging
+ * facility.
+ *
+ * @param[in] slconn     SeedLink connection description
+ ***************************************************************************/
+void
+sl_printslcd (SLCD *slconn)
+{
+  SLstream *curstream;
+
+  if (!slconn)
+    return;
+
+  sl_log_r (slconn, 0, 0, "SeedLink connection description:\n");
+  sl_log_r (slconn, 0, 0, "             Address: %s\n", slconn->sladdr ? slconn->sladdr : "NULL");
+  sl_log_r (slconn, 0, 0, "                Host: %s\n", slconn->slhost ? slconn->slhost : "NULL");
+  sl_log_r (slconn, 0, 0, "                Port: %s\n", slconn->slport ? slconn->slport : "NULL");
+  sl_log_r (slconn, 0, 0, "         Client name: %s\n", slconn->clientname ? slconn->clientname : "NULL");
+  sl_log_r (slconn, 0, 0, "      Client version: %s\n", slconn->clientversion ? slconn->clientversion : "NULL");
+  sl_log_r (slconn, 0, 0, "          Start time: %s\n", slconn->start_time ? slconn->start_time : "NULL");
+  sl_log_r (slconn, 0, 0, "            End time: %s\n", slconn->end_time ? slconn->end_time : "NULL");
+  sl_log_r (slconn, 0, 0, "          Keep alive: %d seconds\n", slconn->keepalive);
+  sl_log_r (slconn, 0, 0, "         I/O timeout: %d seconds\n", slconn->iotimeout);
+  sl_log_r (slconn, 0, 0, "        Idle timeout: %d seconds\n", slconn->netto);
+  sl_log_r (slconn, 0, 0, "     Reconnect delay: %d seconds\n", slconn->netdly);
+  sl_log_r (slconn, 1, 1, "        auth_value(): %p\n", slconn->auth_value);
+  sl_log_r (slconn, 1, 1, "       auth_finish(): %p\n", slconn->auth_finish);
+  sl_log_r (slconn, 1, 1, "           auth_data: %p\n", slconn->auth_data);
+  sl_log_r (slconn, 0, 0, "   Non-blocking mode: %d\n", slconn->noblock);
+  sl_log_r (slconn, 0, 0, "        Dial-up mode: %d\n", slconn->dialup);
+  sl_log_r (slconn, 0, 0, "          Batch mode: %d\n", slconn->batchmode);
+  sl_log_r (slconn, 0, 0, "Use last packet time: %d\n", slconn->lastpkttime);
+  sl_log_r (slconn, 0, 0, "           Terminate: %d\n", slconn->terminate);
+  sl_log_r (slconn, 0, 0, "Resume with sequence: %d\n", slconn->resume);
+  sl_log_r (slconn, 0, 0, "  Multi-station mode: %d\n", slconn->multistation);
+  sl_log_r (slconn, 0, 0, "        INFO request: %s\n", slconn->info ? slconn->info : "NULL");
+  sl_log_r (slconn, 0, 0, "         Stream list:\n");
+  curstream = slconn->streams;
+  while (curstream)
+  {
+    sl_log_r (slconn, 0, 0, "    Network-Station ID: %s\n", curstream->netstaid);
+    sl_log_r (slconn, 0, 0, "                Selectors: %s\n", curstream->selectors ? curstream->selectors : "NULL");
+    sl_log_r (slconn, 0, 0, "                 Sequence: %" PRIu64 "\n", curstream->seqnum);
+    sl_log_r (slconn, 0, 0, "              Time stampe: %s\n", curstream->timestamp);
+    curstream = curstream->next;
+  }
+  sl_log_r (slconn, 0, 0, "\n");
+} /* End of sl_printslcd() */
+
+/**********************************************************************/ /**
  * @brief Detect miniSEED record in buffer
  *
  * Determine if the buffer contains a miniSEED data record by

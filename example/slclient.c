@@ -243,15 +243,15 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
     }
     else if (strcmp (argvec[optind], "-nt") == 0)
     {
-      slconn->netto = atoi (argvec[++optind]);
+      sl_setidletimeout (slconn, atoi (getoptval (argcount, argvec, optind++)));
     }
     else if (strcmp (argvec[optind], "-nd") == 0)
     {
-      slconn->netdly = atoi (argvec[++optind]);
+      sl_setreconnectdelay (slconn, atoi (getoptval (argcount, argvec, optind++)));
     }
     else if (strcmp (argvec[optind], "-k") == 0)
     {
-      slconn->keepalive = atoi (argvec[++optind]);
+      sl_setkeepalive (slconn, atoi (getoptval (argcount, argvec, optind++)));
     }
     else if (strcmp (argvec[optind], "-l") == 0)
     {
