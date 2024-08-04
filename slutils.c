@@ -253,7 +253,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         if (slconn->stat->packetinfo.stationidlength > (sizeof (slconn->stat->packetinfo.stationid) - 1))
         {
           sl_log_r (slconn, 2, 0,
-                    "[%s] %s() received NET_STA ID is too large (%u) for buffer (%zu)\n",
+                    "[%s] %s() received station ID is too large (%u) for buffer (%zu)\n",
                     slconn->sladdr, __func__,
                     slconn->stat->packetinfo.stationidlength,
                     sizeof (slconn->stat->packetinfo.stationid) - 1);
@@ -717,7 +717,7 @@ update_stream (SLCD *slconn, const char *payload)
       return -1;
     }
 
-    /* Set NET_STA ID if it was not included in SeedLink header (e.g. v3 protocol) */
+    /* Set station ID if it was not included in SeedLink header (e.g. v3 protocol) */
     if (packetinfo->stationidlength == 0)
     {
       /* Extract NET_STA from FDSN Source Identifier returned by sl_payload_info() */
