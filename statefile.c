@@ -73,17 +73,18 @@ sl_savestate (SLCD *slconn, const char *statefile)
   {
     if (curstream->seqnum == SL_UNSETSEQUENCE)
       linelen = snprintf (line, sizeof (line), "%s UNSET %s\n",
-                          curstream->netstaid,
+                          curstream->stationid,
                           curstream->timestamp);
     else
       linelen = snprintf (line, sizeof (line), "%s %" PRIu64 " %s\n",
-                          curstream->netstaid,
+                          curstream->stationid,
                           curstream->seqnum,
                           curstream->timestamp);
 
     if (linelen <= 0)
     {
-      sl_log_r (slconn, 2, 0, "Error creating state file entry for: %s\n", curstream->netstaid);
+      sl_log_r (slconn, 2, 0, "Error creating state file entry for: %s\n",
+                curstream->stationid);
     }
     else if (fputs (line, fp) == EOF)
     {
@@ -287,7 +288,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     curstream = slconn->streams;
     while (curstream != NULL)
     {
-      if (!strcmp (stationstr, curstream->netstaid))
+      if (!strcmp (stationstr, curstream->stationid))
       {
         curstream->seqnum = seqnum;
 

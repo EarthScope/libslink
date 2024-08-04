@@ -64,7 +64,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   FILE *fp;
   char *cp;
   char selectors[200] = {0};
-  char netstaid[64] = {0};
+  char stationid[64] = {0};
   char line[200];
   int fields = 0;
   int streamcount = 0;
@@ -90,24 +90,23 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
   while (fgets (line, sizeof (line), fp))
   {
     linecount += 1;
-    memset (netstaid, 0, sizeof(netstaid));
+    memset (stationid, 0, sizeof(stationid));
     memset (selectors, 0, sizeof(selectors));
 
-    /* Terminate string at first newline or carriage return */
-    if ((cp = strchr (line, '\n')) ||
-        (cp = strchr (line, '\r')))
+    /* Terminate string at first carriage return or newline */
+    if ((cp = strchr (line, '\r')) != NULL || (cp = strchr (line, '\n')) != NULL)
       *cp = '\0';
 
-    fields = sscanf (line, "%63s", netstaid);
+    fields = sscanf (line, "%63s", stationid);
 
     /* Skip blank or comment lines */
-    if (fields <= 0 || netstaid[0] == '#' || netstaid[0] == '*')
+    if (fields <= 0 || stationid[0] == '#' || stationid[0] == '*')
       continue;
 
     /* Parse format: NET_STA [selectors] */
-    if (strchr (netstaid, '_') != NULL)
+    if (strchr (stationid, '_') != NULL)
     {
-      fields = sscanf (line, "%63s %199c", netstaid, selectors);
+      fields = sscanf (line, "%63s %199c", stationid, selectors);
     }
     /* Parse legacy format: NET STA [selectors] */
     else
@@ -119,7 +118,7 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
 
       if (fields >= 2)
       {
-        snprintf (netstaid, sizeof(netstaid), "%s_%s", net, sta);
+        snprintf (stationid, sizeof(stationid), "%s_%s", net, sta);
 
         fields -= 1;
       }
@@ -135,12 +134,12 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     /* Add this stream to the stream list */
     if (fields == 2)
     {
-      sl_addstream (slconn, netstaid, selectors, SL_UNSETSEQUENCE, NULL);
+      sl_addstream (slconn, stationid, selectors, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
     else
     {
-      sl_addstream (slconn, netstaid, defselect, SL_UNSETSEQUENCE, NULL);
+      sl_addstream (slconn, stationid, defselect, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
   }

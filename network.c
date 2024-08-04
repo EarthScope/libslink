@@ -1695,7 +1695,7 @@ negotiate_multi_v3 (SLCD *slconn)
   while (curstream != NULL)
   {
     /* Generate independent network and station strings from NET_STA */
-    strncpy (net, curstream->netstaid, sizeof(net));
+    strncpy (net, curstream->stationid, sizeof(net));
     if ((sta = strchr (net, '_')))
       *sta++ = '\0';
 
@@ -1703,11 +1703,11 @@ negotiate_multi_v3 (SLCD *slconn)
     sprintf (sendstr, "STATION %s %s\r\n", sta, net);
 
     sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n",
-              curstream->netstaid,
+              curstream->stationid,
               (int)strcspn (sendstr, "\r\n"), sendstr);
 
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                             curstream->netstaid,
+                             curstream->stationid,
                              (slconn->batchmode == 2) ? (void *)NULL : readbuf,
                              sizeof (readbuf));
 
@@ -1735,13 +1735,13 @@ negotiate_multi_v3 (SLCD *slconn)
       /* Check the response */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
       {
-        sl_log_r (slconn, 1, 2, "[%s] station is OK %s%s%s\n", curstream->netstaid,
+        sl_log_r (slconn, 1, 2, "[%s] station is OK %s%s%s\n", curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
         acceptsta++;
       }
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
       {
-        sl_log_r (slconn, 2, 0, "[%s] station not accepted %s%s%s\n", curstream->netstaid,
+        sl_log_r (slconn, 2, 0, "[%s] station not accepted %s%s%s\n", curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
         /* Increment the loop control and skip to the next stream */
         curstream = curstream->next;
@@ -1750,7 +1750,7 @@ negotiate_multi_v3 (SLCD *slconn)
       else
       {
         sl_log_r (slconn, 2, 0, "[%s] invalid response to STATION command: %.*s\n",
-                  curstream->netstaid, bytesread, readbuf);
+                  curstream->stationid, bytesread, readbuf);
         return -1;
       }
     }
@@ -1778,11 +1778,11 @@ negotiate_multi_v3 (SLCD *slconn)
           sprintf (sendstr, "SELECT %.*s\r\n", sellen, selptr);
 
           sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n",
-                    curstream->netstaid,
+                    curstream->stationid,
                     (int)strcspn (sendstr, "\r\n"), sendstr);
 
           bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                                   curstream->netstaid,
+                                   curstream->stationid,
                                    (slconn->batchmode == 2) ? (void *)NULL : readbuf,
                                    sizeof (readbuf));
 
@@ -1811,21 +1811,21 @@ negotiate_multi_v3 (SLCD *slconn)
             if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
             {
               sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n",
-                        curstream->netstaid, sellen, selptr,
+                        curstream->stationid, sellen, selptr,
                         (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
               acceptsel++;
             }
             else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
             {
               sl_log_r (slconn, 2, 0, "[%s] selector %.*s not accepted %s%s%s\n",
-                        curstream->netstaid, sellen, selptr,
+                        curstream->stationid, sellen, selptr,
                         (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
             }
             else
             {
               sl_log_r (slconn, 2, 0,
                         "[%s] invalid response to SELECT command: %.*s\n",
-                        curstream->netstaid, bytesread, readbuf);
+                        curstream->stationid, bytesread, readbuf);
             return -1;
             }
           }
@@ -1836,13 +1836,13 @@ negotiate_multi_v3 (SLCD *slconn)
       if (!acceptsel)
       {
         sl_log_r (slconn, 2, 0, "[%s] no data stream selector(s) accepted\n",
-                  curstream->netstaid);
+                  curstream->stationid);
         return -1;
       }
       else
       {
         sl_log_r (slconn, 1, 2, "[%s] %d selector(s) accepted\n",
-                  curstream->netstaid, acceptsel);
+                  curstream->stationid, acceptsel);
       }
 
       acceptsel = 0; /* Reset the accepted selector count */
@@ -1863,7 +1863,7 @@ negotiate_multi_v3 (SLCD *slconn)
         sprintf (sendstr, "TIME %.31s %.31s\r\n", start_time, end_time);
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-                curstream->netstaid);
+                curstream->stationid);
     }
     else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
     {
@@ -1907,7 +1907,7 @@ negotiate_multi_v3 (SLCD *slconn)
 
         sl_log_r (slconn, 1, 1,
                   "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ")\n",
-                  curstream->netstaid,
+                  curstream->stationid,
                   (curstream->seqnum + 1),
                   (curstream->seqnum + 1));
       }
@@ -1924,12 +1924,12 @@ negotiate_multi_v3 (SLCD *slconn)
       }
 
       sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n",
-                curstream->netstaid);
+                curstream->stationid);
     }
 
     /* Send the TIME/DATA/FETCH command and receive response */
     bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                             curstream->netstaid,
+                             curstream->stationid,
                              (slconn->batchmode == 2) ? (void *)NULL : readbuf,
                              sizeof (readbuf));
 
@@ -1954,19 +1954,19 @@ negotiate_multi_v3 (SLCD *slconn)
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
       {
         sl_log_r (slconn, 1, 2, "[%s] DATA/FETCH/TIME command is OK %s%s%s\n",
-                  curstream->netstaid,
+                  curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
       }
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
       {
         sl_log_r (slconn, 2, 0, "[%s] DATA/FETCH/TIME command is not accepted %s%s%s\n",
-                  curstream->netstaid,
+                  curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
       }
       else
       {
         sl_log_r (slconn, 2, 0, "[%s] invalid response to DATA/FETCH/TIME command: %.*s\n",
-                  curstream->netstaid, bytesread, readbuf);
+                  curstream->stationid, bytesread, readbuf);
         return -1;
       }
     }
@@ -2100,13 +2100,13 @@ negotiate_v4 (SLCD *slconn)
       cmdtail = cmdptr;
     }
 
-    strcpy (cmdtail->nsid, curstream->netstaid);
+    strcpy (cmdtail->nsid, curstream->stationid);
     cmdtail->next = NULL;
 
     /* Generate STATION command */
     snprintf (cmdtail->cmd, sizeof(cmdtail->cmd),
               "STATION %s\r",
-              curstream->netstaid);
+              curstream->stationid);
 
     stationcnt++;
 
@@ -2163,7 +2163,7 @@ negotiate_v4 (SLCD *slconn)
 
           cmdtail->next = cmdptr;
           cmdtail = cmdptr;
-          strcpy (cmdtail->nsid, curstream->netstaid);
+          strcpy (cmdtail->nsid, curstream->stationid);
           cmdtail->next = NULL;
 
           /* Generate SELECT command */
@@ -2190,7 +2190,7 @@ negotiate_v4 (SLCD *slconn)
 
     cmdtail->next = cmdptr;
     cmdtail = cmdptr;
-    strcpy (cmdtail->nsid, curstream->netstaid);
+    strcpy (cmdtail->nsid, curstream->stationid);
     cmdtail->next = NULL;
 
     /* Generate DATA command with _incremented_ sequence number */
@@ -2268,7 +2268,7 @@ negotiate_v4 (SLCD *slconn)
   while (cmdptr)
   {
     bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf),
-                             NULL, curstream->netstaid);
+                             NULL, curstream->stationid);
 
     if (bytesread < 0)
     {

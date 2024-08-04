@@ -191,7 +191,7 @@ typedef struct SLlog_s
 #define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
 #define SL_MIN_PAYLOAD      64       /**< Minimum data for payload detection and tracking */
 #define SL_MAX_PAYLOAD      16384    /**< Maximum data for payload detection and tracking */
-#define SL_MAX_NETSTAID     22       /**< Maximum length of NET_STA station ID */
+#define SL_MAX_STATIONID    22       /**< Maximum length of station ID */
 
 /** Protocols recognized by the library */
 typedef enum
@@ -259,16 +259,16 @@ typedef struct slpacketinfo_s
   uint64_t seqnum;              /**< Packet sequence number */
   uint32_t payloadlength;       /**< Packet payload length */
   uint32_t payloadcollected;    /**< Packet payload collected so far */
-  char     netstaid[SL_MAX_NETSTAID]; /**< Station ID in NET_STA format */
+  char     stationid[SL_MAX_STATIONID]; /**< Station ID */
   char     payloadformat;       /**< Packet payload format */
   char     payloadsubformat;    /**< Packet payload subformat */
-  uint8_t  netstaidlength;      /**< Station ID length */
+  uint8_t  stationidlength;      /**< Station ID length */
 } SLpacketinfo;
 
 /** @brief Stream information */
 typedef struct slstream_s
 {
-  char     netstaid[SL_MAX_NETSTAID]; /**< Station ID in NET_STA format */
+  char     stationid[SL_MAX_STATIONID]; /**< Station ID */
   char    *selectors;	          /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
   char     timestamp[32];       /**< Time stamp of last packet received */
@@ -292,7 +292,7 @@ typedef struct stat_s
   /** Stream state */
   enum
   {
-    HEADER, NETSTAID, PAYLOAD
+    HEADER, STATIONID, PAYLOAD
   } stream_state;
 
   /** INFO query state */
@@ -362,7 +362,7 @@ extern int sl_setreconnectdelay (SLCD *slconn, int reconnectdelay);
 extern int sl_setblockingmode (SLCD *slconn, int nonblock);
 extern int sl_setdialupmode (SLCD *slconn, int dialup);
 extern int sl_setbatchmode (SLCD *slconn, int batchmode);
-extern int sl_addstream (SLCD *slconn, const char *netstaid,
+extern int sl_addstream (SLCD *slconn, const char *stationid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);
 #define sl_setuniparams sl_setallstationparams /* For backwards compatibility */

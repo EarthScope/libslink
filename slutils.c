@@ -228,11 +228,11 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           }
           else if (bytesread > 0)
           {
-            /* Set state for network-station ID or payload collection */
-            if (slconn->stat->packetinfo.netstaidlength > 0)
+            /* Set state for station ID or payload collection */
+            if (slconn->stat->packetinfo.stationidlength > 0)
             {
-              slconn->stat->packetinfo.netstaid[0] = '\0';
-              slconn->stat->stream_state           = NETSTAID;
+              slconn->stat->packetinfo.stationid[0] = '\0';
+              slconn->stat->stream_state            = STATIONID;
             }
             else
             {
@@ -245,36 +245,36 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         }
       } /* Done reading header */
 
-      /* Read network-station ID */
-      if (slconn->stat->stream_state == NETSTAID &&
-          slconn->stat->packetinfo.netstaidlength > 0 &&
-          (slconn->recvdatalen - bytesconsumed) >= slconn->stat->packetinfo.netstaidlength)
+      /* Read station ID */
+      if (slconn->stat->stream_state == STATIONID &&
+          slconn->stat->packetinfo.stationidlength > 0 &&
+          (slconn->recvdatalen - bytesconsumed) >= slconn->stat->packetinfo.stationidlength)
       {
-        if (slconn->stat->packetinfo.netstaidlength > (sizeof (slconn->stat->packetinfo.netstaid) - 1))
+        if (slconn->stat->packetinfo.stationidlength > (sizeof (slconn->stat->packetinfo.stationid) - 1))
         {
           sl_log_r (slconn, 2, 0,
                     "[%s] %s() received NET_STA ID is too large (%u) for buffer (%zu)\n",
                     slconn->sladdr, __func__,
-                    slconn->stat->packetinfo.netstaidlength,
-                    sizeof (slconn->stat->packetinfo.netstaid) - 1);
+                    slconn->stat->packetinfo.stationidlength,
+                    sizeof (slconn->stat->packetinfo.stationid) - 1);
 
           break;
         }
         else
         {
-          memcpy (slconn->stat->packetinfo.netstaid,
+          memcpy (slconn->stat->packetinfo.stationid,
                   slconn->recvbuffer + bytesconsumed,
-                  slconn->stat->packetinfo.netstaidlength);
+                  slconn->stat->packetinfo.stationidlength);
 
-          slconn->stat->packetinfo.netstaid[slconn->stat->packetinfo.netstaidlength] = '\0';
+          slconn->stat->packetinfo.stationid[slconn->stat->packetinfo.stationidlength] = '\0';
 
           /* Set state for payload collection */
           slconn->stat->packetinfo.payloadcollected = 0;
           slconn->stat->stream_state                = PAYLOAD;
 
-          bytesconsumed += slconn->stat->packetinfo.netstaidlength;
+          bytesconsumed += slconn->stat->packetinfo.stationidlength;
         }
-      } /* Done reading network-station ID */
+      } /* Done reading station ID */
 
       /* Read payload */
       if (slconn->stat->stream_state == PAYLOAD)
@@ -531,7 +531,7 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
       slconn->stat->packetinfo.payloadsubformat = buffer[3];
       memcpy (&slconn->stat->packetinfo.payloadlength, buffer + 4, 4);
       memcpy (&slconn->stat->packetinfo.seqnum, buffer + 8, 8);
-      memcpy (&slconn->stat->packetinfo.netstaidlength, buffer + 16, 1);
+      memcpy (&slconn->stat->packetinfo.stationidlength, buffer + 16, 1);
 
       if (!sl_littleendianhost ())
       {
@@ -670,7 +670,7 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
  * Update the appropriate stream list entries.  Length of the payload
  * must be at least enough to determine stream details.
  *
- * The slconn->stat->packetinfo.netstaid value is also populated from
+ * The slconn->stat->packetinfo.stationid value is also populated from
  * the payload if not already set.
  *
  * Returns 0 if successfully updated and -1 if not found or error.
@@ -708,7 +708,7 @@ update_stream (SLCD *slconn, const char *payload)
   {
     if (sl_payload_info (slconn->log, packetinfo,
                          payload, packetinfo->payloadlength,
-                         (packetinfo->netstaidlength == 0) ? sourceid : NULL, sizeof (sourceid),
+                         (packetinfo->stationidlength == 0) ? sourceid : NULL, sizeof (sourceid),
                          timestamp, sizeof (timestamp),
                          NULL, NULL) == -1)
     {
@@ -718,7 +718,7 @@ update_stream (SLCD *slconn, const char *payload)
     }
 
     /* Set NET_STA ID if it was not included in SeedLink header (e.g. v3 protocol) */
-    if (packetinfo->netstaidlength == 0)
+    if (packetinfo->stationidlength == 0)
     {
       /* Extract NET_STA from FDSN Source Identifier returned by sl_payload_info() */
       if (strlen (sourceid) >= 8 && strncmp (sourceid, "FDSN:", 5) == 0)
@@ -730,16 +730,16 @@ update_stream (SLCD *slconn, const char *payload)
           {
             count = (cp - sourceid) - 5;
 
-            if (count >= sizeof (packetinfo->netstaid))
+            if (count >= sizeof (packetinfo->stationid))
             {
               sl_log_r (slconn, 2, 0, "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%d)\n",
                         slconn->sladdr, __func__, count);
               return -1;
             }
 
-            memcpy (packetinfo->netstaid, sourceid + 5, sizeof (packetinfo->netstaid));
-            packetinfo->netstaid[count] = '\0';
-            packetinfo->netstaidlength = count;
+            memcpy (packetinfo->stationid, sourceid + 5, sizeof (packetinfo->stationid));
+            packetinfo->stationid[count] = '\0';
+            packetinfo->stationidlength = count;
           }
         }
       }
@@ -750,7 +750,7 @@ update_stream (SLCD *slconn, const char *payload)
 
   /* For all-station mode */
   if (curstream != NULL &&
-      strcmp (curstream->netstaid, "*") == 0)
+      strcmp (curstream->stationid, "*") == 0)
   {
     curstream->seqnum = packetinfo->seqnum;
     strcpy (curstream->timestamp, timestamp);
@@ -762,7 +762,7 @@ update_stream (SLCD *slconn, const char *payload)
   while (curstream != NULL)
   {
     /* Use glob matching to match wildcarded station ID codes */
-    if (sl_globmatch (packetinfo->netstaid, curstream->netstaid))
+    if (sl_globmatch (packetinfo->stationid, curstream->stationid))
     {
       curstream->seqnum = packetinfo->seqnum;
       strcpy (curstream->timestamp, timestamp);
@@ -776,7 +776,7 @@ update_stream (SLCD *slconn, const char *payload)
   /* If no updates then no match was found */
   if (updates == 0)
     sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n",
-              slconn->sladdr, packetinfo->netstaid);
+              slconn->sladdr, packetinfo->stationid);
 
   return (updates == 0) ? -1 : 0;
   } /* End of update_stream() */
@@ -1398,13 +1398,13 @@ sl_setbatchmode (SLCD *slconn, int batchmode)
  * available data.  The \a seqnum be ::SL_ALLDATASEQUENCE to request
  * all available data from the server (v4 only).
  *
- * The stream list is sorted alphanumerically by network-station ID,
+ * The stream list is sorted alphanumerically by station ID,
  * and partitioned by the presence of wildcard characters in the
- * network-station ID, starting with more specific entries first.
+ * station ID, starting with more specific entries first.
  *
  * @param[in] slconn     SeedLink connection description
- * @param[in] netstaid   Network-Station ID
- * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
+ * @param[in] stationid  Station ID
+ * @param[in] selectors  Selectors for the station ID, NULL if none
  * @param[in] seqnum     Last received sequence number or special value
  * @param[in] timestamp  Start time for the stream, NULL if not used
  *
@@ -1412,7 +1412,7 @@ sl_setbatchmode (SLCD *slconn, int batchmode)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_addstream (SLCD *slconn, const char *netstaid,
+sl_addstream (SLCD *slconn, const char *stationid,
               const char *selectors, uint64_t seqnum,
               const char *timestamp)
 {
@@ -1422,13 +1422,13 @@ sl_addstream (SLCD *slconn, const char *netstaid,
   int newparitition = 0;
   int partition = 0;
 
-  if (!slconn || !netstaid)
+  if (!slconn || !stationid)
     return -1;
 
   /* Sanity, check for a all-station mode entry */
   if (slconn->streams)
   {
-    if (strcmp (slconn->streams->netstaid, "*") == 0)
+    if (strcmp (slconn->streams->stationid, "*") == 0)
     {
       sl_log_r (slconn, 2, 0, "[%s] %s(): all-station mode already configured!\n",
                 slconn->sladdr, __func__);
@@ -1444,7 +1444,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
     return -1;
   }
 
-  strncpy (newstream->netstaid, netstaid, sizeof (newstream->netstaid) - 1);
+  strncpy (newstream->stationid, stationid, sizeof (newstream->stationid) - 1);
 
   if (selectors)
     newstream->selectors = strdup (selectors);
@@ -1465,7 +1465,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
     if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n",
-                __func__, netstaid, newstream->timestamp);
+                __func__, stationid, newstream->timestamp);
       return -1;
     }
   }
@@ -1475,12 +1475,12 @@ sl_addstream (SLCD *slconn, const char *netstaid,
    * 1) no-wildcards in NET_STA, followed by
    * 2) ? wildcards in NET_STA, followed by
    * 3) * wildcards in NET_STA. */
-  newparitition = (strchr (netstaid, '*')) ? 3 : (strchr (netstaid, '?')) ? 2 : 1;
+  newparitition = (strchr (stationid, '*')) ? 3 : (strchr (stationid, '?')) ? 2 : 1;
   curstream = slconn->streams;
   while (curstream)
   {
     /* Determine wildcard partition */
-    partition = (strchr (curstream->netstaid, '*')) ? 3 : (strchr (curstream->netstaid, '?')) ? 2 : 1;
+    partition = (strchr (curstream->stationid, '*')) ? 3 : (strchr (curstream->stationid, '?')) ? 2 : 1;
 
     /* Compare partitions */
     if (newparitition < partition)
@@ -1495,7 +1495,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
     }
 
     /* Compare alphanumerically */
-    if (strcmp (curstream->netstaid, netstaid) > 0)
+    if (strcmp (curstream->stationid, stationid) > 0)
     {
       break;
     }
@@ -1534,7 +1534,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
  * Also set the multistation flag to false (0).
  *
  * @param[in] slconn     SeedLink connection description
- * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
+ * @param[in] selectors  Selectors for the station ID, NULL if none
  * @param[in] seqnum     Last received sequence number or ::SL_UNSETSEQUENCE
  * @param[in] timestamp  Start time for the stream, NULL if not used
  *
@@ -1562,7 +1562,7 @@ sl_setallstationparams (SLCD *slconn, const char *selectors,
       return -1;
     }
   }
-  else if (strcmp (newstream->netstaid, "*") != 0)
+  else if (strcmp (newstream->stationid, "*") != 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n",
               slconn->sladdr, __func__);
@@ -1570,7 +1570,7 @@ sl_setallstationparams (SLCD *slconn, const char *selectors,
   }
 
   /* Set the station ID to an all-matching, single wildcard */
-  strncpy (newstream->netstaid, "*", sizeof (newstream->netstaid));
+  strncpy (newstream->stationid, "*", sizeof (newstream->stationid));
 
   if (selectors)
     newstream->selectors = strdup (selectors);
@@ -1767,7 +1767,7 @@ sl_printslcd (SLCD *slconn)
     else
       snprintf (sequence, sizeof(sequence), "%" PRIu64, curstream->seqnum);
 
-    sl_log_r (slconn, 0, 0, "      Network-Station ID: %s\n", curstream->netstaid);
+    sl_log_r (slconn, 0, 0, "             Station ID: %s\n", curstream->stationid);
     sl_log_r (slconn, 0, 0, "                  Selectors: %s\n", curstream->selectors ? curstream->selectors : "NULL");
     sl_log_r (slconn, 0, 0, "                   Sequence: %s\n", sequence);
     sl_log_r (slconn, 0, 0, "                 Time stamp: %s\n", curstream->timestamp);
