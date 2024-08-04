@@ -38,18 +38,15 @@
  * for entries will no specific selectors indicated.
  *
  * The file is expected to be repeating lines of the form:
- *   NET_STA [selectors]
+ *   StationID [selectors]
  *
  * For example:
  * --------
- * # Comment lines begin with a '#' or '*'
+ * # Comment lines begin with a '#'
  * GE_ISP  BH?
  * NL_HGN
  * MN_AQU  BH? HH? LH?
  * --------
- *
- * The legacy format, in which NET and STA are separated by
- * whitespace, is also supported.
  *
  * @param slconn The ::SLCD to which to add streams
  * @param streamfile The file containing the stream list
@@ -97,32 +94,11 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     if ((cp = strchr (line, '\r')) != NULL || (cp = strchr (line, '\n')) != NULL)
       *cp = '\0';
 
-    fields = sscanf (line, "%63s", stationid);
+    fields = sscanf (line, "%63s %199c", stationid, selectors);
 
     /* Skip blank or comment lines */
-    if (fields <= 0 || stationid[0] == '#' || stationid[0] == '*')
+    if (fields <= 0 || stationid[0] == '#')
       continue;
-
-    /* Parse format: NET_STA [selectors] */
-    if (strchr (stationid, '_') != NULL)
-    {
-      fields = sscanf (line, "%63s %199c", stationid, selectors);
-    }
-    /* Parse legacy format: NET STA [selectors] */
-    else
-    {
-      char net[50] = {0};
-      char sta[50] = {0};
-
-      fields = sscanf (line, "%49s %49s %199c", net, sta, selectors);
-
-      if (fields >= 2)
-      {
-        snprintf (stationid, sizeof(stationid), "%s_%s", net, sta);
-
-        fields -= 1;
-      }
-    }
 
     if (fields < 1)
     {

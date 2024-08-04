@@ -42,6 +42,7 @@
 	and sl_setreconnectdelay().
 	- Add sl_setblockingmode(), sl_setdialupmode(), and sl_setbachmode().
 	- Add sl_printslcd() to print SLCD details.
+	- Add sl_setallstationparams() to replace sl_setallstationparams().
 
 
 	API changes:
@@ -56,8 +57,10 @@
 	provided in an SLpacketinfo strucuture.  The historic packet type
 	is no longer derived as the heuristic of blockette discovery is
 	unreliable.
-	to packet payload types and no longer based on an unreliable
-	heuristic of blockette discovery.
+	* sl_read_streamlist() reads a new format incompatible with the
+	previous format, where the station ID is generalized and no longer
+	two values (net and station).  Ambiguity between the two does not
+	allow supporting the legacy, miniSEED-specific format.
 	* sl_checkversion() and sl_checkslcd() removed.
 	* sl_openfile() and sl_readline() removed.
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
