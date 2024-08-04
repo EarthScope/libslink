@@ -2055,7 +2055,7 @@ negotiate_v4 (SLCD *slconn)
   {
     if (sl_isodatetime (start_time, slconn->start_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be converted '%s'\n",
                 __func__, slconn->start_time);
       return -1;
     }
@@ -2064,7 +2064,7 @@ negotiate_v4 (SLCD *slconn)
   {
     if (sl_isodatetime (end_time, slconn->end_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be converted '%s'\n",
                 __func__, slconn->end_time);
       return -1;
     }

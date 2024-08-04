@@ -223,9 +223,6 @@ typedef enum
 #define SLNOPACKET              -1  //!< No packet available for non-blocking
 #define SLTOOLARGE              -2  //!< Received packet is too large for buffer
 
-/* The station ID used for uni-station mode */
-#define UNINETSTAID "XX_UNI"  /**< Station ID for uni-station mode */
-
 /** @def SL_UNSETSEQUENCE
     @brief Representation for unset sequence values. **/
 #define SL_UNSETSEQUENCE UINT64_MAX
@@ -368,8 +365,9 @@ extern int sl_setbatchmode (SLCD *slconn, int batchmode);
 extern int sl_addstream (SLCD *slconn, const char *netstaid,
                          const char *selectors, uint64_t seqnum,
                          const char *timestamp);
-extern int sl_setuniparams (SLCD *slconn, const char *selectors,
-                            uint64_t seqnum, const char *timestamp);
+#define sl_setuniparams sl_setallstationparams /* For backwards compatibility */
+extern int sl_setallstationparams (SLCD *slconn, const char *selectors,
+                                   uint64_t seqnum, const char *timestamp);
 extern int sl_request_info (SLCD *slconn, const char *infostr);
 extern int sl_hascapability (SLCD *slconn, char *capability);
 extern void sl_terminate (SLCD *slconn);

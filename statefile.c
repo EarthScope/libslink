@@ -27,6 +27,8 @@
 
 #include "libslink.h"
 
+#define HEADER_V2 "#V2 StationID  Sequence  [Timestamp]"
+
 /**********************************************************************/ /**
  * @brief Save the sequence numbers and time stamps into the given state file.
  *
@@ -34,6 +36,10 @@
  * the station identifier, sequence number, and time stamp.  This information
  * is intended to be used to re-start a connection and continue from where it
  * left off.
+ *
+ * The current "V2" line format is (header line and example):
+ *   #V2 StationID  Sequence  [Timestamp]
+ *   IU_COLA       1234567890 2024-08-03T17:23:18.0Z
  *
  * @param slconn    The ::SLCD connection to save state
  * @param statefile The name of the state file to write
@@ -59,12 +65,14 @@ sl_savestate (SLCD *slconn, const char *statefile)
 
   sl_log_r (slconn, 1, 2, "saving connection state to state file\n");
 
-  /* Traverse stream chain and write sequence numbers
-   * Format: StationID  Sequence#  Timestamp */
+  /* Write header line */
+  fputs (HEADER_V2"\n", fp);
+
+  /* Traverse stream list and write sequence numbers and time stamps*/
   while (curstream != NULL)
   {
     if (curstream->seqnum == SL_UNSETSEQUENCE)
-      linelen = snprintf (line, sizeof (line), "%s -1 %s\n",
+      linelen = snprintf (line, sizeof (line), "%s UNSET %s\n",
                           curstream->netstaid,
                           curstream->timestamp);
     else
@@ -101,6 +109,22 @@ sl_savestate (SLCD *slconn, const char *statefile)
  * The specified state file is read, and details of streams, selectors, etc.
  * are added to the specified ::SLCD.
  *
+ * The state file format is a simple text file with one line per stream
+ * containing the station identifier, sequence number, and time stamp.
+ *
+ * The current "V2" line format is (header line and examples):
+ *   #V2 StationID  Sequence  [Timestamp]
+ *   IU_COLA       1234567890 2024-08-03T17:23:18.0Z
+ *   XX_NONE       UNSET
+ *
+ * where the timestamp is optional, and the special value "UNSET" can be
+ * used to indicate that the sequence number is not set.
+ *
+ * The supported legacy line format takes this form (no header):
+ *   Network Station Sequence#  [Timestamp]
+ *   IU      COLA    1234567890 2024,08,03,17,23,18
+ *   XX      NONE    -1
+ *
  * @param slconn    The ::SLCD connection to restore from a saved state
  * @param statefile The name of the state file to read
  *
@@ -117,15 +141,18 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
 
   char line[200];
   char *field[5];
+  int format = 0;
   int fields;
   int idx;
+  int retval = 0;
 
-  char netstaid[22] = {0};
+  char stationid[22] = {0};
   char timestamp[31] = {0};
-  char *netstastr;
-  char *seqstr;
+  char *stationstr;
+  char *sequencestr;
   char *timestr;
   char *endptr;
+  char *ptr;
 
   uint64_t seqnum;
   int count;
@@ -145,22 +172,19 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     }
   }
 
-  sl_log_r (slconn, 1, 1, "recovering connection state from state file\n");
+  sl_log_r (slconn, 1, 1, "recovering connection state from state file: %s\n", statefile);
 
   count = 1;
 
   while (fgets (line, sizeof (line), fp))
   {
-    netstastr = NULL;
-    seqstr = NULL;
+    stationstr = NULL;
+    sequencestr = NULL;
     timestr = NULL;
 
-    /* Dear reader: the below line parsing is a classic example of
-       over-optimization and unnecessary obfuscation.  Avoids a few
-       system calls?  Yes.  Saves a few bytes of memory?  Yup.
-       Somewhat clever?  Sure.  Needed in any way?  No.
-       <waggles finger at past self>
-     */
+    /* Terminate at first carriage return or newline */
+    if ((ptr = strchr (line, '\r')) != NULL || (ptr = strchr (line, '\n')) != NULL)
+      *ptr = '\0';
 
     /* Store pointers to space-separated fields & convert spaces to terminators */
     for (idx = 0, fields = 0;
@@ -181,67 +205,89 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
       }
     }
 
-    if (fields == 0)
+    /* Check for recognized version declaration */
+    if (fields >= 1 && strncasecmp (field[0], "#V2", 2) == 0)
     {
+      format = 2;
+      count++;
       continue;
     }
-    /* Format: NET_STA Sequence# [Timestamp] */
-    if (fields >= 2 && strchr (field[0], '_') != NULL)
+    /* Skip empty or comment lines */
+    if (fields == 0 || *field[0] == '#')
     {
-      netstastr = field[0];
-      seqstr    = field[1];
-      timestr   = (fields >= 3) ? field[2] : NULL;
-    }
-    /* Old format: NET STA Sequence# [Timestamp] */
-    else if (fields >= 3)
-    {
-      snprintf (netstaid, sizeof (netstaid), "%s_%s", field[0], field[1]);
-      netstastr = netstaid;
-      seqstr    = field[2];
-      timestr   = (fields >= 4) ? field[3] : NULL;
-    }
-    else if (fields < 3)
-    {
-      sl_log_r (slconn, 2, 0, "could not parse line %d of state file\n", count);
-      break;
+      count++;
+      continue;
     }
 
-    /* Convert old comma-delimited date-time to ISO-compatible format
-     * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
-    if (timestr)
+    /* Format V2: StationID Sequence# [Timestamp] */
+    if (format == 2 && fields >= 2)
     {
-      if (sl_isodatetime(timestamp, timestr) != NULL)
+      stationstr  = field[0];
+      sequencestr = field[1];
+      timestr     = (fields >= 3) ? field[2] : NULL;
+    }
+    /* Legacy format: NET STA Sequence# [Timestamp] */
+    else if (format == 0 && fields >= 3)
+    {
+      /* Convert special case of legacy uni-station entry to all-station mode */
+      if (strcmp (field[0], "XX") == 0 && strcmp (field[1], "UNI") == 0)
+      {
+        strcpy (stationid, "*");
+      }
+      else
+      {
+        snprintf (stationid, sizeof (stationid), "%s_%s", field[0], field[1]);
+      }
+
+      stationstr  = stationid;
+      sequencestr = field[2];
+      timestr     = (fields >= 4) ? field[3] : NULL;
+    }
+    else
+    {
+      sl_log_r (slconn, 2, 0, "could not parse line %d of state file: %s\n", count, line);
+      retval = -1;
+      continue;
+    }
+
+    /* Convert legacy SeedLink, comma-delimited date-time to ISO-compatible format
+     * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+    if (timestr && format == 0)
+    {
+      if (sl_isodatetime (timestamp, timestr) != NULL)
       {
         timestr = timestamp;
       }
       else
       {
-        sl_log_r (slconn, 1, 0, "could not parse timestamp for %s entry: '%s', ignoring\n",
-                  netstastr, timestr);
-        return -1;
+        sl_log_r (slconn, 1, 0, "could not convert timestamp on line %d of statefile: '%s'\n",
+                  count, timestr);
+        retval = -1;
+        continue;
       }
     }
 
-    if (seqstr[0] == '-' && seqstr[1] == '1')
+    if (strcmp (sequencestr, "UNSET") == 0 || strcmp (sequencestr, "-1") == 0)
     {
       seqnum = SL_UNSETSEQUENCE;
     }
     else
     {
-      seqnum = (uint64_t)strtoull (seqstr, &endptr, 10);
+      seqnum = (uint64_t)strtoull (sequencestr, &endptr, 10);
 
       if (*endptr)
       {
-        sl_log_r (slconn, 2, 0, "could not parse sequence number (%s) from line %d of state file\n",
-                  seqstr, count);
+        sl_log_r (slconn, 2, 0, "could not parse sequence number from line %d of state file: '%s'\n",
+                  count, sequencestr);
+        break;
       }
     }
 
-    /* Search for a matching NET_STA in the stream list */
+    /* Set the sequence number and time stamp for a matching entry in the stream list */
     curstream = slconn->streams;
     while (curstream != NULL)
     {
-      if (!strcmp (netstastr, curstream->netstaid))
+      if (!strcmp (stationstr, curstream->netstaid))
       {
         curstream->seqnum = seqnum;
 
@@ -260,13 +306,14 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
   if (ferror (fp))
   {
     sl_log_r (slconn, 2, 0, "file read error for %s\n", statefile);
+    retval = -1;
   }
 
   if (fclose (fp))
   {
     sl_log_r (slconn, 2, 0, "could not close state file, %s\n", strerror (errno));
-    return -1;
+    retval = -1;
   }
 
-  return 0;
+  return retval;
 } /* End of sl_recoverstate() */

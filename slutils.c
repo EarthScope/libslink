@@ -748,9 +748,9 @@ update_stream (SLCD *slconn, const char *payload)
 
   curstream = slconn->streams;
 
-  /* For uni-station mode */
+  /* For all-station mode */
   if (curstream != NULL &&
-      strcmp (curstream->netstaid, UNINETSTAID) == 0)
+      strcmp (curstream->netstaid, "*") == 0)
   {
     curstream->seqnum = packetinfo->seqnum;
     strcpy (curstream->timestamp, timestamp);
@@ -1390,6 +1390,8 @@ sl_setbatchmode (SLCD *slconn, int batchmode)
  * Add a new stream entry to the stream list for the given ::SLCD
  * struct.  No checking is done for duplicate streams.
  *
+ * The use of this function will enable multi-station mode.
+ *
  * The \a seqnum parameter should be the last received sequence number
  * for the stream to resume the connection from previous data transfer.
  * The \a seqnum can also be ::SL_UNSETSEQUENCE to start from the next
@@ -1423,12 +1425,12 @@ sl_addstream (SLCD *slconn, const char *netstaid,
   if (!slconn || !netstaid)
     return -1;
 
-  /* Sanity, check for a uni-station mode entry */
+  /* Sanity, check for a all-station mode entry */
   if (slconn->streams)
   {
-    if (strcmp (slconn->streams->netstaid, UNINETSTAID) == 0)
+    if (strcmp (slconn->streams->netstaid, "*") == 0)
     {
-      sl_log_r (slconn, 2, 0, "[%s] %s(): uni-station mode already configured!\n",
+      sl_log_r (slconn, 2, 0, "[%s] %s(): all-station mode already configured!\n",
                 slconn->sladdr, __func__);
       return -1;
     }
@@ -1462,7 +1464,7 @@ sl_addstream (SLCD *slconn, const char *netstaid,
   {
     if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): could not parse timestamp for %s entry: '%s'\n",
+      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n",
                 __func__, netstaid, newstream->timestamp);
       return -1;
     }
@@ -1521,13 +1523,15 @@ sl_addstream (SLCD *slconn, const char *netstaid,
 
 
 /**********************************************************************/ /**
- * @brief Set the parameters for a uni-station mode connection
+ * @brief Set the parameters for an all-station mode connection
  *
- * Set the parameters for a uni-station mode connection for the
- * given SLCD struct.  If the stream entry already exists, overwrite
- * the previous settings.
+ * Set the parameters for all-station mode using a wildcard (*) for the
+ * station ID.  If the stream entry already exists, overwrite the previous
+ * settings.
  *
- * Also sets the multistation flag to false (0).
+ * For SeedLink v3 this is "uni-station" mode.
+ *
+ * Also set the multistation flag to false (0).
  *
  * @param[in] slconn     SeedLink connection description
  * @param[in] selectors  Selectors for the Network-Station ID, NULL if none
@@ -1538,10 +1542,13 @@ sl_addstream (SLCD *slconn, const char *netstaid,
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setuniparams (SLCD *slconn, const char *selectors,
-                 uint64_t seqnum, const char *timestamp)
+sl_setallstationparams (SLCD *slconn, const char *selectors,
+                        uint64_t seqnum, const char *timestamp)
 {
   SLstream *newstream;
+
+  if (!slconn)
+    return -1;
 
   newstream = slconn->streams;
 
@@ -1555,14 +1562,15 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
       return -1;
     }
   }
-  else if (strcmp (newstream->netstaid, UNINETSTAID) != 0)
+  else if (strcmp (newstream->netstaid, "*") != 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n",
               slconn->sladdr, __func__);
     return -1;
   }
 
-  strncpy (newstream->netstaid, UNINETSTAID, sizeof (newstream->netstaid));
+  /* Set the station ID to an all-matching, single wildcard */
+  strncpy (newstream->netstaid, "*", sizeof (newstream->netstaid));
 
   if (selectors)
     newstream->selectors = strdup (selectors);
@@ -1582,8 +1590,9 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
   {
     if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): could not parse timestamp for uni-station mode: '%s'\n",
+      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for all-station mode: '%s'\n",
                 __func__, newstream->timestamp);
+      free (newstream);
       return -1;
     }
   }
@@ -1595,7 +1604,7 @@ sl_setuniparams (SLCD *slconn, const char *selectors,
   slconn->multistation = 0;
 
   return 0;
-} /* End of sl_setuniparams() */
+} /* End of sl_setallstationparams() */
 
 
 /**********************************************************************/ /**
