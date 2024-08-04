@@ -1553,13 +1553,13 @@ negotiate_uni_v3 (SLCD *slconn)
      previous sequence number. */
   if (start_time[0])
   {
-    if (end_time[0] == '\0')
+    if (end_time[0])
     {
-      sprintf (sendstr, "TIME %.31s\r\n", start_time);
+      sprintf (sendstr, "TIME %.31s %.31s\r\n", start_time, end_time);
     }
     else
     {
-      sprintf (sendstr, "TIME %.31s %.31s\r\n", start_time, end_time);
+      sprintf (sendstr, "TIME %.31s\r\n", start_time);
     }
 
     sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
@@ -1582,14 +1582,23 @@ negotiate_uni_v3 (SLCD *slconn)
     if (slconn->lastpkttime &&
         strlen (curstream->timestamp))
     {
+      char timestr[31] = {0};
+
+      if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
+      {
+        sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n",
+                  __func__, curstream->timestamp);
+        return -1;
+      }
+
       /* Increment sequence number by 1 */
       sprintf (sendstr, "%s %0" PRIX64 " %.31s\r\n", cmd,
-               (curstream->seqnum + 1), curstream->timestamp);
+               (curstream->seqnum + 1), timestr);
 
       sl_log_r (slconn, 1, 1,
                 "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
                 slconn->sladdr, (curstream->seqnum + 1),
-                (curstream->seqnum + 1), curstream->timestamp);
+                (curstream->seqnum + 1), timestr);
     }
     else
     {
@@ -1873,14 +1882,23 @@ negotiate_multi_v3 (SLCD *slconn)
       if (slconn->lastpkttime &&
           strlen (curstream->timestamp))
       {
+        char timestr[31] = {0};
+
+        if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
+        {
+          sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n",
+                    __func__, curstream->timestamp);
+          return -1;
+        }
+
         /* Increment sequence number by 1 */
         sprintf (sendstr, "%s %0" PRIX64 " %.31s\r\n", cmd,
-                 (curstream->seqnum + 1), curstream->timestamp);
+                 (curstream->seqnum + 1), timestr);
 
         sl_log_r (slconn, 1, 1,
                   "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
                   slconn->sladdr, (curstream->seqnum + 1),
-                  (curstream->seqnum + 1), curstream->timestamp);
+                  (curstream->seqnum + 1), timestr);
       }
       else
       { /* Increment sequence number by 1 */
@@ -2175,7 +2193,7 @@ negotiate_v4 (SLCD *slconn)
     strcpy (cmdtail->nsid, curstream->netstaid);
     cmdtail->next = NULL;
 
-    /* Generate DATA or FETCH command with INCREMENTED sequence number */
+    /* Generate DATA command with _incremented_ sequence number */
     if (start_time[0])
     {
       if (curstream->seqnum != SL_UNSETSEQUENCE)

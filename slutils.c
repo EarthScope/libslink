@@ -1166,8 +1166,8 @@ sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
  * \c AUTH command for v4 connections.  The following values are specified
  * by the v4 protocol:
  *
- *   \c USERPASS <username> <password>
- *   \c JWT <token>
+ *   \c USERPASS `<username>` `<password>`
+ *   \c JWT `<token>`
  *
  * The \a auth_finish callback is executed when authentication is complete.
  * This can be used to free memory or perform other cleanup tasks.
@@ -1262,7 +1262,7 @@ sl_setiotimeout (SLCD *slconn, int iotimeout)
  * By default, the network timeout is set to 600 seconds.
  *
  * @param slconn       SeedLink connection description
- * @param netto        Network timeout in seconds, 0 to disable
+ * @param idletimeout  Network timeout in seconds, 0 to disable
  *
  * @retval  0 : success
  * @retval -1 : error
@@ -1287,8 +1287,8 @@ sl_setidletimeout (SLCD *slconn, int idletimeout)
  *
  * By default, the network delay is set to 30 seconds.
  *
- * @param slconn       SeedLink connection description
- * @param netdly       Network delay in seconds, 0 to disable
+ * @param slconn          SeedLink connection description
+ * @param reconnectdelay  Network delay in seconds, 0 to disable
  *
  * @retval  0 : success
  * @retval -1 : error

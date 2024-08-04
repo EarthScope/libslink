@@ -363,7 +363,10 @@ sl_isodatetime (char *isodatetime, const char *datetime)
  * Convert date-time string deliminters to match the following
  * comma-delimited format if needed and possible:
  *
- *   YYYY,MM,DD,hh,mm,ss,ssssss
+ *   YYYY,MM,DD,hh,mm,ss
+ *
+ * Truncate any fractional seconds, as they are not expected in the
+ * comma-delimited format.
  *
  * The output buffer pointer can be the same as the input pointer for
  * an in-place conversion.
@@ -420,6 +423,12 @@ sl_commadatetime (char *commadatetime, const char *datetime)
     else
     {
       return NULL;
+    }
+
+    /* Truncate at separator for seconds and subseconds */
+    if (delims >= 6)
+    {
+      break;
     }
 
     /* Write new character if set */
