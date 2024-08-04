@@ -28,8 +28,8 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_RELEASE "2024.210"    /**< libslink release date */
-#define LIBSLINK_VERSION_MAJOR  3      /**< libslink major version */
+#define LIBSLINK_RELEASE "2024.217"    /**< libslink release date */
+#define LIBSLINK_VERSION_MAJOR  4      /**< libslink major version */
 #define LIBSLINK_VERSION_MINOR  0      /**< libslink minor version */
 #define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
 #define LIBSLINK_STRINGIFY(a)   LIBSLINK_XSTRINGIFY(a)
@@ -143,24 +143,27 @@ extern "C" {
     This logging facility is used for all log messages produced by
     the library.
 
+    In typical usage, the logging facility is initialized with
+    sl_loginit(), which sets the logging verbosity, followed by
+    sl_log_r() to log messages with a reference to the connection.
+
     The logging can be configured to send messages to arbitrary
-    functions, referred to as \c log_print() and \c diag_print().
-    This allows output to be re-directed to other logging systems if
-    needed.
+    functions, referred to as \a log_print() and \a diag_print()
+    with sl_loginit(). This allows output to be re-directed to other
+    logging systems if needed.
 
     It is also possible to assign prefixes to log messages for
-    identification, referred to as \c logprefix and \c errprefix.
+    identification, referred to as \a logprefix and \a errprefix.
 
     @anchor logging-levels
     Three message levels are recognized:
-    - 0 : Normal log messages, printed using \c log_print() with \c logprefix
-    - 1  : Diagnostic messages, printed using \c diag_print() with \c logprefix
-    - 2+ : Error messages, printed using \c diag_print() with \c errprefix
+    - \c 0  : Normal log messages, printed using \a log_print() with \a logprefix
+    - \c 1  : Diagnostic messages, printed using \a diag_print() with \a logprefix
+    - \c 2+ : Error messages, printed using \a diag_print() with \a errprefix
 
-    It is the task of the \c sl_log(), \c sl_ms_log_l(), and
-    \c sl_ms_log_rl() functions to format a message using printf
-    conventions and pass the formatted string to the appropriate
-    printing function.
+    It is the task of the sl_log(), sl_log_r(), and sl_log_rl()
+    to format a message using printf conventions and pass the formatted
+    string to the appropriate printing function.
 
     @{ */
 
@@ -177,33 +180,52 @@ typedef struct SLlog_s
 
 /** @addtogroup seedlink-connection
     @brief Definitions and functions related to SeedLink connections
+
+  All details of a SeedLink connection are stored in a SeedLink Connection
+  Description (::SLCD) structure.
+
+  A calling program should create a new ::SLCD structure with sl_newslcd(),
+  set the desired parameters with the various sl_set*() functions, and then
+  establish a connection and collect packets with sl_connect().
+
+  The ::SLCD structure should be freed with sl_freeslcd() when the connection
+  is no longer needed.
+
+  See the @ref md_tutorial and @ref md_examples for more information.
+
+  @sa sl_newslcd(), sl_freeslcd(), sl_setclientname(), sl_setserveraddress(),
+  sl_connect(),
+  sl_settimewindow(), sl_setauthparams(), sl_setkeepalive(), sl_setiotimeout(),
+  sl_setidletimeout(), sl_setreconnectdelay(), sl_setblockingmode(),
+  sl_setdialupmode(), sl_setbatchmode(), sl_addstream(), sl_setallstationparams(),
+  sl_request_info(), sl_hascapability(), sl_terminate(), sl_printslcd(),
+  sl_read_streamlist(), sl_parse_streamlist(), sl_configlink(), sl_send_info(),
+  sl_disconnect(), sl_ping(), sl_senddata(), sl_recvdata(),
+
     @{ */
 
-#define SL_DEFAULT_HOST  "localhost" /**< Default host for libslink */
-#define SL_DEFAULT_PORT  "18000"     /**< Default port for libslink */
-#define SL_SECURE_PORT   "18500"     /**< Recognized TLS port */
+#define SL_DEFAULT_HOST  "localhost" //!< Default host for libslink
+#define SL_DEFAULT_PORT  "18000"     //!< Default port for libslink
+#define SL_SECURE_PORT   "18500"     //!< Recognized TLS port
 
-#define SLHEADSIZE_V3        8       /**< V3 SeedLink header size */
-#define SLHEADSIZE_V4       17       /**< V4 SeedLink header size */
-#define SIGNATURE_V3        "SL"     /**< V3 SeedLink header signature */
-#define SIGNATURE_V4        "SE"     /**< V4 SeedLink header signature */
-#define INFOSIGNATURE       "SLINFO" /**< SeedLink V3 INFO packet signature */
-#define MAX_LOG_MSG_LENGTH  200      /**< Maximum length of log messages */
-#define SL_MIN_PAYLOAD      64       /**< Minimum data for payload detection and tracking */
-#define SL_MAX_PAYLOAD      16384    /**< Maximum data for payload detection and tracking */
-#define SL_MAX_STATIONID    22       /**< Maximum length of station ID */
+#define SLHEADSIZE_V3        8       //!< V3 SeedLink header size
+#define SLHEADSIZE_V4       17       //!< V4 SeedLink header size
+#define SIGNATURE_V3        "SL"     //!< V3 SeedLink header signature
+#define SIGNATURE_V4        "SE"     //!< V4 SeedLink header signature
+#define INFOSIGNATURE       "SLINFO" //!< SeedLink V3 INFO packet signature
+#define MAX_LOG_MSG_LENGTH  200      //!< Maximum length of log messages
+#define SL_MIN_PAYLOAD      64       //!< Minimum data for payload detection and tracking
+#define SL_MAX_PAYLOAD      16384    //!< Maximum data for payload detection and tracking
+#define SL_MAX_STATIONID    22       //!< Maximum length of station ID
 
 /** Protocols recognized by the library */
 typedef enum
 {
-  UNSET_PROTO = 0, /**< Unset value */
-  SLPROTO3X   = 1, /**< SeedLink 3.x */
-  SLPROTO40   = 2, /**< SeedLink 4.0 */
+  UNSET_PROTO = 0, //!< Unset value
+  SLPROTO3X   = 1, //!< SeedLink 3.x
+  SLPROTO40   = 2, //!< SeedLink 4.0
 } LIBPROTOCOL;
 
-/** @page payload-types
-    @brief Packet payload format and sub-format type values
-**/
 #define SLPAYLOAD_UNKNOWN        0  //!< Unknown payload
 #define SLPAYLOAD_MSEED2INFO     1  //!< miniSEED 2 with INFO payload
 #define SLPAYLOAD_MSEED2INFOTERM 2  //!< miniSEED 2 with INFO payload (terminated)
@@ -215,9 +237,6 @@ typedef enum
 #define SLPAYLOAD_JSON_INFO     'I' //!< JSON payload, subformat SeedLink INFO
 #define SLPAYLOAD_JSON_ERROR    'E' //!< JSON payload, subformat SeedLink ERROR
 
-/** @page collect-status
-    @brief Return values for sl_collect()
-**/
 #define SLPACKET                 1  //!< Complete packet returned
 #define SLTERMINATE              0  //!< Error or connection termination
 #define SLNOPACKET              -1  //!< No packet available for non-blocking
@@ -303,7 +322,11 @@ typedef struct stat_s
 
 } SLstat;
 
-/** @brief SeedLink connection description */
+/** @brief SeedLink Connection Description
+
+    This structure should not, in general, be modified or accessed directly.
+    Instead use the provided functions to set configuration values.
+ */
 typedef struct slcd_s
 {
   char       *sladdr;           /**< Caller-supplied address of SeedLink server */
@@ -346,35 +369,36 @@ typedef struct slcd_s
 
 extern int sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
                        char *plbuffer, uint32_t plbuffersize);
-extern SLCD *sl_newslcd (const char *clientname, const char *clientversion);
+extern SLCD *sl_initslcd (const char *clientname, const char *clientversion);
 extern void sl_freeslcd (SLCD *slconn);
-extern int sl_setclientname (SLCD *slconn, const char *name, const char *version);
-extern int sl_setserveraddress (SLCD *slconn, const char *server_address);
-extern int sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time);
-extern int sl_setauthparams (SLCD *slconn,
-                             const char *(*auth_value) (const char *server, void *auth_data),
-                             void (*auth_finish) (const char *server, void *auth_data),
-                             void *auth_data);
-extern int sl_setkeepalive (SLCD *slconn, int keepalive);
-extern int sl_setiotimeout (SLCD *slconn, int iotimeout);
-extern int sl_setidletimeout (SLCD *slconn, int idletimeout);
-extern int sl_setreconnectdelay (SLCD *slconn, int reconnectdelay);
-extern int sl_setblockingmode (SLCD *slconn, int nonblock);
-extern int sl_setdialupmode (SLCD *slconn, int dialup);
-extern int sl_setbatchmode (SLCD *slconn, int batchmode);
-extern int sl_addstream (SLCD *slconn, const char *stationid,
-                         const char *selectors, uint64_t seqnum,
-                         const char *timestamp);
-#define sl_setuniparams sl_setallstationparams /* For backwards compatibility */
-extern int sl_setallstationparams (SLCD *slconn, const char *selectors,
-                                   uint64_t seqnum, const char *timestamp);
+extern int sl_set_clientname (SLCD *slconn, const char *name, const char *version);
+extern int sl_set_serveraddress (SLCD *slconn, const char *server_address);
+extern int sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time);
+extern int sl_set_auth_params (SLCD *slconn,
+                               const char *(*auth_value) (const char *server, void *auth_data),
+                               void (*auth_finish) (const char *server, void *auth_data),
+                               void *auth_data);
+extern int sl_set_keepalive (SLCD *slconn, int keepalive);
+extern int sl_set_iotimeout (SLCD *slconn, int iotimeout);
+extern int sl_set_idletimeout (SLCD *slconn, int idletimeout);
+extern int sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay);
+extern int sl_set_blockingmode (SLCD *slconn, int nonblock);
+extern int sl_set_dialupmode (SLCD *slconn, int dialup);
+extern int sl_set_batchmode (SLCD *slconn, int batchmode);
+extern int sl_add_stream (SLCD *slconn, const char *stationid,
+                          const char *selectors, uint64_t seqnum,
+                          const char *timestamp);
+extern int sl_set_allstation_params (SLCD *slconn, const char *selectors,
+                                     uint64_t seqnum, const char *timestamp);
 extern int sl_request_info (SLCD *slconn, const char *infostr);
 extern int sl_hascapability (SLCD *slconn, char *capability);
 extern void sl_terminate (SLCD *slconn);
 extern void sl_printslcd (SLCD *slconn);
-extern int sl_read_streamlist (SLCD *slconn, const char *streamfile,
-                               const char *defselect);
-extern int sl_parse_streamlist (SLCD *slconn, const char *streamlist,
+#define sl_read_streamlist sl_add_streamlist_file /**< For backwards compatibility */
+extern int sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
+                                   const char *defselect);
+#define sl_parse_streamlist sl_add_streamlist /**< For backwards compatibility */
+extern int sl_add_streamlist (SLCD *slconn, const char *streamlist,
                                 const char *defselect);
 extern int sl_configlink (SLCD *slconn);
 extern int sl_send_info (SLCD *slconn, const char *info_level,
@@ -419,7 +443,21 @@ extern SLlog *sl_loginit_rl (SLlog *log, int verbosity,
 /** @} */
 
 /** @addtogroup connection-state
-    @brief Basic functionality for saving and recovering connections
+    @brief Basic functionality for saving and recovering connection state
+
+    These functions provide the ability to save and recover the state
+    of a SeedLink connection to and from files. The state is saved and
+    recovered is the sequence numbers and time stamps of the streams
+    being collected.
+
+    A calling program would typically save the state of a connection
+    when it is being terminated with sl_savestate(), and recover the state
+    after configuring a new connection with sl_recoverstate().
+
+    Recovering from a state file does not specify the streams
+    (and selectors) to collect, this must be done separately and before
+    calling sl_recoverstate().  Instead, the recovered state is applied
+    to matching streams that are will be collected.
 
     @{ */
 extern int sl_recoverstate (SLCD *slconn, const char *statefile);

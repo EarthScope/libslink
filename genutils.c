@@ -31,7 +31,7 @@
 
 
 /**********************************************************************/ /**
- * @brief Return true is the byte order of the host is little endian
+ * @brief Return true if the byte order of the host is little endian
  *
  * Due to the lack of portable defines to determine host byte order this
  * run-time test is provided.
@@ -548,6 +548,7 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
 
 /**********************************************************************/ /**
  * @brief Sleep for a given number of microseconds
+ *
  ***************************************************************************/
 void
 sl_usleep (unsigned long int useconds)

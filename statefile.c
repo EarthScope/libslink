@@ -38,8 +38,10 @@
  * left off.
  *
  * The current "V2" line format is (header line and example):
+ * ```
  *   #V2 StationID  Sequence  [Timestamp]
  *   IU_COLA       1234567890 2024-08-03T17:23:18.0Z
+ * ```
  *
  * @param slconn    The ::SLCD connection to save state
  * @param statefile The name of the state file to write
@@ -114,17 +116,21 @@ sl_savestate (SLCD *slconn, const char *statefile)
  * containing the station identifier, sequence number, and time stamp.
  *
  * The current "V2" line format is (header line and examples):
- *   #V2 StationID  Sequence  [Timestamp]
- *   IU_COLA       1234567890 2024-08-03T17:23:18.0Z
- *   XX_NONE       UNSET
+ * ```
+ * #V2 StationID  Sequence  [Timestamp]
+ * IU_COLA       1234567890 2024-08-03T17:23:18.0Z
+ * XX_NONE       UNSET
+ * ```
  *
  * where the timestamp is optional, and the special value "UNSET" can be
  * used to indicate that the sequence number is not set.
  *
  * The supported legacy line format takes this form (no header):
- *   Network Station Sequence#  [Timestamp]
- *   IU      COLA    1234567890 2024,08,03,17,23,18
- *   XX      NONE    -1
+ * ```
+ * Network Station Sequence#  [Timestamp]
+ * IU      COLA    1234567890 2024,08,03,17,23,18
+ * XX      NONE    -1
+ *```
  *
  * @param slconn    The ::SLCD connection to restore from a saved state
  * @param statefile The name of the state file to read

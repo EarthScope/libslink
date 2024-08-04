@@ -29,7 +29,7 @@
 #include "libslink.h"
 
 /**********************************************************************/ /**
- * @brief Read a list of streams and selectors from a file
+ * @brief Add a list of streams and selectors from a file to the ::SLCD
  *
  * Streams and selectors are added to the stream list for the ::SLCD
  * for configuring a multi-station connection.
@@ -55,8 +55,8 @@
  * @returns the number of streams configured or -1 on error.
  ***************************************************************************/
 int
-sl_read_streamlist (SLCD *slconn, const char *streamfile,
-                    const char *defselect)
+sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
+                        const char *defselect)
 {
   FILE *fp;
   char *cp;
@@ -110,12 +110,12 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
     /* Add this stream to the stream list */
     if (fields == 2)
     {
-      sl_addstream (slconn, stationid, selectors, SL_UNSETSEQUENCE, NULL);
+      sl_add_stream (slconn, stationid, selectors, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
     else
     {
-      sl_addstream (slconn, stationid, defselect, SL_UNSETSEQUENCE, NULL);
+      sl_add_stream (slconn, stationid, defselect, SL_UNSETSEQUENCE, NULL);
       streamcount++;
     }
   }
@@ -144,13 +144,13 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
 } /* End of sl_read_streamlist() */
 
 /**********************************************************************/ /**
- * @brief Parse a string of streams and selectors
+ * @brief Add a list of streams and selectors from a string to the ::SLCD
  *
  * Parsed streams and selectors are added to the stream list for configuring
  * a multi-station connection.
  *
  * The string should be of the following form:
- * "stream1[:selectors1],stream2[:selectors2],..."
+ * \c "stream1[:selectors1],stream2[:selectors2],..."
  *
  * For example:
  * "IU_COLA:*_B_H_? *_L_H_?"
@@ -164,8 +164,8 @@ sl_read_streamlist (SLCD *slconn, const char *streamfile,
  * @returns the number of streams configured or -1 on error.
  ***************************************************************************/
 int
-sl_parse_streamlist (SLCD *slconn, const char *streamlist,
-                     const char *defselect)
+sl_add_streamlist (SLCD *slconn, const char *streamlist,
+                   const char *defselect)
 {
   char *parselist;
   char *stream;
@@ -199,9 +199,9 @@ sl_parse_streamlist (SLCD *slconn, const char *streamlist,
     /* Add non-empty streams to list, using default selectors if none parsed */
     if (strlen (stream) > 0)
     {
-      sl_addstream (slconn, stream,
-                    (selectors) ? selectors : defselect,
-                    SL_UNSETSEQUENCE, NULL);
+      sl_add_stream (slconn, stream,
+                     (selectors) ? selectors : defselect,
+                     SL_UNSETSEQUENCE, NULL);
     }
 
     streamcount++;

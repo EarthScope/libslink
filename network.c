@@ -279,8 +279,7 @@ sl_connect (SLCD *slconn, int sayhello)
   /* Parse server host and port if needed */
   if (slconn->slhost == NULL || slconn->slport == NULL)
   {
-    fprintf (stderr, "DEBUG slconn->sladdr: %s\n", slconn->sladdr);
-    if (sl_setserveraddress (slconn, slconn->sladdr))
+    if (sl_set_serveraddress (slconn, slconn->sladdr))
     {
       sl_log_r (slconn, 2, 0, "server address not in in recognized format: %s\n",
                 slconn->sladdr);

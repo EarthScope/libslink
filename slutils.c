@@ -790,7 +790,7 @@ update_stream (SLCD *slconn, const char *payload)
  * The \a clientname must be specified and should be a string
  * describing the name of the client program. The \a clientversion is
  * optional and should be the version of the client program.  These
- * values are passed directly to sl_setclientname().
+ * values are passed directly to sl_set_clientname().
  *
  * @param[in] clientname     Name of the client program
  * @param[in] clientversion  Version of the client program
@@ -798,7 +798,7 @@ update_stream (SLCD *slconn, const char *payload)
  * @returns An initialized ::SLCD on success, NULL on error.
  ***************************************************************************/
 SLCD *
-sl_newslcd (const char *clientname, const char *clientversion)
+sl_initslcd (const char *clientname, const char *clientversion)
 {
   SLCD *slconn;
 
@@ -872,7 +872,7 @@ sl_newslcd (const char *clientname, const char *clientversion)
   slconn->recvdatalen = 0;
 
   /* Store copies of client name and version */
-  if (clientname && sl_setclientname (slconn, clientname, clientversion))
+  if (clientname && sl_set_clientname (slconn, clientname, clientversion))
   {
     sl_freeslcd (slconn);
     return NULL;
@@ -941,7 +941,7 @@ sl_freeslcd (SLCD *slconn)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setclientname (SLCD *slconn, const char *name, const char *version)
+sl_set_clientname (SLCD *slconn, const char *name, const char *version)
 {
   if (!slconn || !name)
     return -1;
@@ -969,7 +969,7 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
   }
 
   return 0;
-} /* End of sl_setclientname() */
+} /* End of sl_set_clientname() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink server address (and port)
@@ -988,13 +988,14 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
  * \c PORT value must be a valid port number.
  *
  * The following variations are supported:
- *
- * \c 192.168.0.1
- * \c :18000
- * \c 192.168.0.1:18000
- * \c seedlink.server.org:18500
- * \c 2607:f8b0:400a:805::200e
- * \c [2607:f8b0:400a:805::200e]:18000
+ * ```
+ * 192.168.0.1
+ * :18000
+ * 192.168.0.1:18000
+ * seedlink.server.org:18500
+ * 2607:f8b0:400a:805::200e
+ * [2607:f8b0:400a:805::200e]:18000
+ * ```
  *
  * This routine will also set the \a tls flag if the port is the default
  * for a secure connection, aka \a SL_SECURE_PORT.
@@ -1006,7 +1007,7 @@ sl_setclientname (SLCD *slconn, const char *name, const char *version)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setserveraddress (SLCD *slconn, const char *server_address)
+sl_set_serveraddress (SLCD *slconn, const char *server_address)
 {
   char host[300] = {0};
   char port[100] = {0};
@@ -1108,7 +1109,7 @@ sl_setserveraddress (SLCD *slconn, const char *server_address)
   }
 
   return 0;
-} /* End of sl_setserveraddress() */
+} /* End of sl_set_serveraddress() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection time window (begin and end times)
@@ -1129,7 +1130,7 @@ sl_setserveraddress (SLCD *slconn, const char *server_address)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
+sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
 {
     if (!slconn || (!start_time && !end_time))
         return -1;
@@ -1152,7 +1153,7 @@ sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
     }
 
     return 0;
-} /* End of sl_settimewindow() */
+} /* End of sl_set_timewindow() */
 
 
 /**********************************************************************/ /**
@@ -1187,10 +1188,10 @@ sl_settimewindow (SLCD *slconn, const char *start_time, const char *end_time)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setauthparams (SLCD *slconn,
-                  const char *(*auth_value) (const char *server, void *auth_data),
-                  void (*auth_finish) (const char *server, void *auth_data),
-                  void *auth_data)
+sl_set_auth_params (SLCD *slconn,
+                    const char *(*auth_value) (const char *server, void *auth_data),
+                    void (*auth_finish) (const char *server, void *auth_data),
+                    void *auth_data)
 {
     if (!slconn)
         return -1;
@@ -1200,7 +1201,7 @@ sl_setauthparams (SLCD *slconn,
     slconn->auth_data   = auth_data;
 
     return 0;
-} /* End of sl_setauthparams() */
+} /* End of sl_set_auth_params() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection keep alive interval in seconds
@@ -1217,7 +1218,7 @@ sl_setauthparams (SLCD *slconn,
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setkeepalive (SLCD *slconn, int keepalive)
+sl_set_keepalive (SLCD *slconn, int keepalive)
 {
     if (!slconn)
         return -1;
@@ -1225,7 +1226,7 @@ sl_setkeepalive (SLCD *slconn, int keepalive)
     slconn->keepalive = keepalive;
 
     return 0;
-} /* End of sl_setkeepalive() */
+} /* End of sl_set_keepalive() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection I/O timeout in seconds
@@ -1243,7 +1244,7 @@ sl_setkeepalive (SLCD *slconn, int keepalive)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setiotimeout (SLCD *slconn, int iotimeout)
+sl_set_iotimeout (SLCD *slconn, int iotimeout)
 {
     if (!slconn)
         return -1;
@@ -1251,7 +1252,7 @@ sl_setiotimeout (SLCD *slconn, int iotimeout)
     slconn->iotimeout = iotimeout;
 
     return 0;
-} /* End of sl_setiotimeout() */
+} /* End of sl_set_iotimeout() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection idle timeout in seconds
@@ -1268,7 +1269,7 @@ sl_setiotimeout (SLCD *slconn, int iotimeout)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setidletimeout (SLCD *slconn, int idletimeout)
+sl_set_idletimeout (SLCD *slconn, int idletimeout)
 {
     if (!slconn)
         return -1;
@@ -1276,7 +1277,7 @@ sl_setidletimeout (SLCD *slconn, int idletimeout)
     slconn->netto = idletimeout;
 
     return 0;
-} /* End of sl_setidletimeout() */
+} /* End of sl_set_idletimeout() */
 
 /**********************************************************************/ /**
  * @brief Set SeedLink re-connection delay in seconds
@@ -1294,7 +1295,7 @@ sl_setidletimeout (SLCD *slconn, int idletimeout)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setreconnectdelay (SLCD *slconn, int reconnectdelay)
+sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay)
 {
     if (!slconn)
         return -1;
@@ -1302,7 +1303,7 @@ sl_setreconnectdelay (SLCD *slconn, int reconnectdelay)
     slconn->netdly = reconnectdelay;
 
     return 0;
-} /* End of sl_setreconnectdelay() */
+} /* End of sl_set_reconnectdelay() */
 
 /**********************************************************************/ /**
  * @brief Set or unset the SeedLink connection blocking mode
@@ -1322,7 +1323,7 @@ sl_setreconnectdelay (SLCD *slconn, int reconnectdelay)
  * @sa sl_collect()
  ***************************************************************************/
 int
-sl_setblockingmode (SLCD *slconn, int nonblock)
+sl_set_blockingmode (SLCD *slconn, int nonblock)
 {
     if (!slconn)
         return -1;
@@ -1330,7 +1331,7 @@ sl_setblockingmode (SLCD *slconn, int nonblock)
     slconn->noblock = (nonblock) ? 1 : 0;
 
     return 0;
-} /* End of sl_setblockingmode() */
+} /* End of sl_set_blockingmode() */
 
 /**********************************************************************/ /**
  * @brief Set or unset the SeedLink connection dial-up mode
@@ -1348,7 +1349,7 @@ sl_setblockingmode (SLCD *slconn, int nonblock)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setdialupmode (SLCD *slconn, int dialup)
+sl_set_dialupmode (SLCD *slconn, int dialup)
 {
     if (!slconn)
         return -1;
@@ -1356,7 +1357,7 @@ sl_setdialupmode (SLCD *slconn, int dialup)
     slconn->dialup = (dialup) ? 1 : 0;
 
     return 0;
-} /* End of sl_setdialupmode() */
+} /* End of sl_set_dialupmode() */
 
 /**********************************************************************/ /**
  * @brief Set or unset the SeedLink connection batch mode (v3 only)
@@ -1374,7 +1375,7 @@ sl_setdialupmode (SLCD *slconn, int dialup)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setbatchmode (SLCD *slconn, int batchmode)
+sl_set_batchmode (SLCD *slconn, int batchmode)
 {
     if (!slconn)
         return -1;
@@ -1382,7 +1383,7 @@ sl_setbatchmode (SLCD *slconn, int batchmode)
     slconn->batchmode = (batchmode) ? 1 : 0;
 
     return 0;
-} /* End of sl_setbatchmode() */
+} /* End of sl_set_batchmode() */
 
 /**********************************************************************/ /**
  * sl_addstream:
@@ -1412,9 +1413,9 @@ sl_setbatchmode (SLCD *slconn, int batchmode)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_addstream (SLCD *slconn, const char *stationid,
-              const char *selectors, uint64_t seqnum,
-              const char *timestamp)
+sl_add_stream (SLCD *slconn, const char *stationid,
+               const char *selectors, uint64_t seqnum,
+               const char *timestamp)
 {
   SLstream *curstream;
   SLstream *newstream;
@@ -1519,7 +1520,7 @@ sl_addstream (SLCD *slconn, const char *stationid,
   slconn->multistation = 1;
 
   return 0;
-} /* End of sl_addstream() */
+} /* End of sl_add_stream() */
 
 
 /**********************************************************************/ /**
@@ -1542,8 +1543,8 @@ sl_addstream (SLCD *slconn, const char *stationid,
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_setallstationparams (SLCD *slconn, const char *selectors,
-                        uint64_t seqnum, const char *timestamp)
+sl_set_allstation_params (SLCD *slconn, const char *selectors,
+                          uint64_t seqnum, const char *timestamp)
 {
   SLstream *newstream;
 
@@ -1604,8 +1605,7 @@ sl_setallstationparams (SLCD *slconn, const char *selectors,
   slconn->multistation = 0;
 
   return 0;
-} /* End of sl_setallstationparams() */
-
+} /* End of sl_set_allstation_params() */
 
 /**********************************************************************/ /**
  * @brief Submit an INFO request to the server at the next opportunity
