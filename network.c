@@ -1700,7 +1700,7 @@ negotiate_multi_v3 (SLCD *slconn)
       *sta++ = '\0';
 
     /* Send the STATION command */
-    sprintf (sendstr, "STATION %s %s\r\n", sta, net);
+    sprintf (sendstr, "STATION %s %s\r\n", (sta) ? sta : "", net);
 
     sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n",
               curstream->stationid,
