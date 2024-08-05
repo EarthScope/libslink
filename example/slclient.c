@@ -20,8 +20,8 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2021:
- * @author Chad Trabant, IRIS Data Management Center
+ * Copyright (C) 2024:
+ * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
 #include <stdio.h>
@@ -30,14 +30,6 @@
 #include <time.h>
 
 #include <libslink.h>
-
-#ifndef WIN32
-#include <signal.h>
-
-static void term_handler (int sig);
-#else
-#define strcasecmp _stricmp
-#endif
 
 #define PACKAGE "slclient"
 #define VERSION LIBSLINK_VERSION
@@ -66,25 +58,8 @@ main (int argc, char **argv)
   uint32_t plbuffersize = 16384;
   int status;
 
-#ifndef WIN32
-  /* Signal handling, use POSIX calls with standardized semantics */
-  struct sigaction sa;
-
-  sigemptyset (&sa.sa_mask);
-  sa.sa_flags = SA_RESTART;
-
-  sa.sa_handler = term_handler;
-  sigaction (SIGINT, &sa, NULL);
-  sigaction (SIGQUIT, &sa, NULL);
-  sigaction (SIGTERM, &sa, NULL);
-
-  sa.sa_handler = SIG_IGN;
-  sigaction (SIGHUP, &sa, NULL);
-  sigaction (SIGPIPE, &sa, NULL);
-#endif
-
   /* Allocate and initialize a new connection description */
-  slconn = sl_newslcd (PACKAGE, VERSION);
+  slconn = sl_initslcd (PACKAGE, VERSION);
 
   /* Process given parameters (command line and parameter file) */
   if (parameter_proc (slconn, argc, argv) < 0)
@@ -94,17 +69,19 @@ main (int argc, char **argv)
     return -1;
   }
 
+  /* Set signal handlers to trigger clean connection shutdown */
+  if (sl_set_termination_handler (slconn) < 0)
+  {
+    sl_log (2, 0, "Failed to set termination handler\n");
+    return -1;
+  }
+
   /* Allocate payload buffer */
   if ((plbuffer = (char *)malloc (plbuffersize)) == NULL)
   {
     sl_log (2, 0, "Memory allocation failed\n");
     return -1;
   }
-
-  /* Connection options can be set */
-  //slconn->dialup = 1;
-  //slconn->noblock = 1;
-  //sl_request_info (slconn, "ID");
 
   /* Loop with the connection manager */
   while ((status = sl_collect (slconn, &packetinfo,
@@ -137,6 +114,8 @@ main (int argc, char **argv)
 
   /* Make sure everything is shut down and save the state file */
   sl_disconnect (slconn);
+
+  fprintf (stderr, "DEBUG, disconnected and now saving state\n");
 
   if (statefile)
     sl_savestate (slconn, statefile);
@@ -239,19 +218,19 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
     }
     else if (strcmp (argvec[optind], "-Ap") == 0)
     {
-      sl_setauthparams (slconn, auth_value, auth_finish, NULL);
+      sl_set_auth_params (slconn, auth_value, auth_finish, NULL);
     }
     else if (strcmp (argvec[optind], "-nt") == 0)
     {
-      sl_setidletimeout (slconn, atoi (argvec[++optind]));
+      sl_set_idletimeout (slconn, atoi (argvec[++optind]));
     }
     else if (strcmp (argvec[optind], "-nd") == 0)
     {
-      sl_setreconnectdelay (slconn, atoi (argvec[++optind]));
+      sl_set_reconnectdelay (slconn, atoi (argvec[++optind]));
     }
     else if (strcmp (argvec[optind], "-k") == 0)
     {
-      sl_setkeepalive (slconn, atoi (argvec[++optind]));
+      sl_set_keepalive (slconn, atoi (argvec[++optind]));
     }
     else if (strcmp (argvec[optind], "-l") == 0)
     {
@@ -295,7 +274,7 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
     exit (1);
   }
 
-  sl_setserveraddress (slconn, server_address);
+  sl_set_serveraddress (slconn, server_address);
 
   /* Initialize the verbosity for the sl_log function */
   sl_loginit (verbose, NULL, NULL, NULL, NULL);
@@ -312,17 +291,17 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
 
   /* Load the stream list from a file if specified */
   if (streamfile)
-    sl_read_streamlist (slconn, streamfile, selectors);
+    sl_add_streamlist_file (slconn, streamfile, selectors);
 
   /* Parse the 'multiselect' string following '-S' */
   if (multiselect)
   {
-    if (sl_parse_streamlist (slconn, multiselect, selectors) == -1)
+    if (sl_add_streamlist (slconn, multiselect, selectors) == -1)
       return -1;
   }
   else if (!streamfile)
   { /* No 'streams' array, assuming uni-station mode */
-    sl_setuniparams (slconn, selectors, -1, 0);
+    sl_set_allstation_params (slconn, selectors, -1, 0);
   }
 
   /* Attempt to recover sequence numbers from state file */
@@ -432,15 +411,3 @@ usage (void)
            "                  if :port is omitted (i.e. 'localhost'), 18000 is assumed\n\n");
 
 } /* End of usage() */
-
-#ifndef WIN32
-/***************************************************************************
- * term_handler:
- * Signal handler routine.
- ***************************************************************************/
-static void
-term_handler (int sig)
-{
-  sl_terminate (slconn);
-}
-#endif
