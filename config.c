@@ -53,6 +53,8 @@
  * @param defselect Default selectors to use when not specified (optional)
  *
  * @returns the number of streams configured or -1 on error.
+ *
+ * @sa sl_add_streamlist(), sl_add_stream()
  ***************************************************************************/
 int
 sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
@@ -162,6 +164,8 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
  * @param defselect Default selectors to use when not specified (optional)
  *
  * @returns the number of streams configured or -1 on error.
+ *
+ * @sa sl_add_streamlist_file(), sl_add_stream()
  ***************************************************************************/
 int
 sl_add_streamlist (SLCD *slconn, const char *streamlist,

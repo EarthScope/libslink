@@ -47,6 +47,8 @@
  * @param statefile The name of the state file to write
  *
  * @returns 0 on success and -1 on error
+ *
+ * @sa sl_recoverstate()
  ***************************************************************************/
 int
 sl_savestate (SLCD *slconn, const char *statefile)
@@ -139,6 +141,8 @@ sl_savestate (SLCD *slconn, const char *statefile)
  * @retval -1 : error
  * @retval  0 : completed successfully
  * @retval  1 : file could not be opened (probably not found)
+ *
+ * @sa sl_savestate()
  ***************************************************************************/
 int
 sl_recoverstate (SLCD *slconn, const char *statefile)

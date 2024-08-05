@@ -25,6 +25,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <signal.h>
 
 #include "globmatch.h"
 #include "libslink.h"
@@ -36,6 +37,9 @@ static int64_t receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffers
                                 uint8_t *buffer, int bytesavailable);
 static int update_stream (SLCD *slconn, const char *payload);
 static int64_t detect (const char *record, uint64_t recbuflen, char *payloadformat);
+
+/* Initialize the global termination handler */
+SLCD *global_termination_SLCD = NULL;
 
 
 /**********************************************************************/ /**
@@ -66,7 +70,7 @@ static int64_t detect (const char *record, uint64_t recbuflen, char *payloadform
  * @param[out] plbuffer  Destination buffer for packet payload
  * @param[in]  plbuffersize  Length of destination buffer
  *
- * @returns An @ref collect-status code
+ * @returns An status code:
  * @retval SLPACKET Complete packet returned
  * @retval SLTERMINATE Connection termination or error
  * @retval SLNOPACKET  No packet available, call again
@@ -558,7 +562,6 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
   return bytesread;
 } /* End of receive_header() */
 
-
 /***************************************************************************
  * receive_payload:
  *
@@ -662,7 +665,6 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 
   return bytestoconsume;
 } /* End of receive_payload() */
-
 
 /***************************************************************************
  * update_stream:
@@ -784,8 +786,7 @@ update_stream (SLCD *slconn, const char *payload)
 /**********************************************************************/ /**
  * @brief Initialize a new ::SLCD
  *
- * Allocate a new ::SLCD and initialize values to default startup
- * values.
+ * Allocate a new ::SLCD and set default values.
  *
  * The \a clientname must be specified and should be a string
  * describing the name of the client program. The \a clientversion is
@@ -810,41 +811,40 @@ sl_initslcd (const char *clientname, const char *clientversion)
     return NULL;
   }
 
+  memset (slconn, 0, sizeof (SLCD));
+
   /* Set defaults */
-  slconn->streams    = NULL;
-  slconn->sladdr     = NULL;
-  slconn->start_time = NULL;
-  slconn->end_time   = NULL;
-
-  slconn->auth_value  = NULL;
-  slconn->auth_finish = NULL;
-  slconn->auth_data   = NULL;
-
-  slconn->noblock      = 0;
-  slconn->dialup       = 0;
-  slconn->batchmode    = 0;
-
-  slconn->lastpkttime  = 1;
-  slconn->terminate    = 0;
-  slconn->resume       = 1;
-  slconn->multistation = 0;
-
-  slconn->keepalive = 0;
-  slconn->iotimeout = 60;
-  slconn->netto     = 600;
-  slconn->netdly    = 30;
-
-  slconn->capabilities  = NULL;
-  slconn->caparray      = NULL;
-  slconn->info          = NULL;
+  slconn->sladdr        = NULL;
+  slconn->slhost        = NULL;
+  slconn->slport        = NULL;
   slconn->clientname    = NULL;
   slconn->clientversion = NULL;
-  slconn->protocol      = UNSET_PROTO;
-  slconn->server_protocols = 0;
+  slconn->start_time    = NULL;
+  slconn->end_time      = NULL;
+  slconn->keepalive     = 0;
+  slconn->iotimeout     = 60;
+  slconn->netto         = 600;
+  slconn->netdly        = 30;
+  slconn->auth_value    = NULL;
+  slconn->auth_finish   = NULL;
+  slconn->auth_data     = NULL;
+  slconn->streams       = NULL;
+  slconn->info          = NULL;
+  slconn->noblock       = 0;
+  slconn->dialup        = 0;
+  slconn->batchmode     = 0;
+  slconn->lastpkttime   = 1;
+  slconn->terminate     = 0;
+  slconn->resume        = 1;
+  slconn->multistation  = 0;
 
-  slconn->link        = -1;
-  slconn->tls         = 0;
-  slconn->tlsctx      = NULL;
+  slconn->link             = -1;
+  slconn->protocol         = UNSET_PROTO;
+  slconn->server_protocols = 0;
+  slconn->capabilities     = NULL;
+  slconn->caparray         = NULL;
+  slconn->tls              = 0;
+  slconn->tlsctx           = NULL;
 
   /* Allocate the associated persistent state struct */
   if ((slconn->stat = (SLstat *)malloc (sizeof (SLstat))) == NULL)
@@ -853,6 +853,8 @@ sl_initslcd (const char *clientname, const char *clientversion)
     free (slconn);
     return NULL;
   }
+
+  memset (slconn->stat, 0, sizeof (SLstat));
 
   slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
   slconn->stat->packetinfo.payloadlength = 0;
@@ -880,7 +882,6 @@ sl_initslcd (const char *clientname, const char *clientversion)
 
   return slconn;
 } /* End of sl_newslcd() */
-
 
 /**********************************************************************/ /**
  * @brief Free all memory associated with a ::SLCD
@@ -923,7 +924,6 @@ sl_freeslcd (SLCD *slconn)
   free (slconn->log);
   free (slconn);
 } /* End of sl_freeslcd() */
-
 
 /**********************************************************************/ /**
  * @brief Set client name and version reported to server (v4 only)
@@ -975,7 +975,7 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
  * @brief Set SeedLink server address (and port)
  *
  * Set the address (and port) of the SeedLink server to connect to.  The
- * \a server_address string should be in the following format:
+ * \p server_address string should be in the following format:
  *
  *  \c HOST:PORT
  *
@@ -992,7 +992,7 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
  * 192.168.0.1
  * :18000
  * 192.168.0.1:18000
- * seedlink.server.org:18500
+ * seedlink.datacenter.org:18500
  * 2607:f8b0:400a:805::200e
  * [2607:f8b0:400a:805::200e]:18000
  * ```
@@ -1120,11 +1120,11 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
  *
  * No validation of the time strings is done, so the user must ensure that
  * the target SeedLink server supports time string format supplied.  A
- * relatively safe format is \c yyyy-mm-ddTHH:MM:SS
+ * relatively safe format is <code>yyyy-mm-ddTHH:MM:SS</code>.
  *
  * @param slconn      SeedLink connection description
- * @param start_time  Starting time string in yyyy-mm-ddTHH:MM:SS format
- * @param end_time    Ending time string in yyyy-mm-ddTHH:MM:SS format
+ * @param start_time  Starting time string in <code>yyyy-mm-ddTHH:MM:SS</code> format
+ * @param end_time    Ending time string in <code>yyyy-mm-ddTHH:MM:SS</code> format
  *
  * @retval  0 : success
  * @retval -1 : error
@@ -1154,7 +1154,6 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
 
     return 0;
 } /* End of sl_set_timewindow() */
-
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection authentication parameters (v4 only)
@@ -1522,7 +1521,6 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   return 0;
 } /* End of sl_add_stream() */
 
-
 /**********************************************************************/ /**
  * @brief Set the parameters for an all-station mode connection
  *
@@ -1634,7 +1632,6 @@ sl_request_info (SLCD *slconn, const char *infostr)
   }
 } /* End of sl_request_info() */
 
-
 /**********************************************************************/ /**
  * @brief Check if server capabilities include specified value
  *
@@ -1697,7 +1694,6 @@ sl_hascapability (SLCD *slconn, char *capability)
   return 0;
 } /* End of sl_hascapablity() */
 
-
 /**********************************************************************/ /**
  * @brief Trigger a termination of the SeedLink connection
  *
@@ -1714,6 +1710,52 @@ sl_terminate (SLCD *slconn)
   slconn->terminate = 1;
 } /* End of sl_terminate() */
 
+/* Internal termination routine for use as a signal handler */
+static void
+internal_term_handler (int sig)
+{
+  (void)sig;
+  sl_terminate (global_termination_SLCD);
+}
+
+/**********************************************************************/ /**
+ * @brief Set signal handlers that trigger connection shutdown.
+ *
+ * @warning This function is not thread safe due to use of static variables.
+ *
+ * This routine will set the signal handlers for `SIGINT` and `SIGTERM`
+ * that trigger connection shutdown for the specified SLCD.  On Windows
+ * the `SIGABRT` signal is also set.  On all other platforms the
+ * `SIGQUIT` signal is also set.
+ *
+ * @return 0 on success and -1 on error.
+ ***************************************************************************/
+int
+sl_set_termination_handler (SLCD *slconn)
+{
+  if (slconn == NULL)
+    return -1;
+
+  global_termination_SLCD = slconn;
+
+#if defined(SLP_WIN)
+  signal(SIGINT, internal_term_handler);
+  signal(SIGTERM, internal_term_handler);
+  signal(SIGABRT, internal_term_handler);
+#else
+  struct sigaction sa;
+
+  sigemptyset (&sa.sa_mask);
+  sa.sa_flags = SA_RESTART;
+
+  sa.sa_handler = internal_term_handler;
+  sigaction (SIGINT, &sa, NULL);
+  sigaction (SIGTERM, &sa, NULL);
+  sigaction (SIGQUIT, &sa, NULL);
+#endif
+
+  return 0;
+} /* End of sl_set_termination_handler() */
 
 /**********************************************************************/ /**
  * @brief Print user parameters of the SeedLink connection description

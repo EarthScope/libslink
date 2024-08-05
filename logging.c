@@ -35,7 +35,7 @@ void sl_loginit_main (SLlog *logp, int verbosity,
 int sl_log_main (const SLlog *logp, int level, int verb, const char *format, va_list *varlist);
 
 /* Initialize the global logging parameters */
-SLlog gSLlog = {NULL, NULL, NULL, NULL, 0};
+SLlog global_SLlog = {NULL, NULL, NULL, NULL, 0};
 
 /**********************************************************************/ /**
  * @brief Initialize the global logging parameters.
@@ -53,7 +53,7 @@ sl_loginit (int verbosity,
             void (*log_print) (const char *), const char *logprefix,
             void (*diag_print) (const char *), const char *errprefix)
 {
-  sl_loginit_main (&gSLlog, verbosity, log_print, logprefix, diag_print, errprefix);
+  sl_loginit_main (&global_SLlog, verbosity, log_print, logprefix, diag_print, errprefix);
 } /* End of sl_loginit() */
 
 /**********************************************************************/ /**
@@ -228,7 +228,7 @@ sl_log (int level, int verb, const char *format, ...)
 
   va_start (varlist, format);
 
-  retval = sl_log_main (&gSLlog, level, verb, format, &varlist);
+  retval = sl_log_main (&global_SLlog, level, verb, format, &varlist);
 
   va_end (varlist);
 
@@ -258,9 +258,9 @@ sl_log_r (const SLCD *slconn, int level, int verb, const char *format, ...)
   SLlog *logp;
 
   if (!slconn)
-    logp = &gSLlog;
+    logp = &global_SLlog;
   else if (!slconn->log)
-    logp = &gSLlog;
+    logp = &global_SLlog;
   else
     logp = slconn->log;
 
@@ -296,7 +296,7 @@ sl_log_rl (const SLlog *log, int level, int verb, const char *format, ...)
   const SLlog *logp;
 
   if (!log)
-    logp = &gSLlog;
+    logp = &global_SLlog;
   else
     logp = log;
 

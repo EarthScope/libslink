@@ -100,6 +100,7 @@ extern "C" {
     #define vsnprintf _vsnprintf
     #define strncasecmp _strnicmp
     #define access _access
+    #define strcasecmp _stricmp
   #endif
 
 #elif defined(__sun__) || defined(__sun)
@@ -184,8 +185,8 @@ typedef struct SLlog_s
   All details of a SeedLink connection are stored in a SeedLink Connection
   Description (::SLCD) structure.
 
-  A calling program should create a new ::SLCD structure with sl_newslcd(),
-  set the desired parameters with the various sl_set*() functions, and then
+  A calling program should create a new ::SLCD structure with sl_initslcd(),
+  set the desired parameters with the various sl_set_*() functions, and then
   establish a connection and collect packets with sl_connect().
 
   The ::SLCD structure should be freed with sl_freeslcd() when the connection
@@ -193,14 +194,8 @@ typedef struct SLlog_s
 
   See the @ref md_tutorial and @ref md_examples for more information.
 
-  @sa sl_newslcd(), sl_freeslcd(), sl_setclientname(), sl_setserveraddress(),
-  sl_connect(),
-  sl_settimewindow(), sl_setauthparams(), sl_setkeepalive(), sl_setiotimeout(),
-  sl_setidletimeout(), sl_setreconnectdelay(), sl_setblockingmode(),
-  sl_setdialupmode(), sl_setbatchmode(), sl_addstream(), sl_setallstationparams(),
-  sl_request_info(), sl_hascapability(), sl_terminate(), sl_printslcd(),
-  sl_read_streamlist(), sl_parse_streamlist(), sl_configlink(), sl_send_info(),
-  sl_disconnect(), sl_ping(), sl_senddata(), sl_recvdata(),
+  @sa sl_initslcd(), sl_freeslcd(), sl_set_serveraddress(), sl_set_clientname(),
+  sl_add_streamlist(), sl_add_streamlist_file(), sl_collect()
 
     @{ */
 
@@ -275,13 +270,13 @@ typedef enum
 /** @brief SeedLink packet information */
 typedef struct slpacketinfo_s
 {
-  uint64_t seqnum;              /**< Packet sequence number */
-  uint32_t payloadlength;       /**< Packet payload length */
-  uint32_t payloadcollected;    /**< Packet payload collected so far */
-  char     stationid[SL_MAX_STATIONID]; /**< Station ID */
-  char     payloadformat;       /**< Packet payload format */
-  char     payloadsubformat;    /**< Packet payload subformat */
-  uint8_t  stationidlength;      /**< Station ID length */
+  uint64_t seqnum;              //!< Packet sequence number
+  uint32_t payloadlength;       //!< Packet payload length
+  uint32_t payloadcollected;    //!< Packet payload collected so far
+  char     stationid[SL_MAX_STATIONID]; //!< Station ID
+  char     payloadformat;       //!< Packet payload format
+  char     payloadsubformat;    //!< Packet payload subformat
+  uint8_t  stationidlength;     //!< Station ID length
 } SLpacketinfo;
 
 /** @brief Stream information */
@@ -329,29 +324,29 @@ typedef struct stat_s
  */
 typedef struct slcd_s
 {
-  char       *sladdr;           /**< Caller-supplied address of SeedLink server */
-  char       *slhost;           /**< The host of SeedLink server */
-  char       *slport;           /**< The port of SeedLink server */
-  char       *clientname;       /**< Client program name */
-  char       *clientversion;    /**< Client program version */
-  char       *start_time;     	/**< Start of time window */
-  char       *end_time;		      /**< End of time window */
-  int         keepalive;        /**< Interval to send keepalive/heartbeat (seconds) */
-  int         iotimeout;        /**< Timeout for network I/O operations (seconds) */
-  int         netto;            /**< Idle network timeout (seconds) */
-  int         netdly;           /**< Network reconnect delay (seconds) */
-  const char *(*auth_value)(const char *server, void *auth_data); /**< Authorization callback, return authorization value */
-  void      (*auth_finish)(const char *server, void *auth_data); /**< Authorization finish, to free data, etc. */
-  void       *auth_data;        /**< Authorization callback data */
-  SLstream   *streams;		      /**< Pointer to list of streams */
-  const char *info;             /**< INFO request to send */
-  int8_t      noblock;          /**< Control blocking on collection */
-  int8_t      dialup;           /**< Boolean flag to indicate dial-up mode */
-  int8_t      batchmode;        /**< Batch mode (1 - requested, 2 - activated) */
-  int8_t      lastpkttime;      /**< Boolean flag to control last packet time usage */
-  int8_t      terminate;        /**< Flag to control connection termination */
-  int8_t      resume;           /**< Boolean flag to control resuming with seq. numbers */
-  int8_t      multistation;     /**< Boolean flag to indicate v3 multistation mode */
+  char       *sladdr;           //!< Caller-supplied address of SeedLink server */
+  char       *slhost;           //!< The host of SeedLink server */
+  char       *slport;           //!< The port of SeedLink server */
+  char       *clientname;       //!< Client program name */
+  char       *clientversion;    //!< Client program version */
+  char       *start_time;     	//!< Start of time window */
+  char       *end_time;		      //!< End of time window */
+  int         keepalive;        //!< Interval to send keepalive/heartbeat (seconds) */
+  int         iotimeout;        //!< Timeout for network I/O operations (seconds) */
+  int         netto;            //!< Idle network timeout (seconds) */
+  int         netdly;           //!< Network reconnect delay (seconds) */
+  const char *(*auth_value)(const char *server, void *auth_data); //!< Authorization callback, return authorization value */
+  void      (*auth_finish)(const char *server, void *auth_data); //!< Authorization finish, to free data, etc. */
+  void       *auth_data;        //!< Authorization callback data */
+  SLstream   *streams;		      //!< Pointer to list of streams */
+  const char *info;             //!< INFO request to send */
+  int8_t      noblock;          //!< Control blocking on collection */
+  int8_t      dialup;           //!< Boolean flag to indicate dial-up mode */
+  int8_t      batchmode;        //!< Batch mode (1 - requested, 2 - activated) */
+  int8_t      lastpkttime;      //!< Boolean flag to control last packet time usage */
+  int8_t      terminate;        //!< Flag to control connection termination */
+  int8_t      resume;           //!< Boolean flag to control resuming with seq. numbers */
+  int8_t      multistation;     //!< Boolean flag to indicate v3 multistation mode */
 
   SOCKET      link;             /**< The network socket descriptor */
   LIBPROTOCOL protocol;         /**< Protocol in use */
@@ -393,6 +388,7 @@ extern int sl_set_allstation_params (SLCD *slconn, const char *selectors,
 extern int sl_request_info (SLCD *slconn, const char *infostr);
 extern int sl_hascapability (SLCD *slconn, char *capability);
 extern void sl_terminate (SLCD *slconn);
+extern int sl_set_termination_handler (SLCD *slconn);
 extern void sl_printslcd (SLCD *slconn);
 #define sl_read_streamlist sl_add_streamlist_file /**< For backwards compatibility */
 extern int sl_add_streamlist_file (SLCD *slconn, const char *streamfile,

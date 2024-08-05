@@ -44,6 +44,8 @@
 	- Add sl_set_blockingmode(), sl_setdialupmode(), and sl_setbachmode().
 	- Add sl_printslcd() to print SLCD details.
 	- Add sl_set_allstation_params() to replace sl_setuniparams().
+	- Add sl_set_termination_handler() to set signal handlers to trigger
+	connection termination for clean shutdown.  Not thread safe.
 
 	API changes:
 	* sl_newslcd() was replaced by sl_initslcd() and now takes two
@@ -60,7 +62,7 @@
 
 	* sl_collect_nb() removed, non-blocking collection can be performed
 	using sl_collect() when SLCD.noblock is set.
-    * sl_packettype() and sl_sequence() removed, similar details are
+	* sl_packettype() and sl_sequence() removed, similar details are
 	provided in an SLpacketinfo strucuture.  The historic packet type
 	is no longer derived as the heuristic of blockette discovery is
 	unreliable.
