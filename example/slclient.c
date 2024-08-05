@@ -47,11 +47,11 @@ static void usage (void);
 
 static char auth_buffer[1024] = {0};
 
-static SLCD *slconn = NULL; /* connection parameters */
-
 int
 main (int argc, char **argv)
 {
+  SLCD *slconn = NULL; /* connection parameters */
+
   const SLpacketinfo *packetinfo = NULL; /* packet information */
 
   char *plbuffer = NULL;
@@ -114,8 +114,6 @@ main (int argc, char **argv)
 
   /* Make sure everything is shut down and save the state file */
   sl_disconnect (slconn);
-
-  fprintf (stderr, "DEBUG, disconnected and now saving state\n");
 
   if (statefile)
     sl_savestate (slconn, statefile);
