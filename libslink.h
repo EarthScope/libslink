@@ -169,7 +169,7 @@ extern "C" {
     @{ */
 
 /** @brief Logging parameters */
-typedef struct SLlog_s
+typedef struct SLlog
 {
   void (*log_print) (const char *);  /**< Log message printing function */
   const char *logprefix;             /**< Log message message prefix */
@@ -183,13 +183,13 @@ typedef struct SLlog_s
     @brief Definitions and functions related to SeedLink connections
 
   All details of a SeedLink connection are stored in a SeedLink Connection
-  Description (::SLCD) structure.
+  Description (::SLCD) data structure.
 
-  A calling program should create a new ::SLCD structure with sl_initslcd(),
+  A calling program should create a new ::SLCD with sl_initslcd(),
   set the desired parameters with the various sl_set_*() functions, and then
   establish a connection and collect packets with sl_connect().
 
-  The ::SLCD structure should be freed with sl_freeslcd() when the connection
+  The ::SLCD should be freed with sl_freeslcd() when the connection
   is no longer needed.
 
   See the @ref md_tutorial and @ref md_examples for more information.
@@ -197,7 +197,7 @@ typedef struct SLlog_s
   @sa sl_initslcd(), sl_freeslcd(), sl_set_serveraddress(), sl_set_clientname(),
   sl_add_streamlist(), sl_add_streamlist_file(), sl_collect()
 
-    @{ */
+  @{ */
 
 #define SL_DEFAULT_HOST  "localhost" //!< Default host for libslink
 #define SL_DEFAULT_PORT  "18000"     //!< Default port for libslink
@@ -268,7 +268,7 @@ typedef enum
 #define sl_dtime(X) SL_SLTIME2EPOCH((double)sl_nstime())
 
 /** @brief SeedLink packet information */
-typedef struct slpacketinfo_s
+typedef struct SLpacketinfo
 {
   uint64_t seqnum;              //!< Packet sequence number
   uint32_t payloadlength;       //!< Packet payload length
@@ -280,17 +280,17 @@ typedef struct slpacketinfo_s
 } SLpacketinfo;
 
 /** @brief Stream information */
-typedef struct slstream_s
+typedef struct SLstream
 {
   char     stationid[SL_MAX_STATIONID]; /**< Station ID */
   char    *selectors;	          /**< SeedLink style selectors for this station */
   uint64_t seqnum;              /**< SeedLink sequence number for this station */
   char     timestamp[32];       /**< Time stamp of last packet received */
-  struct   slstream_s *next;    /**< The next station in the chain */
+  struct   SLstream *next;      /**< The next station in the chain */
 } SLstream;
 
 /** @brief Connection state information */
-typedef struct stat_s
+typedef struct SLstat
 {
   SLpacketinfo packetinfo;      /**< Client-specific packet tracking */
   int64_t keepalive_time;       /**< Keepalive time stamp */
@@ -322,7 +322,7 @@ typedef struct stat_s
     This structure should not, in general, be modified or accessed directly.
     Instead use the provided functions to set configuration values.
  */
-typedef struct slcd_s
+typedef struct SLCD
 {
   char       *sladdr;           //!< Caller-supplied address of SeedLink server */
   char       *slhost;           //!< The host of SeedLink server */
