@@ -28,7 +28,7 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_RELEASE "2024.217"    /**< libslink release date */
+#define LIBSLINK_RELEASE "2024.218"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  4      /**< libslink major version */
 #define LIBSLINK_VERSION_MINOR  0      /**< libslink minor version */
 #define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
@@ -45,6 +45,7 @@ extern "C" {
 /** @defgroup connection-state Connection State */
 /** @defgroup logging Central Logging */
 /** @defgroup utility-functions General Utility Functions */
+/** @defgroup seedlink-connection2 SeedLink Connection 2 */
 
 
 /* C99 standard headers */
@@ -221,6 +222,9 @@ typedef enum
   SLPROTO40   = 2, //!< SeedLink 4.0
 } LIBPROTOCOL;
 
+/** @defgroup payload-formats Payload Formats
+    @brief SeedLink packet payload formats and subformats
+  @{ */
 #define SLPAYLOAD_UNKNOWN        0  //!< Unknown payload
 #define SLPAYLOAD_MSEED2INFO     1  //!< miniSEED 2 with INFO payload
 #define SLPAYLOAD_MSEED2INFOTERM 2  //!< miniSEED 2 with INFO payload (terminated)
@@ -231,11 +235,16 @@ typedef enum
 
 #define SLPAYLOAD_JSON_INFO     'I' //!< JSON payload, subformat SeedLink INFO
 #define SLPAYLOAD_JSON_ERROR    'E' //!< JSON payload, subformat SeedLink ERROR
+/** @} */
 
+/** @defgroup collect-status Collect Status
+    @brief Values returned by sl_collect()
+  @{ */
 #define SLPACKET                 1  //!< Complete packet returned
 #define SLTERMINATE              0  //!< Error or connection termination
 #define SLNOPACKET              -1  //!< No packet available for non-blocking
 #define SLTOOLARGE              -2  //!< Received packet is too large for buffer
+/** @} */
 
 /** @def SL_UNSETSEQUENCE
     @brief Representation for unset sequence values. **/
@@ -274,28 +283,28 @@ typedef struct SLpacketinfo
   uint32_t payloadlength;       //!< Packet payload length
   uint32_t payloadcollected;    //!< Packet payload collected so far
   char     stationid[SL_MAX_STATIONID]; //!< Station ID
-  char     payloadformat;       //!< Packet payload format
-  char     payloadsubformat;    //!< Packet payload subformat
+  char     payloadformat;       //!< Packet payload format, see @ref payload-formats
+  char     payloadsubformat;    //!< Packet payload subformat see @ref payload-formats
   uint8_t  stationidlength;     //!< Station ID length
 } SLpacketinfo;
 
 /** @brief Stream information */
 typedef struct SLstream
 {
-  char     stationid[SL_MAX_STATIONID]; /**< Station ID */
-  char    *selectors;	          /**< SeedLink style selectors for this station */
-  uint64_t seqnum;              /**< SeedLink sequence number for this station */
-  char     timestamp[32];       /**< Time stamp of last packet received */
-  struct   SLstream *next;      /**< The next station in the chain */
+  char     stationid[SL_MAX_STATIONID]; //!< Station ID pattern
+  char    *selectors;	          //!< Stream ID pattern for this station
+  uint64_t seqnum;              //!< SeedLink sequence number for this station
+  char     timestamp[32];       //!< Time stamp of last packet received
+  struct   SLstream *next;      //!< The next station in the chain
 } SLstream;
 
 /** @brief Connection state information */
 typedef struct SLstat
 {
-  SLpacketinfo packetinfo;      /**< Client-specific packet tracking */
-  int64_t keepalive_time;       /**< Keepalive time stamp */
-  int64_t netto_time;           /**< Network timeout time stamp */
-  int64_t netdly_time;          /**< Network re-connect delay time stamp */
+  SLpacketinfo packetinfo;      //!< Client-specific packet tracking
+  int64_t keepalive_time;       //!< Keepalive time stamp
+  int64_t netto_time;           //!< Network timeout time stamp
+  int64_t netdly_time;          //!< Network re-connect delay time stamp
 
   /** Connection state */
   enum
@@ -324,42 +333,44 @@ typedef struct SLstat
  */
 typedef struct SLCD
 {
-  char       *sladdr;           //!< Caller-supplied address of SeedLink server */
-  char       *slhost;           //!< The host of SeedLink server */
-  char       *slport;           //!< The port of SeedLink server */
-  char       *clientname;       //!< Client program name */
-  char       *clientversion;    //!< Client program version */
-  char       *start_time;     	//!< Start of time window */
-  char       *end_time;		      //!< End of time window */
-  int         keepalive;        //!< Interval to send keepalive/heartbeat (seconds) */
-  int         iotimeout;        //!< Timeout for network I/O operations (seconds) */
-  int         netto;            //!< Idle network timeout (seconds) */
-  int         netdly;           //!< Network reconnect delay (seconds) */
-  const char *(*auth_value)(const char *server, void *auth_data); //!< Authorization callback, return authorization value */
-  void      (*auth_finish)(const char *server, void *auth_data); //!< Authorization finish, to free data, etc. */
-  void       *auth_data;        //!< Authorization callback data */
-  SLstream   *streams;		      //!< Pointer to list of streams */
-  const char *info;             //!< INFO request to send */
-  int8_t      noblock;          //!< Control blocking on collection */
-  int8_t      dialup;           //!< Boolean flag to indicate dial-up mode */
-  int8_t      batchmode;        //!< Batch mode (1 - requested, 2 - activated) */
-  int8_t      lastpkttime;      //!< Boolean flag to control last packet time usage */
-  int8_t      terminate;        //!< Flag to control connection termination */
-  int8_t      resume;           //!< Boolean flag to control resuming with seq. numbers */
-  int8_t      multistation;     //!< Boolean flag to indicate v3 multistation mode */
+  char       *sladdr;           //!< Caller-supplied address of SeedLink server
+  char       *slhost;           //!< The host of SeedLink server
+  char       *slport;           //!< The port of SeedLink server
+  char       *clientname;       //!< Client program name
+  char       *clientversion;    //!< Client program version
+  char       *start_time;     	//!< Start of time window
+  char       *end_time;		      //!< End of time window
+  int         keepalive;        //!< Interval to send keepalive/heartbeat (seconds)
+  int         iotimeout;        //!< Timeout for network I/O operations (seconds)
+  int         netto;            //!< Idle network timeout (seconds)
+  int         netdly;           //!< Network reconnect delay (seconds)
+  const char *(*auth_value)(const char *server, void *auth_data); //!< Authorization value callback, returns authorization value
+  void      (*auth_finish)(const char *server, void *auth_data); //!< Authorization finish callback, to free data, etc.
+  void       *auth_data;        //!< Authorization callback data
+  SLstream   *streams;		      //!< Pointer to list of streams
+  const char *info;             //!< INFO request to send
+  int8_t      noblock;          //!< Control blocking on collection
+  int8_t      dialup;           //!< Boolean flag to indicate dial-up mode
+  int8_t      batchmode;        //!< Batch mode (1 - requested, 2 - activated)
+  int8_t      lastpkttime;      //!< Boolean flag to control last packet time usage
+  int8_t      terminate;        //!< Flag to control connection termination
+  int8_t      resume;           //!< Boolean flag to control resuming with seq. numbers
+  int8_t      multistation;     //!< Boolean flag to indicate v3 multistation mode
 
-  SOCKET      link;             /**< The network socket descriptor */
-  LIBPROTOCOL protocol;         /**< Protocol in use */
-  uint32_t    server_protocols; /**< Server protocol versions supported by library */
-  char       *capabilities;     /**< HELLO capabilities supported by server (incomplete) */
-  char       *caparray;         /**< Array of capabilities */
-  int         tls;              /**< TLS connection flag */
-  void       *tlsctx;           /**< TLS context */
-  SLstat     *stat;             /**< Connection state information */
-  SLlog      *log;              /**< Logging parameters */
+  /// @cond HIDDEN_FIELDS
+  SOCKET      link;             //The network socket descriptor
+  LIBPROTOCOL protocol;         //Protocol in use
+  uint32_t    server_protocols; //Server protocol versions supported by library
+  char       *capabilities;     //HELLO capabilities supported by server (incomplete)
+  char       *caparray;         //Array of capabilities
+  int         tls;              //TLS connection flag
+  void       *tlsctx;           //TLS context
+  SLstat     *stat;             //Connection state information
+  SLlog      *log;              //Logging parameters
 
-  uint8_t     recvbuffer[SL_MAX_PAYLOAD]; /**< Network receive buffer */
-  uint32_t    recvdatalen;      /**< Length of data in receive buffer */
+  uint8_t     recvbuffer[SL_MAX_PAYLOAD]; // Network receive buffer
+  uint32_t    recvdatalen;      // Length of data in receive buffer
+  /// @endcond
 } SLCD;
 
 extern int sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,

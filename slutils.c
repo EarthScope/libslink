@@ -70,7 +70,7 @@ SLCD *global_termination_SLCD = NULL;
  * @param[out] plbuffer  Destination buffer for packet payload
  * @param[in]  plbuffersize  Length of destination buffer
  *
- * @returns An status code:
+ * @returns @ref collect-status
  * @retval SLPACKET Complete packet returned
  * @retval SLTERMINATE Connection termination or error
  * @retval SLNOPACKET  No packet available, call again

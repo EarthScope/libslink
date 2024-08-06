@@ -1,5 +1,4 @@
 # Documentation build artifacts
-docs/_build/
 docs/html/
-docs/working/
-docs/gh-pages/
+docs/latex/
+docs/xml/
