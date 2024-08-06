@@ -9,16 +9,14 @@ OPTS = /O2 /D_CRT_SECURE_NO_WARNINGS
 LIB = libslink.lib
 DLL = libslink.dll
 
-OBJS= \
-	unpack.obj		\
-	msrecord.obj	\
+OBJS=	config.obj	\
 	genutils.obj	\
-	logging.obj		\
-	network.obj		\
-	statefile.obj	\
-	config.obj		\
-	slutils.obj		\
-	globmatch.obj
+	globmatch.obj	\
+	logging.obj	\
+	network.obj	\
+	payload.obj	\
+	slutils.obj	\
+	statefile.obj
 
 all: mbedtls-lib lib
 
