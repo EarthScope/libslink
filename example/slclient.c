@@ -2,9 +2,8 @@
  * slclient.c
  * An example SeedLink client demonstrating the use of libslink.
  *
- * Connects to a SeedLink server, configures a connection using either
- * uni or multi-station mode and collects data.  Detailed information about
- * the data received can be printed.
+ * Connects to a SeedLink server, configures a connection. collects data,
+ * and prints a summary of the received packets.
  *
  * This file is part of the SeedLink Library.
  *
@@ -298,7 +297,7 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
       return -1;
   }
   else if (!streamfile)
-  { /* No 'streams' array, assuming uni-station mode */
+  { /* No 'streams' array, assuming all-station mode */
     sl_set_allstation_params (slconn, selectors, -1, 0);
   }
 
@@ -393,19 +392,19 @@ usage (void)
            " -nd delay      network re-connect delay (seconds), default 30\n"
            " -nt timeout    network timeout (seconds), re-establish connection if no\n"
            "                  data/keepalives are received in this time, default 600\n"
-           " -k interval    send keepalive (heartbeat) packets this often (seconds)\n"
+           " -k interval    send keepalive packets this often (seconds)\n"
            " -x statefile   save/restore stream state information to this file\n"
            "\n"
            " ## Data stream selection ##\n"
            " -l listfile    read a stream list from this file for multi-station mode\n"
-           " -s selectors   selectors for uni-station or default for multi-station\n"
-           " -S streams     select streams for multi-station (requires SeedLink >= 2.5)\n"
+           " -s selectors   selectors for all-station or default for multi-station\n"
+           " -S streams     select streams for multi-station\n"
            "   'streams' = 'stream1[:selectors1],stream2[:selectors2],...'\n"
            "        'stream' is in NET_STA format, for example:\n"
-           "        -S \"IU_KONO:BHE BHN,GE_WLF,MN_AQU:HH?.D\"\n\n"
+           "        -S \"IU_COLA:BHE BHN,GE_WLF,MN_AQU:HH?\"\n"
            "\n"
            " [host][:port]  Address of the SeedLink server in host:port format\n"
            "                  if host is omitted (i.e. ':18000'), localhost is assumed\n"
-           "                  if :port is omitted (i.e. 'localhost'), 18000 is assumed\n\n");
-
+           "                  if :port is omitted (i.e. 'localhost'), 18000 is assumed\n"
+           "\n");
 } /* End of usage() */
