@@ -33,6 +33,10 @@ LIB_A = $(LIB_NAME).a
 
 CFLAGS += -Imbedtls/include
 
+MBEDTLS_SRCS = $(wildcard mbedtls/library/*.c)
+MBEDTLS_OBJS = $(MBEDTLS_SRCS:.c=.o)
+MBEDTLS_LOBJS = $(MBEDTLS_SRCS:.c=.lo)
+
 OS := $(shell uname -s)
 ROOT_DIR := $(dir $(realpath $(lastword $(MAKEFILE_LIST))))
 
@@ -56,34 +60,24 @@ static: $(LIB_A)
 shared dynamic: $(LIB_SO)
 
 # Build static library
-$(LIB_A): $(LIB_OBJS) mbedtls
+$(LIB_A): $(LIB_OBJS) $(MBEDTLS_OBJS) #mbedtls
 	@echo "Building static library $(LIB_A)"
 	$(RM) -f $(LIB_A)
-	$(AR) -crs $(LIB_A) $(LIB_OBJS) $(wildcard mbedtls/library/*.o)
+	$(AR) -crs $(LIB_A) $(LIB_OBJS) $(MBEDTLS_OBJS)
 
 # Build shared/dynamic library
-$(LIB_SO): $(LIB_LOBJS) mbedtls
+$(LIB_SO): $(LIB_LOBJS) $(MBEDTLS_LOBJS) #mbedtls
 	@echo "Building shared library $(LIB_SO)"
 	$(RM) -f $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE)
-	$(CC) $(CFLAGS) $(LDFLAGS) $(LIB_OPTS) -o $(LIB_SO) $(LIB_LOBJS) $(wildcard mbedtls/library/*.o)
+	$(CC) $(CFLAGS) $(LDFLAGS) $(LIB_OPTS) -o $(LIB_SO) $(LIB_LOBJS) $(MBEDTLS_LOBJS)
 	ln -s $(LIB_SO) $(LIB_SO_BASE)
 	ln -s $(LIB_SO) $(LIB_SO_MAJOR)
-
-# Build mbedtls library for needed objects
-# Set modification times of mbedtls source files to containing directory
-# to avoid triggering generation of build files.
-mbedtls: CFLAGS += -fPIC
-mbedtls: FORCE
-	@find mbedtls -type f -exec touch -c -m -r mbedtls {} \;
-	@echo "Building mbedtls"
-	@$(MAKE) GEN_FILES= -C mbedtls lib
 
 test check: static FORCE
 	@$(MAKE) -C test test
 
 clean:
-	@$(RM) $(LIB_OBJS) $(LIB_LOBJS) $(LIB_A) $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE)
-	@$(MAKE) -C mbedtls clean
+	@$(RM) $(LIB_OBJS) $(LIB_LOBJS) $(LIB_A) $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE) $(MBEDTLS_OBJS) $(MBEDTLS_LOBJS)
 	@echo "All clean."
 
 install: shared
