@@ -637,9 +637,9 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
  * @param resp A buffer to store the response
  * @param resplen The length of the response buffer
  *
- * @retval -1 on error
- * @retval  0 for no available data
- * @retval >0 the number of bytes read on success.
+ * @retval  -1 on error
+ * @retval   0 for success when no response requested
+ * @retval >=0 the number of bytes read if response requested
  *
  * @sa sl_collect()
  ***************************************************************************/
@@ -985,8 +985,14 @@ sayhello_int (SLCD *slconn)
   sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
             (int)strcspn (sendstr, "\r\n"), sendstr);
 
-  sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-               NULL, 0);
+  ret = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
+                     NULL, 0);
+
+  if (ret < 0)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] error sending HELLO\n", slconn->sladdr);
+    return -1;
+  }
 
   /* Recv the two lines of response: server ID and site installation ID */
   if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr),
