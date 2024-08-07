@@ -38,7 +38,7 @@ extern "C" {
     @brief libslink version string */
 #define LIBSLINK_VERSION        LIBSLINK_STRINGIFY(LIBSLINK_VERSION_MAJOR) "." \
                                 LIBSLINK_STRINGIFY(LIBSLINK_VERSION_MINOR) "." \
-                                LIBSLINK_STRINGIFY(LIBSLINK_VERSION_PATCH) "DEV"
+                                LIBSLINK_STRINGIFY(LIBSLINK_VERSION_PATCH) ""
 
 
 /** @defgroup seedlink-connection SeedLink Connection */
