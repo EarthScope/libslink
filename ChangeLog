@@ -1,4 +1,4 @@
-2024.218: v4.0.4
+2024.218: v4.0.0
 	A new major release that seamlessly supports both the new,
 	[SeedLink version 4 protocol](https://docs.fdsn.org/projects/seedlink),
 	and the previous protocol, referred to in this project as
