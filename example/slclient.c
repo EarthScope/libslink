@@ -298,7 +298,7 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
   }
   else if (!streamfile)
   { /* No 'streams' array, assuming all-station mode */
-    sl_set_allstation_params (slconn, selectors, -1, 0);
+    sl_set_allstation_params (slconn, selectors, SL_UNSETSEQUENCE, NULL);
   }
 
   /* Attempt to recover sequence numbers from state file */
