@@ -1105,7 +1105,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   /* Set TLS flag if port is the TLS default */
   if (strcmp(slconn->slport, SL_SECURE_PORT) == 0)
   {
-    slconn->tls = 1;
+    sl_set_tlsmode (slconn, 1);
   }
 
   return 0;
@@ -1387,6 +1387,33 @@ sl_set_batchmode (SLCD *slconn, int batchmode)
 
     return 0;
 } /* End of sl_set_batchmode() */
+
+/**********************************************************************/ /**
+ * @brief Enable or disable TLS for the SeedLink connection
+ *
+ * By default, TLS is enabled for port number 18500, and for all other
+ * ports it is disabled.  This function can be used to expliclty enable
+ * or disable TLS for the connection.
+ *
+ * This function must be run after sl_set_serveraddress() to disable TLS
+ * on port 18500.
+ *
+ * @param slconn     SeedLink connection description
+ * @param tlsmode    Boolean flag, if non-zero enable TLS
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_set_tlsmode (SLCD *slconn, int tlsmode)
+{
+    if (!slconn)
+        return -1;
+
+    slconn->tls = (tlsmode) ? 1 : 0;
+
+    return 0;
+} /* End of sl_set_tlsmode() */
 
 /**********************************************************************/ /**
  * sl_addstream:

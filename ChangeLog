@@ -1,3 +1,7 @@
+2024.xxx:
+	- Add sl_set_tlsmode() to enable/disable TLS on arbitrary ports.
+	By default port 18500 will use TLS and all others will not.
+
 2024.218: v4.0.0
 	A new major release that seamlessly supports both the new,
 	[SeedLink version 4 protocol](https://docs.fdsn.org/projects/seedlink),

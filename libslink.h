@@ -389,6 +389,7 @@ extern int sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay);
 extern int sl_set_blockingmode (SLCD *slconn, int nonblock);
 extern int sl_set_dialupmode (SLCD *slconn, int dialup);
 extern int sl_set_batchmode (SLCD *slconn, int batchmode);
+extern int sl_set_tlsmode (SLCD *slconn, int tlsmode);
 extern int sl_add_stream (SLCD *slconn, const char *stationid,
                           const char *selectors, uint64_t seqnum,
                           const char *timestamp);
