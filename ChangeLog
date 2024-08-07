@@ -1,4 +1,35 @@
-2024.02x:
+2024.218: v4.0.4
+	A new major release that seamlessly supports both the new,
+	[SeedLink version 4 protocol](https://docs.fdsn.org/projects/seedlink),
+	and the previous protocol, referred to in this project as
+	version 3.x.  The protocol version will automatically be selected
+	during negotiation and the library will, in most cases, adapt
+	user-input as needed for the protocol needs.
+
+	Key features of SeedLink v4 include:
+	* Optional use of TLS (SSL) for encrypted connections and a default
+  	port to use for TLS-based connections (18500).
+	* Optional capability to submit authentication credentials.  The
+	specification identifies user-password and JWT mechanisms, and
+	allows for others to be added in the future.
+	* Ability to transfer different payload types, with identifiers
+	for miniSEED versions 2 and 3, and allowing for future additions.
+	* Ability to use wildcards in station ID patterns.
+
+	This release supports all of those features.
+
+	A number of API changes were made to allow for new features and
+	improve usability.
+
+  	The full list of changes is as follows, API changes below:
+
+	- Add TLS (SSL) support for encrypted connections.  The following
+	environment variables allow for debugging and providing locations of
+	Certificate Authorities to use:
+	`LIBSLINK_CA_CERT_FILE` = location of a CA cert file to load
+	`LIBSLINK_CA_CERT_PATH` = path to CA cert files to load
+	`LIBSLINK_TLS_DEBUG` = TLS debugging output level (integer)
+	`LIBSLINK_CERT_UNVERIFIED_OK` = Allow unverified certs (for TLS 1.2)
 	- Update internal sequence numbers to unsigned 64-bit values.
 	- Header contains separate major, minor, patch versioning,
         thanks @yensoon2!
@@ -7,34 +38,26 @@
 	- Saved state file now using combined station ID syntax instead of
 	separte network and station. Both new and old formats are supported
 	when reading.
-	- Stream list file support for both NET_STA syntax and legacy format.
+	- Stream list file now uses a single station ID instead of separate
+  	newtork and station codes.  The old format is NOT supported.
 	- Convert v3 selector syntax to v4 when protocol v4 is negotiated.
 	- Sort the stream list alphanumerically and from more to less
-	specific regarding wildcards.  Ensuring that wildcards in NET_STA
-	selections are sent after those without wildcards.
+	specific regarding wildcards.  Ensuring that wildcards in station
+	ID selections are sent after those without wildcards.
 	- Add callback function hooks to support caller-provided
 	authorization with v4.
 	- Do not interpret the version following SeedLink in the HELLO
 	response as a protocol verison, instead parse SLPROTO declarations
 	and default to 3.x if no recognized protocols are found.
-	- Add special sequence number value SL_ALLDATASEQEUNCE to
-	request all data from a server for a stream (v4 only).
-
+	- Add special sequence number value `SL_ALLDATASEQEUNCE` to
+	request all data from a server for a stream (v4 only).  This value
+	is also used internally for v3 uni-station mode.
 	- Warning messages for non-support of features for ancient server
 	versions < 3 are removed.  Capabilty is not reduced, but the library
 	will not prevent issuing commands against very old servers, which
 	should return errors for unsupported commands.
-
-	- Add TLS (SSL) support for encrypted connections.  The following
-	environment variables allow for debugging and providing locations of
-	Certificate Authorities to use:
-	LIBSLINK_CA_CERT_FILE = location of a CA cert file to load
-	LIBSLINK_CA_CERT_PATH = path to CA cert files to load
-	LIBSLINK_TLS_DEBUG = TLS debugging output level (integer)
-	LIBSLINK_CERT_UNVERIFIED_OK = Allow unverified certs (for TLS 1.2)
-
 	- Add sl_payload_summary() and sl_payload_info() for extracting
-	basic details from known payload types.
+	basic details from recognized payload types.
 	- Add sl_set_serveraddress() to set the server address, with support
 	for parsing addresses like raw IPv6 enclosed in square brackets.
 	- Add sl_set_timewindow() to set time range for the streams.
@@ -59,7 +82,6 @@
 	* sl_typestr() renamed sl_formatstr(), now takes a subformat argument.
 	* sl_addstream() replaced with sl_add_stream() and now takes a combined
 	station ID instead of separeate net and sta.
-
 	* sl_collect_nb() removed, non-blocking collection can be performed
 	using sl_collect() when SLCD.noblock is set.
 	* sl_packettype() and sl_sequence() removed, similar details are
@@ -68,10 +90,12 @@
 	unreliable.
 	* sl_checkversion() and sl_checkslcd() removed.
 	* sl_openfile() and sl_readline() removed.
-	* Remove sl_strparse()
-	* Remove sl_gswap3() and all sl_gswapXa() routines.
+	* sl_strparse() removed.
+	* sl_gswap3() and all sl_gswapXa() routines removed.
 	* Remove all miniSEED specific routines and structures.
-	* Remove SL_SWAPBTIME() macro.
+	A few details from miniSEED payloads can be extracted using
+	sl_payload_info() but programs that need more details, or decoded
+	data samples should use a miniSEED parsing library.
 
 2020.048:
 	- Support M SEED quality code.

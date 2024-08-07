@@ -1165,9 +1165,13 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
  * value to be sent to the server.  This value is transmitted with the
  * \c AUTH command for v4 connections.  The following values are specified
  * by the v4 protocol:
- *
- *   \c USERPASS `<username>` `<password>`
- *   \c JWT `<token>`
+ * ```
+ * USERPASS <username> <password>
+ * ```
+ * and
+ * ```
+ * JWT <token>
+ * ```
  *
  * The \a auth_finish callback is executed when authentication is complete.
  * This can be used to free memory or perform other cleanup tasks.

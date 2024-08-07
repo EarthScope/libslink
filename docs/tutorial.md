@@ -96,14 +96,11 @@ while ((status = sl_collect (slconn, &packetinfo,
 }
 ```
 
-where the \p plbuffer is a call-provided buffer for data payload,
-which is described by \p packetinfo.
+The \p plbuffer is a caller-provided buffer for data payload.  The
+station ID, payload size, format, subformat, and SeedLink sequence
+number of returned in \p packetinfo; seed SLpacketinfo.
 
-CHAD,
-@ref collect-status
-
-CHAD,
-@ref SLpacketinfo
+The sl_collect() routine returns one of @ref collect-status.
 
 ### Non-blocking connections
 
@@ -135,6 +132,44 @@ sl_set_termination_handler(), which will do exactly this (but is not
 thread safe).  Alternatively, some other mechanism can be employed
 to run sl_terminate() when shutdown is needed.
 
+## Authentication
+
+SeedLink protocol verision 4 allows the client to submit credentials
+for authentication.  The primary use for this mechanism is to control
+access to restricted data streams.
+
+@note It is strong recommended to submit credentials only over
+TLS encrypted connections, as they are otherwise plain text.
+
+The library supports submitting credentials by providing
+function callback hooks, specifically:
+
+- \a auth_value(), callback to provide an auth value
+- \a auth_finish(), callback to perform cleanup
+- \a auth_data, a caller-supplied pointer passed to the functions
+
+These values are set with sl_set_auth_params().
+
+The \a auth_value() function has the following signature:
+```
+const char * auth_value(const char *server, void *auth_data)
+```
+
+When this function is set, the `AUTH` command will be
+sent during connection negotiation with the value returned by the
+function.  The \p server value will be the SeedLink server address
+and the \p auth_data will be the pointer set by the caller.
+
+The \a auth_finish() function has the following signature:
+```
+void auth_finish(const char *server, void *auth_data)
+```
+
+When this function is set, it will be called after
+the authentication value has been submitted.  This can be used
+to clean up memory, close files, etc.  The arguments are the same
+as for \a auth_value().
+
 ## Time window requests and dial-up mode
 
 Most SeedLink connections are intended to continue streaming data
@@ -142,7 +177,14 @@ continuously.  There are two alterantives in the protocol as
 follows:
 
 1) Time window requests allow a client to specify a start time and,
-   optionally, an end time.
+   optionally, an end time, which is applied to all selected data
+   streams.  This feature is not required for server implementaion,
+   and may not be supported.
+
+2) When dial-up mode is enabled the server will close the conection
+   when all of the selected data available to the server has been
+   sent.  This is useful in scenarios where a permanent connection
+   is not possible and you wish to minimize the connection duration.
 
 ## References
 

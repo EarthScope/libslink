@@ -45,8 +45,6 @@ extern "C" {
 /** @defgroup connection-state Connection State */
 /** @defgroup logging Central Logging */
 /** @defgroup utility-functions General Utility Functions */
-/** @defgroup seedlink-connection2 SeedLink Connection 2 */
-
 
 /* C99 standard headers */
 #include <stdlib.h>

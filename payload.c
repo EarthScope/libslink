@@ -78,7 +78,7 @@ sl_payload_summary (const SLlog *log, const SLpacketinfo *packetinfo,
 /**********************************************************************/ /**
  * @brief Return selected values (if possible) from a SeedLink packet
  *
- * Parses a SeedLink packet payload and optiionally return extracted values.
+ * Parses a SeedLink packet payload and optionally return extracted values.
  * Values that can be returned inclue:
  *  - source identifier
  *  - start time string
