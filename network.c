@@ -1007,6 +1007,12 @@ sayhello_int (SLCD *slconn)
     return -1;
   }
 
+  if (slconn->terminate)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] Connection closed\n", slconn->sladdr);
+    return -1;
+  }
+
   /* Terminate on first "\r" character or at one character before end of buffer */
   servcnt = strcspn (servstr, "\r");
   if (servcnt > (sizeof (servstr) - 2))
