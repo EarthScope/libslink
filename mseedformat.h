@@ -643,7 +643,7 @@ HO2d (int16_t value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap2a (&value);
+    sl_gswap2 (&value);
   }
   return value;
 }
@@ -652,7 +652,7 @@ HO2u (uint16_t value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap2a (&value);
+    sl_gswap2 (&value);
   }
   return value;
 }
@@ -661,7 +661,7 @@ HO4d (int32_t value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap4a (&value);
+    sl_gswap4 (&value);
   }
   return value;
 }
@@ -670,7 +670,7 @@ HO4u (uint32_t value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap4a (&value);
+    sl_gswap4 (&value);
   }
   return value;
 }
@@ -679,7 +679,7 @@ HO4f (float value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap4a (&value);
+    sl_gswap4 (&value);
   }
   return value;
 }
@@ -688,7 +688,7 @@ HO8f (double value, int swapflag)
 {
   if (swapflag)
   {
-    sl_gswap8a (&value);
+    sl_gswap8 (&value);
   }
   return value;
 }

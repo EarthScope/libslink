@@ -1,34 +1,27 @@
-# libslink: the SeedLink client library
+# libslink
 
-This package contains the source code, documentation and example code
-for libslink, the SeedLink client library.  For further information
-regarding the library interface and usage see the documentation in the
-'doc' directory, including a Users Guide and man pages.
+A C library for SeedLink clients.
 
-The library should work in Linux, BSD (and derivatives like macOS),
-Solaris and MS-Windows environments.
+This project is a general purpose library for communicating with a SeedLink
+server.  The library supports [SeedLink v4](https://docs.fdsn.org/projects/seedlink/),
+standardized by the [International FDSN](https://www.fdsn.org/), and earlier
+versions of the protocol.
+
+SeedLink is an open transport protocol commonly use for continuous
+seismological data streams.
+
+Documentation is available at https://earthscope.github.io/libslink
+
+Releases are available at https://github.com/EarthScope/libslink/releases
 
 ## Building and Installing
 
 In most Unix/Linux environments a simple 'make' will build the program.
 
-The CC and CFLAGS environment variables can be used to configure
+The `CC` and `CFLAGS` environment variables can be used to configure
 the build parameters.
 
-## Extras
-
-The 'example' directory includes an example SeedLink client that uses
-libslink.
-
-The 'doc' directory includes all associated documentation including
-a Users Guide and man pages for library functions.
-
-## Threading
-
-The library is thread-safe under Unix-like environments with the
-condition that each connection descriptor (SLCD) is handled by a
-single thread.  Thread independent logging schemes are possible.
-Under WIN32 the library is not thread-safe.
+The library should work on Linux, macOS, and MS Windows.
 
 ## Licensing
 
@@ -44,13 +37,14 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 
-Copyright (C) 2020 Chad Trabant, IRIS Data Management Center
+Copyright (C) 2024 Chad Trabant, EarthScope Data Services
 
-## Acknowlegements --
+## Acknowlegements
 
 Numerous improvements have been incorporated based on feedback and
 patches submitted by others.  Individual acknowlegements are included
 in the ChangeLog.  Thank you!
 
 Initial development at the ORFEUS Data Center/EC MEREDIAN Project
-Continuing maintenance at the IRIS Data Management Center
+Continued maintained at the IRIS Data Management Center
+Current maintenance from EarthScope Data Services
