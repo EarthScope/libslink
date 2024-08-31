@@ -1,4 +1,4 @@
-2024.xxx:
+2024.243: v4.1.0
 	- Properly convert v3 style selectors to v4 without location code.
 	- Add sl_set_tlsmode() to enable/disable TLS on arbitrary ports.
 	By default port 18500 will use TLS and all others will not.
