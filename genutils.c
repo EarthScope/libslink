@@ -457,8 +457,9 @@ sl_commadatetime (char *commadatetime, const char *datetime)
  *
  * Example convesions:
  *  00BHZ  ->  00_B_H_Z
- *  BHZ    ->  _B_H_Z
- *  EH?.D  ->  _E_H_?.D
+ *  BHZ    ->  *_B_H_Z
+ *  EH?.D  ->  *_E_H_?.D
+ *  --BHZ  ->  _B_H_Z
  *
  * This routine does very little validation, invalid input may result in
  * invalid conversions.
@@ -479,11 +480,19 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
 {
   size_t streamidlength;
   char *type = NULL;
+  int emptylocation = 0;
   int printed;
   int idx;
 
   if (v4selector == NULL || selector == NULL)
     return NULL;
+
+  /* Remove inital '-' characters indicating empty location code */
+  while (*selector == '-')
+  {
+    selector++;
+    emptylocation++;
+  }
 
   /* Check if type is included */
   if ((type = strchr (selector, '.')))
@@ -506,10 +515,11 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
     }
   }
 
-  /* CCC[.T] -> _B_S_SS[.T] */
+  /* CCC[.T] -> [*]_B_S_SS[.T] */
   if (streamidlength == 3)
   {
-    printed = snprintf (v4selector, v4selectorlength, "_%c_%c_%c%s",
+    printed = snprintf (v4selector, v4selectorlength, "%s_%c_%c_%c%s",
+                        (emptylocation) ? "" : "*",
                         selector[0], selector[1], selector[2],
                         (type) ? type : "");
 

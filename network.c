@@ -2032,10 +2032,10 @@ negotiate_multi_v3 (SLCD *slconn)
 static SOCKET
 negotiate_v4 (SLCD *slconn)
 {
-  int stationcnt      = 0; /* Station count */
-  int errorcnt        = 0; /* Error count */
-  int bytesread       = 0;
-  int sellen          = 0;
+  int stationcnt = 0; /* Station count */
+  int errorcnt   = 0; /* Error count */
+  int bytesread  = 0;
+  int sellen     = 0;
   char *selptr;
   char *cp;
   char *cmd_selector;
