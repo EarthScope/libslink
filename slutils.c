@@ -362,6 +362,14 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           /* All other payloads are returned to the caller */
           else
           {
+            /* Update streaming tracking */
+            if (update_stream (slconn, plbuffer) == -1)
+            {
+              sl_log_r (slconn, 2, 0, "[%s] %s(): cannot update stream tracking\n",
+                        slconn->sladdr, __func__);
+              return -1;
+            }
+
             *packetinfo = &slconn->stat->packetinfo;
             return SLPACKET;
           }
@@ -567,8 +575,8 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
  *
  * Copy payload data to supplied buffer.
  *
- * The supplied buffer must be large enough for stream tracking and payload
- * detection, defined as SL_MIN_PAYLOAD bytes.
+ * The supplied buffer must be large enough for payload detection,
+ * defined as SL_MIN_PAYLOAD bytes.
  *
  * Returns
  * bytes : Number of bytes consumed on success
@@ -644,22 +652,6 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
       }
 
       packetinfo->payloadlength = detectedlength;
-    }
-  }
-
-  /* Handle payload of known length */
-  if (packetinfo->payloadlength > 0)
-  {
-    /* Update streaming tracking if initial payload */
-    if (packetinfo->payloadcollected == bytestoconsume &&
-        packetinfo->payloadcollected >= SL_MIN_PAYLOAD)
-    {
-      if (update_stream (slconn, plbuffer) == -1)
-      {
-        sl_log_r (slconn, 2, 0, "[%s] %s(): cannot update stream tracking\n",
-                  slconn->sladdr, __func__);
-        return -1;
-      }
     }
   }
 

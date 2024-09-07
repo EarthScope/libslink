@@ -208,8 +208,8 @@ typedef struct SLlog
 #define SIGNATURE_V4        "SE"     //!< V4 SeedLink header signature
 #define INFOSIGNATURE       "SLINFO" //!< SeedLink V3 INFO packet signature
 #define MAX_LOG_MSG_LENGTH  200      //!< Maximum length of log messages
-#define SL_MIN_PAYLOAD      64       //!< Minimum data for payload detection and tracking
-#define SL_MAX_PAYLOAD      16384    //!< Maximum data for payload detection and tracking
+#define SL_MIN_PAYLOAD      64       //!< Minimum data for payload detection (v3)
+#define SL_RECV_BUFFER_SIZE 16384    //!< Size of internal receive buffer in bytes
 #define SL_MAX_STATIONID    22       //!< Maximum length of station ID
 
 /** Protocols recognized by the library */
@@ -366,7 +366,7 @@ typedef struct SLCD
   SLstat     *stat;             //Connection state information
   SLlog      *log;              //Logging parameters
 
-  uint8_t     recvbuffer[SL_MAX_PAYLOAD]; // Network receive buffer
+  uint8_t     recvbuffer[SL_RECV_BUFFER_SIZE]; // Network receive buffer
   uint32_t    recvdatalen;      // Length of data in receive buffer
   /// @endcond
 } SLCD;
