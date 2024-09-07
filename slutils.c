@@ -1,6 +1,6 @@
 /***************************************************************************
  * slutils.c
- *s
+ *
  * Routines for managing a connection with a SeedLink server
  *
  * This file is part of the SeedLink Library.
@@ -588,8 +588,8 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 
   packetinfo = &slconn->stat->packetinfo;
 
-  /* Return for more data if the minimum for detection/updates is not available */
-  if (bytesavailable < SL_MIN_PAYLOAD)
+  /* Return for more data if the minimum for detection is not available */
+  if (packetinfo->payloadlength == 0 && bytesavailable < SL_MIN_PAYLOAD)
   {
     return 0;
   }
@@ -1853,6 +1853,8 @@ sl_printslcd (SLCD *slconn)
  *
  * Determine if the buffer contains a miniSEED data record by
  * verifying known signatures (fields with known limited values).
+ *
+ * At least SL_MIN_PAYLOAD bytes of data are required for detection.
  *
  * If miniSEED 2.x is detected, search the record up to recbuflen
  * bytes for a 1000 blockette. If no blockette 1000 is found, search
