@@ -212,6 +212,8 @@ typedef struct SLlog
 #define SL_RECV_BUFFER_SIZE 16384    //!< Size of internal receive buffer in bytes
 #define SL_MAX_STATIONID    22       //!< Maximum length of station ID
 
+#define SL_MAX_PAYLOAD SL_RECV_BUFFER_SIZE //!< Deprecated, use SL_RECV_BUFFER_SIZE
+
 /** Protocols recognized by the library */
 typedef enum
 {
