@@ -482,7 +482,6 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   char *type = NULL;
   int emptylocation = 0;
   int printed;
-  int idx;
 
   if (v4selector == NULL || selector == NULL)
     return NULL;
@@ -505,7 +504,7 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   }
 
   /* Check for valid v4 stream ID characters */
-  for (idx = 0; idx < streamidlength; idx++)
+  for (size_t idx = 0; idx < streamidlength; idx++)
   {
     if (isalnum ((int)selector[idx]) == 0 &&
         selector[idx] != '?' &&

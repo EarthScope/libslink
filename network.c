@@ -826,10 +826,11 @@ int
 sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
              const char *command, const char *ident)
 {
-  int bytesread = 0;     /* total bytes read */
-  int recvret   = 0;     /* return from sl_recvdata */
-  int ackcnt    = 0;     /* counter for the read loop */
-  int ackpoll   = 50000; /* poll at 0.05 seconds for reading */
+  size_t bytesread = 0; /* total bytes read */
+
+  int recvret = 0;     /* return from sl_recvdata */
+  int ackcnt  = 0;     /* counter for the read loop */
+  int ackpoll = 50000; /* poll at 0.05 seconds for reading */
 
   if (buffer == NULL)
   {
@@ -868,7 +869,7 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
         *(char *)((char *)buffer + bytesread - 2) == '\r' &&
         *(char *)((char *)buffer + bytesread - 1) == '\n')
     {
-      return bytesread;
+      return (int)bytesread;
     }
 
     /* Trap door if 30 seconds has elapsed, (ackpoll x 600) */
@@ -889,7 +890,7 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     }
   }
 
-  return bytesread;
+  return (int)bytesread;
 } /* End of sl_recvresp() */
 
 /**********************************************************************/ /**
@@ -964,14 +965,14 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
 static int
 sayhello_int (SLCD *slconn)
 {
-  int ret     = 0;
-  int servcnt = 0;
-  int sitecnt = 0;
-  char sendstr[1024];  /* A buffer for command strings */
-  char servstr[200];   /* The remote server ident */
-  char sitestr[200];   /* The site/data center ident */
-  char *capptr;        /* Pointer to capabilities flags */
-  char capflag = 0;    /* CAPABILITIES command is supported by server */
+  int ret = 0;
+  char sendstr[1024]; /* A buffer for command strings */
+  char servstr[200];  /* The remote server ident */
+  char sitestr[200];  /* The site/data center ident */
+  char *capptr;       /* Pointer to capabilities flags */
+  char capflag   = 0; /* CAPABILITIES command is supported by server */
+  size_t servcnt = 0;
+  size_t sitecnt = 0;
 
   uint8_t server_major = 0;
   uint8_t server_minor = 0;
@@ -2035,7 +2036,7 @@ negotiate_v4 (SLCD *slconn)
   int stationcnt = 0; /* Station count */
   int errorcnt   = 0; /* Error count */
   int bytesread  = 0;
-  int sellen     = 0;
+  size_t sellen  = 0;
   char *selptr;
   char *cp;
   char *cmd_selector;
@@ -2548,7 +2549,7 @@ load_ca_certs (SLCD *slconn)
   if (ca_loaded == 0)
   {
     /* Search known CA file locations, stop after finding one */
-    for (int i = 0; i < sizeof(ca_known_files) / sizeof(ca_known_files[0]); i++)
+    for (size_t i = 0; i < sizeof(ca_known_files) / sizeof(ca_known_files[0]); i++)
     {
       if (access (ca_known_files[i], R_OK) != 0)
       {
@@ -2570,7 +2571,7 @@ load_ca_certs (SLCD *slconn)
     }
 
     /* Search known CA cert path locations, read all locations */
-    for (int i = 0; i < sizeof(ca_known_paths) / sizeof(ca_known_paths[0]); i++)
+    for (size_t i = 0; i < sizeof(ca_known_paths) / sizeof(ca_known_paths[0]); i++)
     {
       if (access (ca_known_paths[i], R_OK) != 0)
       {

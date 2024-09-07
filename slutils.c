@@ -34,7 +34,7 @@
 /* Function(s) only used in this source file */
 static int receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable);
 static int64_t receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
-                                uint8_t *buffer, int bytesavailable);
+                                uint8_t *buffer, uint32_t bytesavailable);
 static int update_stream (SLCD *slconn, const char *payload);
 static int64_t detect (const char *record, uint64_t recbuflen, char *payloadformat);
 
@@ -584,7 +584,7 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
  ***************************************************************************/
 int64_t
 receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
-                 uint8_t *buffer, int bytesavailable)
+                 uint8_t *buffer, uint32_t bytesavailable)
 {
   SLpacketinfo *packetinfo = NULL;
   uint32_t bytestoconsume = 0;
@@ -679,7 +679,7 @@ update_stream (SLCD *slconn, const char *payload)
   char timestamp[32] = {0};
   char sourceid[64] = {0};
   char *cp;
-  int count;
+  size_t count;
 
   if (!slconn || !payload)
     return -1;
@@ -726,7 +726,7 @@ update_stream (SLCD *slconn, const char *payload)
 
             if (count >= sizeof (packetinfo->stationid))
             {
-              sl_log_r (slconn, 2, 0, "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%d)\n",
+              sl_log_r (slconn, 2, 0, "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%zu)\n",
                         slconn->sladdr, __func__, count);
               return -1;
             }
@@ -1922,7 +1922,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
 
       /* Found a 1000 blockette, not truncated */
       if (blkt_type == 1000 &&
-          (int)(blkt_offset + 8) <= buflen)
+          (blkt_offset + 8) <= buflen)
       {
         /* Field 3 of B1000 is a uint8_t value describing the buffer
          * length as 2^(value).  Calculate 2-raised with a shift. */
@@ -1949,7 +1949,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       nextfsdh = buffer + 64;
 
       /* Check for record header or blank/noise record at 64-byte offsets */
-      while (((nextfsdh - buffer) + 48) < buflen)
+      while ((size_t)((nextfsdh - buffer) + 48) < buflen)
       {
         if (MS2_ISVALIDHEADER (nextfsdh))
         {
