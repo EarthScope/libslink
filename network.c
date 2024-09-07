@@ -545,12 +545,12 @@ sl_disconnect (SLCD *slconn)
  * SeedLink command is suppported.
  *
  * The server ID and site/organization strings in the response are
- * copied into serverid and site strings which should have 100 characters
+ * copied into serverid and site strings which should have 100 bytes
  * of space each.
  *
  * @param[in] slconn The ::SLCD connection to ping
- * @param[out] serverid The server ID string to be copied into
- * @param[out] site The site/organization string to be copied into
+ * @param[out] serverid Destination for the server ID string, NULL if undesired
+ * @param[out] site Destination for the site/organization string, NULL if undesired
  *
  * @retval  0  Success
  * @retval -1  Connection opened but invalid response to 'HELLO'
@@ -559,8 +559,6 @@ sl_disconnect (SLCD *slconn)
 int
 sl_ping (SLCD *slconn, char *serverid, char *site)
 {
-  int servcnt = 0;
-  int sitecnt = 0;
   char sendstr[100] = {0}; /* A buffer for command strings */
   char servstr[100] = {0}; /* The remote server ident */
   char sitestr[100] = {0}; /* The site/data center ident */
@@ -582,35 +580,24 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
                NULL, 0);
 
   /* Recv the two lines of response */
-  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr),
+  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr) - 1,
                    sendstr, slconn->sladdr) < 0)
   {
     return -1;
   }
 
-  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr),
+  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr) - 1,
                    sendstr, slconn->sladdr) < 0)
   {
     return -1;
   }
-
-  servcnt = strcspn (servstr, "\r");
-  if (servcnt > 99)
-  {
-    servcnt = 99;
-  }
-  servstr[servcnt] = '\0';
-
-  sitecnt = strcspn (sitestr, "\r");
-  if (sitecnt > 99)
-  {
-    sitecnt = 99;
-  }
-  sitestr[sitecnt] = '\0';
 
   /* Copy the response strings into the supplied strings */
-  strcpy (serverid, servstr);
-  strcpy (site, sitestr);
+  if (serverid)
+    strcpy (serverid, servstr);
+
+  if (site)
+    strcpy (site, sitestr);
 
   slconn->link = sl_disconnect (slconn);
 

@@ -4,6 +4,7 @@
 	packet to the calling program instead of when the initial
 	data is received.
 	- Rename SL_MAX_PAYLOAD to SL_RECV_BUFFER_SIZE for clarity.
+	- sl_ping(): make serverid and site string buffers optional.
 
 2024.243: v4.1.0
 	- Properly convert v3 style selectors to v4 without location code.
