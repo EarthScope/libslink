@@ -476,7 +476,7 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 {
   char sendstr[100]; /* A buffer for command strings */
 
-  sprintf (sendstr, "INFO %s\r\n", infostr);
+  snprintf (sendstr, sizeof (sendstr), "INFO %s\r\n", infostr);
 
   sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n",
             slconn->sladdr, infostr);

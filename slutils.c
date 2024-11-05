@@ -150,6 +150,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         slconn->stat->query_state = NoQuery;
       }
 
+      free (slconn->info);
       slconn->info = NULL;
     }
 
@@ -1650,7 +1651,7 @@ sl_request_info (SLCD *slconn, const char *infostr)
   }
   else
   {
-    slconn->info = infostr;
+    slconn->info = strdup(infostr);
     return 0;
   }
 } /* End of sl_request_info() */

@@ -348,7 +348,7 @@ typedef struct SLCD
   void      (*auth_finish)(const char *server, void *auth_data); //!< Authorization finish callback, to free data, etc.
   void       *auth_data;        //!< Authorization callback data
   SLstream   *streams;		      //!< Pointer to list of streams
-  const char *info;             //!< INFO request to send
+  char       *info;             //!< INFO request to send
   int8_t      noblock;          //!< Control blocking on collection
   int8_t      dialup;           //!< Boolean flag to indicate dial-up mode
   int8_t      batchmode;        //!< Batch mode (1 - requested, 2 - activated)
