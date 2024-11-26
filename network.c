@@ -205,12 +205,6 @@ tls_configure (SLCD *slconn, const char *nodename)
 
   if ((flags = mbedtls_ssl_get_verify_result (&tlsctx->ssl)) != 0)
   {
-    char vrfy_buf[512];
-    sl_log_r (slconn, 2, 0, "[%s] Certificate verification failed\n", slconn->sladdr);
-
-    mbedtls_x509_crt_verify_info (vrfy_buf, sizeof (vrfy_buf), "  ! ", flags);
-    sl_log_r (slconn, 2, 0, "VERIFY INFO: %s\n", vrfy_buf);
-
     /* Check if continuing despite cerfication failure */
     if ((evalue = getenv ("LIBSLINK_CERT_UNVERIFIED_OK")) != NULL)
     {
@@ -219,6 +213,13 @@ tls_configure (SLCD *slconn, const char *nodename)
     }
     else
     {
+      char vrfy_buf[512];
+
+      sl_log_r (slconn, 2, 0, "[%s] Certificate verification failed\n", slconn->sladdr);
+
+      mbedtls_x509_crt_verify_info (vrfy_buf, sizeof (vrfy_buf), "  ! ", flags);
+      sl_log_r (slconn, 2, 0, "VERIFY INFO: %s\n", vrfy_buf);
+
       sl_log_r (slconn, 1, 0, "[%s] Connection refused due to certificate verification failure\n",
                 slconn->sladdr);
       return -1;
