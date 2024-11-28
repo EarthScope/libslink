@@ -46,7 +46,7 @@
 #define IS_ECONNRESET() (WSAGetLastError()== WSAECONNRESET)
 #else
 #define IS_EINTR(X) ((X) == EINTR)
-#define IS_EWOULDBLOCK() (errno == EWOULDBLOCK)
+#define IS_EWOULDBLOCK() (errno == EWOULDBLOCK || errno == EAGAIN)
 #define IS_ECONNRESET() (errno == ECONNRESET)
 #endif
 
