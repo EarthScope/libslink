@@ -41,11 +41,11 @@
 
 /* Some portable macros to test error conditions */
 #if defined(SLP_WIN)
-#define IS_EINTR(X) ((X) == WSAEINTR)
-#define IS_EWOULDBLOCK() (WSAGetLastError() == WSAEWOULDBLOCK)
-#define IS_ECONNRESET() (WSAGetLastError()== WSAECONNRESET)
+#define IS_EINTR(X) ((X) == SOCKET_ERROR && WSAGetLastError () == WSAEINTR)
+#define IS_EWOULDBLOCK() (WSAGetLastError () == WSAEWOULDBLOCK)
+#define IS_ECONNRESET() (WSAGetLastError () == WSAECONNRESET)
 #else
-#define IS_EINTR(X) ((X) == EINTR)
+#define IS_EINTR(X) ((X) == -1 && errno == EINTR)
 #define IS_EWOULDBLOCK() (errno == EWOULDBLOCK || errno == EAGAIN)
 #define IS_ECONNRESET() (errno == ECONNRESET)
 #endif
