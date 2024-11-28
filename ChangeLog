@@ -1,4 +1,4 @@
-2024.331:
+2024.333: v4.1.1
 	- Handle payload lengths less than SL_MIN_PAYLOAD (64) bytes.
 	- Update packet tracking details just before returning the complete
 	packet to the calling program instead of when the initial
@@ -7,6 +7,7 @@
 	- sl_ping(): make serverid and site string buffers optional.
 	- Do not print certificate verification warnings if
 	LIBSLINK_CERT_UNVERIFIED_OK is set.
+	- Update mbedtls to v3.6.2.
 
 2024.243: v4.1.0
 	- Properly convert v3 style selectors to v4 without location code.
