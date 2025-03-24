@@ -367,7 +367,8 @@ auth_value (const char *server, void *data)
 static void
 auth_finish (const char *server, void *data)
 {
-  (void)data; /* User-supplied data is not used in this case */
+  (void)server; /* Server address is not used in this case */
+  (void)data;   /* User-supplied data is not used in this case */
 
   /* Clear memory used to store auth value */
   memset (auth_buffer, 0, sizeof (auth_buffer));
