@@ -1,3 +1,6 @@
+2025.083:
+	- Change many sprintf() calls to snprintf() for safety.
+
 2024.350: v4.1.3
 	- Fix termination of ENDFETCH command.
 
