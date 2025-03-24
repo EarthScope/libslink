@@ -1,4 +1,4 @@
-2025.083:
+2025.083: v4.1.4
 	- Update Mbed-TLS to v3.6.3.
 	- Change many sprintf() calls to snprintf() for safety.
 	- Fix miniSEED v2 payload sample rate calculation.
