@@ -1211,6 +1211,7 @@ sl_set_auth_params (SLCD *slconn,
 const char *
 internal_auth_value_data (const char *server, void *auth_data)
 {
+  (void)server; /* Unused parameter */
   return (const char *)auth_data;
 }
 
@@ -1891,9 +1892,9 @@ sl_printslcd (SLCD *slconn)
   sl_log_r (slconn, 0, 0, "         I/O timeout: %d seconds\n", slconn->iotimeout);
   sl_log_r (slconn, 0, 0, "        Idle timeout: %d seconds\n", slconn->netto);
   sl_log_r (slconn, 0, 0, "     Reconnect delay: %d seconds\n", slconn->netdly);
-  sl_log_r (slconn, 0, 0, "        auth_value(): %p\n", slconn->auth_value);
-  sl_log_r (slconn, 0, 0, "       auth_finish(): %p\n", slconn->auth_finish);
-  sl_log_r (slconn, 0, 0, "           auth_data: %p\n", slconn->auth_data);
+  sl_log_r (slconn, 0, 0, "        auth_value(): %s\n", (slconn->auth_value) ? "SET" : "NOT SET");
+  sl_log_r (slconn, 0, 0, "       auth_finish(): %s\n", (slconn->auth_finish) ? "SET" : "NOT SET");
+  sl_log_r (slconn, 0, 0, "           auth_data: %s\n", (slconn->auth_data) ? "SET" : "NOT SET");
   sl_log_r (slconn, 0, 0, "   Non-blocking mode: %d\n", slconn->noblock);
   sl_log_r (slconn, 0, 0, "        Dial-up mode: %d\n", slconn->dialup);
   sl_log_r (slconn, 0, 0, "          Batch mode: %d\n", slconn->batchmode);
