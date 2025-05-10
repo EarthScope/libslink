@@ -110,10 +110,18 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
     if (slconn->stat->conn_state == DOWN &&
         slconn->stat->netdly_time < current_time)
     {
-      if (sl_connect (slconn, 1) != -1)
+      int connect_status = sl_connect (slconn, 1);
+
+      if (connect_status == -2)
+      {
+        return SLTERMINATE;
+      }
+
+      if (connect_status == 0)
       {
         slconn->stat->conn_state = UP;
       }
+
       slconn->stat->netto_time     = 0;
       slconn->stat->netdly_time    = 0;
       slconn->stat->keepalive_time = 0;

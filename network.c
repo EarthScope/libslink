@@ -254,7 +254,9 @@ tls_configure (SLCD *slconn, const char *nodename)
  * @param slconn The ::SLCD connection to connect
  * @param sayhello If true, send HELLO command to server
  *
- * @returns -1 on errors otherwise the socket descriptor created.
+ * @retval socket descriptor created on success (positive)
+ * @retval -1 on connection error
+ * @retval -2 on fatal connection error, should not be retried
  *
  * @sa sl_collect()
  ***************************************************************************/
@@ -406,10 +408,12 @@ sl_connect (SLCD *slconn, int sayhello)
   /* Everything should be connected, get capabilities, etc. */
   if (sayhello)
   {
-    if (sayhello_int (slconn) == -1)
+    int rv = sayhello_int (slconn);
+
+    if (rv < 0)
     {
       sl_disconnect (slconn);
-      return -1;
+      return rv;
     }
   }
 
@@ -948,7 +952,9 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
  * The connection is promoted to the highest version supported by both
  * server and client.
  *
- * Returns -1 on errors, 0 on success.
+ * Returns 0 on success
+ *        -1 on non-fatal error
+ *        -2 on fatal errors
  ***************************************************************************/
 static int
 sayhello_int (SLCD *slconn)
@@ -1334,9 +1340,9 @@ sayhello_int (SLCD *slconn)
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
-      sl_log_r (slconn, 1, 2, "[%s] AUTH not accepted: %s\n", slconn->sladdr,
+      sl_log_r (slconn, 1, 0, "[%s] AUTH not accepted: %s\n", slconn->sladdr,
                 readbuf+6);
-      return -1;
+      return -2;
     }
     else
     {

@@ -40,7 +40,8 @@ static char *statefile    = 0; /* state file for saving/restoring state */
 static void packet_handler (SLCD *slconn, const SLpacketinfo *packetinfo,
                             const char *payload, uint32_t payloadlen);
 static int parameter_proc (SLCD *slconn, int argcount, char **argvec);
-static const char *auth_value (const char *server, void *data);
+static const char *auth_value_userpass (const char *server, void *data);
+static const char *auth_value_token (const char *server, void *data);
 static void auth_finish  (const char *server, void *data);
 static void usage (void);
 
@@ -215,7 +216,11 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
     }
     else if (strcmp (argvec[optind], "-Ap") == 0)
     {
-      sl_set_auth_params (slconn, auth_value, auth_finish, NULL);
+      sl_set_auth_params (slconn, auth_value_userpass, auth_finish, NULL);
+    }
+    else if (strcmp (argvec[optind], "-At") == 0)
+    {
+      sl_set_auth_params (slconn, auth_value_token, auth_finish, NULL);
     }
     else if (strcmp (argvec[optind], "-nt") == 0)
     {
@@ -314,10 +319,10 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
 } /* End of parameter_proc() */
 
 /***************************************************************************
- * auth_value:
+ * auth_value_userpass:
  *
  * A callback function registered at SLCD.auth_value() that should return
- * a string to be sumitted with the SeedLink AUTH command.
+ * a string to be submitted with the SeedLink AUTH command.
  *
  * In this case, the function prompts the user for a username and password
  * for interactive input.
@@ -325,14 +330,14 @@ parameter_proc (SLCD *slconn, int argcount, char **argvec)
  * Returns authorization value string on success, and NULL on failure
  ***************************************************************************/
 static const char *
-auth_value (const char *server, void *data)
+auth_value_userpass (const char *server, void *data)
 {
   (void)data; /* User-supplied data is not used in this case */
   char username[256] = {0};
   char password[256] = {0};
   int printed;
 
-  fprintf (stderr, "Enter username for %s: ", server);
+  fprintf (stderr, "Enter username for [%s]: ", server);
   fgets (username, sizeof (username), stdin);
   username[strlen (username) - 1] = '\0';
 
@@ -344,6 +349,43 @@ auth_value (const char *server, void *data)
   printed = snprintf (auth_buffer, sizeof (auth_buffer),
                       "USERPASS %s %s",
                       username, password);
+
+  if (printed >= sizeof (auth_buffer))
+  {
+    fprintf (stderr, "%s() Auth value is too large (%d bytes)\n", __func__, printed);
+
+    return NULL;
+  }
+
+  return auth_buffer;
+}
+
+/***************************************************************************
+ * auth_value_token:
+ *
+ * A callback function registered at SLCD.auth_value() that should return
+ * a string to be submitted with the SeedLink AUTH command.
+ *
+ * In this case, the function prompts the user for a username and password
+ * for interactive input.
+ *
+ * Returns authorization value string on success, and NULL on failure
+ ***************************************************************************/
+static const char *
+auth_value_token (const char *server, void *data)
+{
+  (void)data; /* User-supplied data is not used in this case */
+  char token[4096] = {0};
+  int printed;
+
+  fprintf (stderr, "Enter token for [%s]: ", server);
+  fgets (token, sizeof (token), stdin);
+  token[strlen (token) - 1] = '\0';
+
+  /* Create AUTH value of "JWT <token>" */
+  printed = snprintf (auth_buffer, sizeof (auth_buffer),
+                      "JWT %s",
+                      token);
 
   if (printed >= sizeof (auth_buffer))
   {
@@ -388,7 +430,8 @@ usage (void)
            " -h             show this usage message\n"
            " -v             be more verbose, multiple flags can be used\n"
            " -p             print details of data packets\n"
-           " -Ap            prompt for authentication details (v4 only)\n"
+           " -Ap            prompt for authentication user/password (v4 only)\n"
+           " -At            prompt for authentication token (v4 only)\n"
            "\n"
            " -nd delay      network re-connect delay (seconds), default 30\n"
            " -nt timeout    network timeout (seconds), re-establish connection if no\n"
