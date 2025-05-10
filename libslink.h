@@ -384,6 +384,7 @@ extern int sl_set_auth_params (SLCD *slconn,
                                const char *(*auth_value) (const char *server, void *auth_data),
                                void (*auth_finish) (const char *server, void *auth_data),
                                void *auth_data);
+extern int sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar);
 extern int sl_set_keepalive (SLCD *slconn, int keepalive);
 extern int sl_set_iotimeout (SLCD *slconn, int iotimeout);
 extern int sl_set_idletimeout (SLCD *slconn, int idletimeout);

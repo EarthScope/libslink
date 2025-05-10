@@ -117,7 +117,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         return SLTERMINATE;
       }
 
-      if (connect_status == 0)
+      if (connect_status > 0)
       {
         slconn->stat->conn_state = UP;
       }
@@ -1174,8 +1174,8 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
  * JWT <token>
  * ```
  *
- * The \a auth_finish callback is executed when authentication is complete.
- * This can be used to free memory or perform other cleanup tasks.
+ * The \a auth_finish callback, if not NULL, is executed when authentication
+ * is complete. This can be used to free memory or perform other cleanup tasks.
  *
  * The \a auth_data parameter is a pointer to caller-supplied data that
  * is passed to the callback functions.
@@ -1206,6 +1206,78 @@ sl_set_auth_params (SLCD *slconn,
 
     return 0;
 } /* End of sl_set_auth_params() */
+
+/* Internal auth_value handler to return auth_data */
+const char *
+internal_auth_value_data (const char *server, void *auth_data)
+{
+  return (const char *)auth_data;
+}
+
+/**********************************************************************/ /**
+ * @brief Configure authentication with environment variables
+ *
+ * Use the specified environment variables to set the authentication
+ * parameters for the SeedLink connection.
+ *
+ * @param[in] slconn     SeedLink connection description
+ * @param[in] uservar    Environment variable for username
+ * @param[in] passvar    Environment variable for password
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ *
+ * @sa sl_set_auth_params()
+ ***************************************************************************/
+int
+sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar)
+{
+  if (!slconn)
+  {
+    return -1;
+  }
+
+  const char *username = getenv (uservar);
+  const char *password = getenv (passvar);
+
+  if (username == NULL || password == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error retrieving authentication environment variables\n", __func__);
+
+    if (username == NULL)
+    {
+      sl_log_r (NULL, 2, 0, "  Environment variable %s not set\n", uservar);
+    }
+    if (password == NULL)
+    {
+      sl_log_r (NULL, 2, 0, "  Environment variable %s not set\n", passvar);
+    }
+
+    return -1;
+  }
+
+  /* Create AUTH value of "USERPASS <username> <password>" */
+  size_t avlength = strlen (username) + strlen (password) + 11;
+
+  char *auth_value = (char *)malloc (avlength);
+  if (auth_value == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
+
+  snprintf (auth_value, avlength,
+            "USERPASS %s %s",
+            username, password);
+
+  /* Set the authentication parameters */
+  sl_set_auth_params (slconn,
+                      internal_auth_value_data,
+                      NULL,
+                      auth_value);
+
+  return 0;
+}
 
 /**********************************************************************/ /**
  * @brief Set SeedLink connection keep alive interval in seconds

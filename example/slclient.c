@@ -61,6 +61,13 @@ main (int argc, char **argv)
   /* Allocate and initialize a new connection description */
   slconn = sl_initslcd (PACKAGE, VERSION);
 
+  /* Configure authentication via SEEDLINK_USERNAME and SEEDLINK_PASSWORD
+   * environment variables if they are set */
+  if (getenv ("SEEDLINK_USERNAME") && getenv ("SEEDLINK_PASSWORD"))
+  {
+    sl_set_auth_envvars (slconn, "SEEDLINK_USERNAME", "SEEDLINK_PASSWORD");
+  }
+
   /* Process given parameters (command line and parameter file) */
   if (parameter_proc (slconn, argc, argv) < 0)
   {
