@@ -2274,7 +2274,7 @@ negotiate_v4 (SLCD *slconn)
   while (cmdptr)
   {
     bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf),
-                             NULL, curstream->stationid);
+                             NULL, cmdptr->nsid);
 
     if (bytesread < 0)
     {
