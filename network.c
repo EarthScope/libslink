@@ -231,7 +231,7 @@ tls_configure (SLCD *slconn, const char *nodename)
   return 0;
 } /* End of TLS configuration */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Connect to a SeedLink server
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -416,7 +416,7 @@ sl_connect (SLCD *slconn, int sayhello)
   return slconn->link;
 } /* End of sl_connect() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Configure and negotiate data selections with a SeedLink server
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -455,7 +455,7 @@ sl_configlink (SLCD *slconn)
   return ret;
 } /* End of sl_configlink() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Send a request for the specified INFO level
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -492,7 +492,7 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
   return slconn->link;
 } /* End of sl_send_info() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Close a connction to a SeedLink server
  *
  * The network socket associated with ::SLCD is closed and all memory
@@ -537,7 +537,7 @@ sl_disconnect (SLCD *slconn)
 } /* End of sl_disconnect() */
 
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Connect to a SeedLink server, issue HELLO and parse response
  *
  * This function serves as a convienence function to "ping" a SeedLink
@@ -605,7 +605,7 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   return 0;
 } /* End of sl_ping() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Send specified data to a SeedLink server
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -679,7 +679,7 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
   return bytesread;
 } /* End of sl_senddata() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Receive data from a SeedLink server
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -780,7 +780,7 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
   return bytesread;
 } /* End of sl_recvdata() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Receive a response to a command from a SeedLink server
  *
  * The main SeedLink client entry point is \a sl_collect(), you probably
@@ -879,7 +879,7 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
   return (int)bytesread;
 } /* End of sl_recvresp() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Poll the network connection associated with the ::SLCD
  *
  * Poll the connected socket for read and/or write ability using select()
@@ -2414,7 +2414,7 @@ socknoblock_int (SOCKET sock)
   return 0;
 }
 
-/***********************************************************************/ /**
+/** ************************************************************************
  * @brief Set socket I/O timeout
  *
  * Set socket I/O timeout if such an option exists.  On WIN and

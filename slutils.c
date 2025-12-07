@@ -827,7 +827,7 @@ update_stream (SLCD *slconn, const char *payload)
   return (updates == 0) ? -1 : 0;
   } /* End of update_stream() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Initialize a new ::SLCD
  *
  * Allocate a new ::SLCD and set default values.
@@ -927,7 +927,7 @@ sl_initslcd (const char *clientname, const char *clientversion)
   return slconn;
 } /* End of sl_newslcd() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Free all memory associated with a ::SLCD
  *
  * Free all memory associated with a SLCD struct including the
@@ -969,7 +969,7 @@ sl_freeslcd (SLCD *slconn)
   free (slconn);
 } /* End of sl_freeslcd() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set client name and version reported to server (v4 only)
  *
  * Set the program name and, optionally, version that will be send to
@@ -1015,7 +1015,7 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
   return 0;
 } /* End of sl_set_clientname() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink server address (and port)
  *
  * Set the address (and port) of the SeedLink server to connect to.  The
@@ -1152,7 +1152,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   return 0;
 } /* End of sl_set_serveraddress() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink connection time window (begin and end times)
  *
  * Set the connection time window limits.  This will trigger the
@@ -1196,7 +1196,7 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
     return 0;
 } /* End of sl_set_timewindow() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink connection authentication parameters (v4 only)
  *
  * Set the callback functions and callback data used for authentication
@@ -1255,7 +1255,7 @@ internal_auth_value_data (const char *server, void *auth_data)
   return (const char *)auth_data;
 }
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Configure authentication with environment variables
  *
  * Use the specified environment variables to set the authentication
@@ -1320,7 +1320,7 @@ sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar)
   return 0;
 }
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink connection keep alive interval in seconds
  *
  * Keep alive packets are sent to the server at the specified interval
@@ -1345,7 +1345,7 @@ sl_set_keepalive (SLCD *slconn, int keepalive)
     return 0;
 } /* End of sl_set_keepalive() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink connection I/O timeout in seconds
  *
  * Set the I/O timeout for the SeedLink connection.  This is the maximum
@@ -1371,7 +1371,7 @@ sl_set_iotimeout (SLCD *slconn, int iotimeout)
     return 0;
 } /* End of sl_set_iotimeout() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink connection idle timeout in seconds
  *
  * Set the idle connection timeout.  This is the maximum time allowed
@@ -1396,7 +1396,7 @@ sl_set_idletimeout (SLCD *slconn, int idletimeout)
     return 0;
 } /* End of sl_set_idletimeout() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set SeedLink re-connection delay in seconds
  *
  * Set the re-connection delay.  This is the number of seconds to wait
@@ -1422,7 +1422,7 @@ sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay)
     return 0;
 } /* End of sl_set_reconnectdelay() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set or unset the SeedLink connection blocking mode
  *
  * Set the SeedLink connction to block or non-blocking mode.  In blocking
@@ -1450,7 +1450,7 @@ sl_set_blockingmode (SLCD *slconn, int nonblock)
     return 0;
 } /* End of sl_set_blockingmode() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set or unset the SeedLink connection dial-up mode
  *
  * Set the SeedLink connction to dial-up mode.  In dial-up mode the
@@ -1476,7 +1476,7 @@ sl_set_dialupmode (SLCD *slconn, int dialup)
     return 0;
 } /* End of sl_set_dialupmode() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set or unset the SeedLink connection batch mode (v3 only)
  *
  * Set the SeedLink connction to batch mode.  In batch mode the client
@@ -1502,7 +1502,7 @@ sl_set_batchmode (SLCD *slconn, int batchmode)
     return 0;
 } /* End of sl_set_batchmode() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Enable or disable TLS for the SeedLink connection
  *
  * By default, TLS is enabled for port number 18500, and for all other
@@ -1529,7 +1529,7 @@ sl_set_tlsmode (SLCD *slconn, int tlsmode)
     return 0;
 } /* End of sl_set_tlsmode() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * sl_addstream:
  *
  * Add a new stream entry to the stream list for the given ::SLCD
@@ -1668,7 +1668,7 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   return 0;
 } /* End of sl_add_stream() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set the parameters for an all-station mode connection
  *
  * Set the parameters for all-station mode using a wildcard (*) for the
@@ -1755,7 +1755,7 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
   return 0;
 } /* End of sl_set_allstation_params() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Submit an INFO request to the server at the next opportunity
  *
  * Add an INFO request to the SeedLink Connection Description.
@@ -1782,7 +1782,7 @@ sl_request_info (SLCD *slconn, const char *infostr)
   }
 } /* End of sl_request_info() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Check if server capabilities include specified value
  *
  * The server capabilities returned during connection negotiation are
@@ -1844,7 +1844,7 @@ sl_hascapability (SLCD *slconn, char *capability)
   return 0;
 } /* End of sl_hascapablity() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Trigger a termination of the SeedLink connection
  *
  * Set the terminate flag in the SLCD, which will cause the
@@ -1868,7 +1868,7 @@ internal_term_handler (int sig)
   sl_terminate (global_termination_SLCD);
 }
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Set signal handlers that trigger connection shutdown.
  *
  * @warning This function is not thread safe due to use of static variables.
@@ -1907,7 +1907,7 @@ sl_set_termination_handler (SLCD *slconn)
   return 0;
 } /* End of sl_set_termination_handler() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Print user parameters of the SeedLink connection description
  *
  * Useful for diagnostic purposes, this routine will print the
@@ -1967,7 +1967,7 @@ sl_printslcd (SLCD *slconn)
   }
 } /* End of sl_printslcd() */
 
-/**********************************************************************/ /**
+/** ************************************************************************
  * @brief Detect miniSEED record in buffer
  *
  * Determine if the buffer contains a miniSEED data record by
