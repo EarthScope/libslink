@@ -4,6 +4,7 @@
 	- Add new return status of SLAUTHFAIL to sl_collect() to indicate
 	a fatal error.  The caller can choose to reconnect if desired.
 	- Many small fixes and improvements.
+	- Update Mbed-TLS to v3.6.5.
 
 2025.130: v4.1.5
 	- Change authentication failures to fatal errors
