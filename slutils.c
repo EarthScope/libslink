@@ -438,10 +438,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           break;
         }
 
-        bytesconsumed = 0;
-
-        /* Set termination flag to level 2 if cannot make progress */
-        if (slconn->terminate == 1 && bytesconsumed == 0)
+        /* Set termination flag to level 2 if buffer has little/no viable data */
+        if (slconn->terminate == 1 && slconn->recvdatalen <= SL_MIN_PAYLOAD)
         {
           slconn->terminate = 2;
         }
@@ -455,7 +453,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           slconn->netto && slconn->stat->netto_time &&
           slconn->stat->netto_time < current_time)
       {
-        sl_log_r (slconn, 1, 0, "[%s] network timeout, no data for %ds\n",
+        sl_log_r (slconn, 1, 0, "[%s] network timeout, no data for %d seconds\n",
                   slconn->sladdr, slconn->netto);
         break;
       }
@@ -515,7 +513,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
     }
 
     /* Prepare for reconnection */
-    sl_log_r (slconn, 1, 1, "[%s] reconnecting in %ds\n", slconn->sladdr, slconn->netdly);
+    sl_log_r (slconn, 1, 1, "[%s] reconnecting in %d seconds\n", slconn->sladdr, slconn->netdly);
     sl_disconnect (slconn);
     slconn->stat->conn_state   = DOWN;
     slconn->stat->stream_state = HEADER;
