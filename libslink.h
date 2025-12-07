@@ -17,7 +17,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2024:
+ * Copyright (C) 2025:
  * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
@@ -30,8 +30,8 @@ extern "C" {
 
 #define LIBSLINK_RELEASE "2025.340"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  4      /**< libslink major version */
-#define LIBSLINK_VERSION_MINOR  1      /**< libslink minor version */
-#define LIBSLINK_VERSION_PATCH  5      /**< libslink patch version */
+#define LIBSLINK_VERSION_MINOR  2      /**< libslink minor version */
+#define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
 #define LIBSLINK_STRINGIFY(a)   LIBSLINK_XSTRINGIFY(a)
 #define LIBSLINK_XSTRINGIFY(a)  #a
 /** @def LIBSLINK_VERSION

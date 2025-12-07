@@ -1,4 +1,4 @@
-2025.340:
+2025.340: v4.2.0
 	- Fix re-connection logic in sl_collect().  The function will now
 	reconnect on most connection errors with a few exceptions such as
 	authentication failure, end of dial-up stream, and internal errors.
