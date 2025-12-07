@@ -20,7 +20,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2024:
+ * Copyright (C) 2025:
  * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
@@ -247,16 +247,12 @@ tls_configure (SLCD *slconn, const char *nodename)
  * version supported by both server and client.  Unless you wish to do
  * low level negotiation independently, always set this to 1.
  *
- * If a permanent error is detected (invalid port specified) the
- * slconn->terminate flag will be set so the sl_collect() family of
- * routines will not continue trying to connect.
- *
  * @param slconn The ::SLCD connection to connect
  * @param sayhello If true, send HELLO command to server
  *
  * @retval socket descriptor created on success (positive)
  * @retval -1 on connection error
- * @retval -2 on fatal connection error, should not be retried
+ * @retval SLAUTHFAIL on authentication failed, should not be retried
  *
  * @sa sl_collect()
  ***************************************************************************/
@@ -342,7 +338,7 @@ sl_connect (SLCD *slconn, int sayhello)
 
   if (slconn->link < 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] Cannot connect: %s\n", slconn->sladdr, sl_strerror ());
+    sl_log_r (slconn, 2, 0, "[%s] cannot connect: %s\n", slconn->sladdr, sl_strerror ());
     sl_disconnect (slconn);
     freeaddrinfo (addr0);
     return -1;
@@ -358,7 +354,7 @@ sl_connect (SLCD *slconn, int sayhello)
   /* Set non-blocking IO */
   if (socknoblock_int (slconn->link))
   {
-    sl_log_r (slconn, 2, 0, "[%s] Error setting socket to non-blocking\n", slconn->sladdr);
+    sl_log_r (slconn, 2, 0, "[%s] error setting socket to non-blocking\n", slconn->sladdr);
     sl_disconnect (slconn);
     return -1;
   }
@@ -380,7 +376,7 @@ sl_connect (SLCD *slconn, int sayhello)
     return -1;
   }
 
-  if (slconn->terminate) /* Check that terminate has not been requested */
+  if (slconn->terminate) /* Check that termination has not been requested */
   {
     sl_disconnect (slconn);
     return -1;
@@ -512,9 +508,9 @@ sl_disconnect (SLCD *slconn)
   if (slconn->link != -1)
   {
 #if defined(SLP_WIN)
-    return closesocket (slconn->link);
+    closesocket (slconn->link);
 #else
-    return close (slconn->link);
+    close (slconn->link);
 #endif
 
     slconn->link = -1;
@@ -569,7 +565,7 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   char sitestr[100] = {0}; /* The site/data center ident */
 
   /* Open network connection to server */
-  if (sl_connect (slconn, 0) == -1)
+  if (sl_connect (slconn, 0) < 0)
   {
     sl_log_r (slconn, 2, 1, "Could not connect to server\n");
     return -2;
@@ -604,7 +600,7 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   if (site)
     strcpy (site, sitestr);
 
-  slconn->link = sl_disconnect (slconn);
+  sl_disconnect (slconn);
 
   return 0;
 } /* End of sl_ping() */
@@ -739,9 +735,7 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
 
   if (bytesread == 0) /* Indicates TCP FIN or EOF, connection closed */
   {
-    /* Set termination flag to initial state if connection was closed */
-    slconn->terminate = 1;
-    return 0;
+    return -1;
   }
   else if (bytesread < 0)
   {
@@ -753,11 +747,11 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
       return 0;
     }
 
-    /* Set termination flag to initial state on connection reset */
+    /* Return -1 on connection reset */
     if ((slconn->tlsctx && bytesread == MBEDTLS_ERR_NET_CONN_RESET) ||
         IS_ECONNRESET ())
     {
-      slconn->terminate = 1;
+      return -1;
     }
     /* Handle all other errors */
     else
@@ -783,7 +777,7 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
     }
   }
 
-  return (bytesread < 0) ? -1 : bytesread;
+  return bytesread;
 } /* End of sl_recvdata() */
 
 /**********************************************************************/ /**
@@ -954,7 +948,7 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
  *
  * Returns 0 on success
  *        -1 on non-fatal error
- *        -2 on fatal errors
+ *        SLAUTHFAIL on authentication failed, should not be retried
  ***************************************************************************/
 static int
 sayhello_int (SLCD *slconn)
@@ -1180,7 +1174,7 @@ sayhello_int (SLCD *slconn)
   /* Report server capabilities */
   if (slconn->capabilities)
     sl_log_r (slconn, 1, 1, "[%s] server capabilities: %s\n", slconn->sladdr,
-              (slconn->capabilities) ? slconn->capabilities : "");
+              slconn->capabilities);
 
   /* Send CAPABILITIES flags if supported by server and protocol 3.x */
   if (capflag && slconn->protocol & SLPROTO3X)
@@ -1342,7 +1336,7 @@ sayhello_int (SLCD *slconn)
 
       sl_log_r (slconn, 1, 0, "[%s] AUTH not accepted: %s\n", slconn->sladdr,
                 readbuf+6);
-      return -2;
+      return SLAUTHFAIL;
     }
     else
     {
@@ -2205,7 +2199,7 @@ negotiate_v4 (SLCD *slconn)
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA %" PRIu64 "%s%s%s\r",
+                  "DATA %" PRIu64 " %s%s%s\r",
                   (curstream->seqnum + 1),
                   start_time,
                   (end_time[0]) ? " " : "",

@@ -244,6 +244,7 @@ typedef enum
 #define SLTERMINATE              0  //!< Error or connection termination
 #define SLNOPACKET              -1  //!< No packet available for non-blocking
 #define SLTOOLARGE              -2  //!< Received packet is too large for buffer
+#define SLAUTHFAIL              -3  //!< Authentication failed
 /** @} */
 
 /** @def SL_UNSETSEQUENCE

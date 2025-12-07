@@ -19,7 +19,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  *
- * Copyright (C) 2024:
+ * Copyright (C) 2025:
  * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
@@ -107,6 +107,11 @@ main (int argc, char **argv)
       sl_log (2, 0, "received payload length %u too large for max buffer of %u\n",
               packetinfo->payloadlength, plbuffersize);
 
+      break;
+    }
+    else if (status == SLAUTHFAIL)
+    {
+      sl_log (2, 0, "authentication failed\n");
       break;
     }
     else if (status == SLNOPACKET)
