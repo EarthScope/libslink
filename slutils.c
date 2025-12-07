@@ -1530,6 +1530,30 @@ sl_set_tlsmode (SLCD *slconn, int tlsmode)
 } /* End of sl_set_tlsmode() */
 
 /** ************************************************************************
+ * @brief Set the protocol version for the SeedLink connection
+ *
+ * By default, the protocol version defaults to v3 and if the server
+ * advertises v4 it will be promoted to v4.  This function allows the
+ * calling program to set the protocol version explicitly.
+ *
+ * @param slconn     SeedLink connection description
+ * @param protocol   Protocol version to use, ::SLPROTO3X or ::SLPROTO40
+ *
+ * @retval  0 : success
+ * @retval -1 : error
+ ***************************************************************************/
+int
+sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol)
+{
+  if (!slconn)
+    return -1;
+
+  slconn->protocol = protocol;
+
+  return 0;
+} /* End of sl_set_protocol() */
+
+/** ************************************************************************
  * sl_addstream:
  *
  * Add a new stream entry to the stream list for the given ::SLCD

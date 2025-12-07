@@ -356,7 +356,7 @@ typedef struct SLCD
   int8_t      lastpkttime;      //!< Boolean flag to control last packet time usage
   int8_t      terminate;        //!< Flag to control connection termination
   int8_t      resume;           //!< Boolean flag to control resuming with seq. numbers
-  int8_t      multistation;     //!< Boolean flag to indicate v3 multistation mode
+  int8_t      multistation;     //!< Boolean flag to indicate v3 multi-station mode
 
   /// @cond HIDDEN_FIELDS
   SOCKET      link;             //The network socket descriptor
@@ -394,6 +394,7 @@ extern int sl_set_blockingmode (SLCD *slconn, int nonblock);
 extern int sl_set_dialupmode (SLCD *slconn, int dialup);
 extern int sl_set_batchmode (SLCD *slconn, int batchmode);
 extern int sl_set_tlsmode (SLCD *slconn, int tlsmode);
+extern int sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol);
 extern int sl_add_stream (SLCD *slconn, const char *stationid,
                           const char *selectors, uint64_t seqnum,
                           const char *timestamp);

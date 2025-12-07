@@ -1,8 +1,10 @@
 2025.340:
-	- Fix re-connection logic in sl_collect().  The function will
-	reconnect on most connection errors with a few exceptions.
-	- Add new return status of SLAUTHFAIL to sl_collect() to indicate
+	- Fix re-connection logic in sl_collect().  The function will now
+	reconnect on most connection errors with a few exceptions such as
+	authentication failure, end of dial-up stream, and internal errors.
+	- Add new return status of `SLAUTHFAIL` for `sl_collect()` to indicate
 	a fatal error.  The caller can choose to reconnect if desired.
+	- Add `sl_set_protocol()` to allow caller specified protocol version.
 	- Many small fixes and improvements.
 	- Update Mbed-TLS to v3.6.5.
 

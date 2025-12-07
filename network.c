@@ -1111,8 +1111,10 @@ sayhello_int (SLCD *slconn)
     slconn->server_protocols = SLPROTO3X;
   }
 
-  /* Promote protocol if supported by server */
-  if (slconn->server_protocols & SLPROTO40)
+  /* Promote protocol to v4 if supported by server, or requested by caller,
+   * but not to v3.x if requested. */
+  if ((slconn->server_protocols & SLPROTO40 || slconn->protocol & SLPROTO40) &&
+      slconn->protocol != SLPROTO3X)
   {
     snprintf (sendstr, sizeof (sendstr), "SLPROTO 4.0\r\n");
 
@@ -1157,8 +1159,8 @@ sayhello_int (SLCD *slconn)
 
     slconn->protocol = SLPROTO40;
   }
-  /* Otherwise use SeedLink 3.x if supported */
-  else if (slconn->server_protocols & SLPROTO3X)
+  /* Otherwise use SeedLink 3.x if supported by server, or requested by caller */
+  else if (slconn->server_protocols & SLPROTO3X || slconn->protocol & SLPROTO3X)
   {
     slconn->protocol = SLPROTO3X;
   }
