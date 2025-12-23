@@ -94,7 +94,7 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
     if ((cp = strchr (line, '\r')) != NULL || (cp = strchr (line, '\n')) != NULL)
       *cp = '\0';
 
-    fields = sscanf (line, "%63s %199c", stationid, selectors);
+    fields = sscanf (line, "%63s %199[^\r\n]", stationid, selectors);
 
     /* Skip blank or comment lines */
     if (fields <= 0 || stationid[0] == '#')
