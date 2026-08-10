@@ -97,6 +97,9 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
   uint32_t bytesconsumed;
   uint32_t bytesavailable;
   int poll_state;
+  int info_payload;
+  int info_terminated;
+  int was_keepalive;
 
   if (!slconn || !packetinfo || (plbuffersize > 0 && !plbuffer))
     return SLTERMINATE;
@@ -137,6 +140,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           slconn->stat->netto_time     = 0;
           slconn->stat->netdly_time    = 0;
           slconn->stat->keepalive_time = 0;
+          slconn->stat->query_state    = NoQuery;
         }
         else
         {
@@ -372,26 +376,28 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             /* Set state for header collection if payload is complete */
             slconn->stat->stream_state = HEADER;
 
-            /* V3 Keepalive INFO responses are not returned to the caller */
-            if (slconn->stat->query_state == KeepAliveQuery &&
-                (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
-                 slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO))
+            /* INFO response payload, terminated if the last (only, for v4) packet */
+            info_terminated = (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
+                               (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
+                                slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO));
+            info_payload    = (info_terminated ||
+                               slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO);
+
+            was_keepalive = (info_payload && slconn->stat->query_state == KeepAliveQuery);
+
+            /* A terminated INFO response closes out the pending query */
+            if (info_payload && info_terminated)
             {
-              if (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM)
-              {
+              if (was_keepalive)
                 sl_log_r (slconn, 1, 2, "[%s] Keepalive message received\n", slconn->sladdr);
 
-                slconn->stat->query_state = NoQuery;
-              }
-            }
-            /* V4 Keepalive INFO responses are not returned to caller */
-            else if (slconn->stat->query_state == KeepAliveQuery &&
-                     slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
-                     slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO)
-            {
-              sl_log_r (slconn, 1, 2, "[%s] Keepalive message received\n", slconn->sladdr);
-
               slconn->stat->query_state = NoQuery;
+            }
+
+            /* Keepalive INFO responses are not returned to the caller */
+            if (was_keepalive)
+            {
+              /* Multi-packet v3 keepalive responses are swallowed until the terminator */
             }
             /* All other payloads are returned to the caller */
             else
