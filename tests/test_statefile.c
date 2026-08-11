@@ -154,6 +154,32 @@ test_recoverstate_comments_and_blanks (void)
 }
 
 static void
+test_recoverstate_timestamp_too_long (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char line[190];
+  char *path;
+
+  /* Legacy format: NET STA Sequence Timestamp, with a Timestamp field far
+   * too long for the conversion buffer. */
+  strcpy (line, "XX      TEST    1234567890 ");
+  memset (line + strlen (line), '9', sizeof (line) - strlen (line) - 2);
+  line[sizeof (line) - 2] = '\0';
+  strcat (line, "\n");
+  path = fx_write_tempfile (line);
+
+  sl_add_stream (slconn, "XX_TEST", NULL, SL_UNSETSEQUENCE, NULL);
+
+  SLT_EQ_INT (sl_recoverstate (slconn, path), -1,
+             "an over-long timestamp field is reported as an error, without aborting the file");
+  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, SL_UNSETSEQUENCE,
+              "the too-long line is skipped and does not update the stream");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
 test_recoverstate_errors (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -186,6 +212,7 @@ main (void)
   SLT_RUN (test_recoverstate_legacy_uni_station);
   SLT_RUN (test_recoverstate_unset_keyword);
   SLT_RUN (test_recoverstate_comments_and_blanks);
+  SLT_RUN (test_recoverstate_timestamp_too_long);
   SLT_RUN (test_recoverstate_errors);
 
   return SLT_REPORT ();

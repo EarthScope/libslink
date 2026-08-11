@@ -91,6 +91,26 @@ test_extreply_full_buffer_no_second_cr (void)
   SLT_NULL (extreply_int (buf, sizeof (buf)), "full buffer with no 2nd '\\r' yields no extended reply");
 }
 
+static void
+test_negotiate_v4_start_time_too_long (void)
+{
+  /* negotiate_v4() converts slconn->start_time/end_time into fixed-size
+   * stack buffers before ever touching the socket, so an over-long time
+   * window string must be rejected before any network activity. */
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char longtime[40];
+
+  memset (longtime, '1', sizeof (longtime) - 1);
+  longtime[sizeof (longtime) - 1] = '\0';
+
+  SLT_EQ_INT (sl_set_timewindow (slconn, longtime, NULL), 0,
+             "sl_set_timewindow() itself does not bound the string length");
+  SLT_EQ_INT (negotiate_v4 (slconn), -1,
+             "an over-long start time is rejected before any socket use");
+
+  sl_freeslcd (slconn);
+}
+
 int
 main (void)
 {
@@ -102,6 +122,7 @@ main (void)
   SLT_RUN (test_extreply_no_bytes);
   SLT_RUN (test_extreply_no_cr_at_all);
   SLT_RUN (test_extreply_full_buffer_no_second_cr);
+  SLT_RUN (test_negotiate_v4_start_time_too_long);
 
   return SLT_REPORT ();
 }

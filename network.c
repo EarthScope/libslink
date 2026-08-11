@@ -2094,6 +2094,13 @@ negotiate_v4 (SLCD *slconn)
   /* Generate V4, ISO compatible date-time strings */
   if (slconn->start_time)
   {
+    if (strlen (slconn->start_time) > sizeof (start_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n",
+                __func__, slconn->start_time);
+      return -1;
+    }
+
     if (sl_isodatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be converted '%s'\n",
@@ -2103,6 +2110,13 @@ negotiate_v4 (SLCD *slconn)
   }
   if (slconn->end_time)
   {
+    if (strlen (slconn->end_time) > sizeof (end_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n",
+                __func__, slconn->end_time);
+      return -1;
+    }
+
     if (sl_isodatetime (end_time, slconn->end_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be converted '%s'\n",

@@ -266,6 +266,14 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
      * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
     if (timestr && format == 0)
     {
+      if (strlen (timestr) > sizeof (timestamp) - 2)
+      {
+        sl_log_r (slconn, 1, 0, "timestamp on line %d of statefile is too long: '%s'\n",
+                  count, timestr);
+        retval = -1;
+        continue;
+      }
+
       if (sl_isodatetime (timestamp, timestr) != NULL)
       {
         timestr = timestamp;

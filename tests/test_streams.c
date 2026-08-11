@@ -9,6 +9,21 @@
 #include "fixtures.h"
 #include "slt.h"
 
+static SLstream *
+find_stream (SLCD *slconn, const char *stationid)
+{
+  SLstream *cur = slconn->streams;
+
+  while (cur)
+  {
+    if (strcmp (cur->stationid, stationid) == 0)
+      return cur;
+    cur = cur->next;
+  }
+
+  return NULL;
+}
+
 static void
 test_add_stream_basic (void)
 {
@@ -100,6 +115,38 @@ test_add_stream_truncation (void)
 }
 
 static void
+test_add_stream_timestamp_bounds (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char longts[64];
+
+  /* A station id at exactly SL_MAX_STATIONID - 1 characters must still be
+   * matched back out, fully NUL-terminated. */
+  SLT_EQ_INT (sl_add_stream (slconn, "XX_TWENTYONECHARLONGX", NULL, SL_UNSETSEQUENCE, NULL),
+             0, "a station id of exactly SL_MAX_STATIONID - 1 chars is accepted");
+  SLT_NOT_NULL (find_stream (slconn, "XX_TWENTYONECHARLONGX"),
+               "it can be found again by its full id");
+
+  /* A comma-delimited legacy timestamp that fits still converts. */
+  SLT_EQ_INT (sl_add_stream (slconn, "XX_TST4", NULL, SL_UNSETSEQUENCE, "2024,01,02,03,04,05"),
+             0, "a legacy comma-delimited timestamp within bounds is accepted");
+  SLT_EQ_STR (find_stream (slconn, "XX_TST4")->timestamp, "2024-01-02T03:04:05Z",
+             "the legacy timestamp is converted to ISO-8601");
+
+  memset (longts, '1', sizeof (longts) - 1);
+  longts[sizeof (longts) - 1] = '\0';
+
+  SLT_EQ_INT (sl_add_stream (slconn, "XX_TST5", NULL, SL_UNSETSEQUENCE, longts),
+             -1, "a timestamp too long for the conversion buffer is rejected");
+  SLT_NULL (find_stream (slconn, "XX_TST5"), "the rejected stream was not added to the list");
+
+  SLT_EQ_INT (sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, longts),
+             -1, "an over-long timestamp is also rejected for all-station mode");
+
+  sl_freeslcd (slconn);
+}
+
+static void
 test_add_stream_all_station_conflict (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -135,21 +182,6 @@ test_allstation_params (void)
              "NULL connection rejected");
 
   sl_freeslcd (slconn);
-}
-
-static SLstream *
-find_stream (SLCD *slconn, const char *stationid)
-{
-  SLstream *cur = slconn->streams;
-
-  while (cur)
-  {
-    if (strcmp (cur->stationid, stationid) == 0)
-      return cur;
-    cur = cur->next;
-  }
-
-  return NULL;
 }
 
 static void
@@ -274,6 +306,7 @@ main (void)
   SLT_RUN (test_add_stream_basic);
   SLT_RUN (test_add_stream_sort_order);
   SLT_RUN (test_add_stream_truncation);
+  SLT_RUN (test_add_stream_timestamp_bounds);
   SLT_RUN (test_add_stream_all_station_conflict);
   SLT_RUN (test_allstation_params);
   SLT_RUN (test_add_streamlist_string);

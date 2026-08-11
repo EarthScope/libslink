@@ -1646,6 +1646,7 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   SLstream *followstream = NULL;
   int newparitition = 0;
   int partition = 0;
+  char isotime[32] = {0};
 
   if (!slconn || !stationid)
     return -1;
@@ -1661,6 +1662,27 @@ sl_add_stream (SLCD *slconn, const char *stationid,
     }
   }
 
+  /* Convert old comma-delimited date-time to ISO-compatible format if needed
+   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+  if (timestamp)
+  {
+    if (strlen (timestamp) > sizeof (isotime) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): timestamp for %s entry is too long: '%s'\n",
+                __func__, stationid, timestamp);
+      return -1;
+    }
+
+    strncpy (isotime, timestamp, sizeof (isotime) - 1);
+
+    if (sl_isodatetime (isotime, isotime) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n",
+                __func__, stationid, isotime);
+      return -1;
+    }
+  }
+
   newstream = (SLstream *)malloc (sizeof (SLstream));
 
   if (newstream == NULL)
@@ -1668,6 +1690,8 @@ sl_add_stream (SLCD *slconn, const char *stationid,
     sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
     return -1;
   }
+
+  memset (newstream, 0, sizeof (SLstream));
 
   strncpy (newstream->stationid, stationid, sizeof (newstream->stationid) - 1);
   newstream->stationid[sizeof (newstream->stationid) - 1] = '\0';
@@ -1683,24 +1707,7 @@ sl_add_stream (SLCD *slconn, const char *stationid,
 
   newstream->seqnum = seqnum;
 
-  if (timestamp)
-    strncpy (newstream->timestamp, timestamp, sizeof(newstream->timestamp) - 1);
-  else
-    newstream->timestamp[0] = '\0';
-
-  /* Convert old comma-delimited date-time to ISO-compatible format if needed
-   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
-  if (newstream->timestamp[0])
-  {
-    if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
-    {
-      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n",
-                __func__, stationid, newstream->timestamp);
-      free (newstream->selectors);
-      free (newstream);
-      return -1;
-    }
-  }
+  strcpy (newstream->timestamp, isotime);
 
   /* Search the stream list to find the proper insertion point.
    * The resulting list is sorted alphanumerically and partitioned by:
@@ -1777,9 +1784,31 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
                           uint64_t seqnum, const char *timestamp)
 {
   SLstream *newstream;
+  char isotime[32] = {0};
 
   if (!slconn)
     return -1;
+
+  /* Convert old comma-delimited date-time to ISO-compatible format if needed
+   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
+  if (timestamp)
+  {
+    if (strlen (timestamp) > sizeof (isotime) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): timestamp for all-station mode is too long: '%s'\n",
+                __func__, timestamp);
+      return -1;
+    }
+
+    strncpy (isotime, timestamp, sizeof (isotime) - 1);
+
+    if (sl_isodatetime (isotime, isotime) == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for all-station mode: '%s'\n",
+                __func__, isotime);
+      return -1;
+    }
+  }
 
   newstream = slconn->streams;
 
@@ -1813,23 +1842,7 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
 
   newstream->seqnum = seqnum;
 
-  if (timestamp)
-    strncpy (newstream->timestamp, timestamp, sizeof (newstream->timestamp) - 1);
-  else
-    newstream->timestamp[0] = '\0';
-
-  /* Convert old comma-delimited date-time to ISO-compatible format if needed
-   * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
-  if (newstream->timestamp[0])
-  {
-    if (sl_isodatetime(newstream->timestamp, newstream->timestamp) == NULL)
-    {
-      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for all-station mode: '%s'\n",
-                __func__, newstream->timestamp);
-      free (newstream);
-      return -1;
-    }
-  }
+  strcpy (newstream->timestamp, isotime);
 
   newstream->next = NULL;
 
