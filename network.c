@@ -51,6 +51,7 @@
 #endif
 
 /* Functions only used in this source file */
+static char *extreply_int (char *readbuf, int bytesread);
 static int sayhello_int (SLCD *slconn);
 static int batchmode_int (SLCD *slconn);
 static int negotiate_uni_v3 (SLCD *slconn);
@@ -939,6 +940,35 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
 }
 
 /***************************************************************************
+ * extreply_int:
+ *
+ * Locate an extended reply message in a server response, i.e. the text
+ * between the first and second '\r' as in "ERROR\rtext\r\n".  The second
+ * '\r' is replaced with a NUL so the message can be used as a string.
+ *
+ * Returns a pointer into readbuf, or NULL if no extended reply is present.
+ ***************************************************************************/
+static char *
+extreply_int (char *readbuf, int bytesread)
+{
+  char *term1;
+  char *term2;
+
+  if (readbuf == NULL || bytesread <= 0)
+    return NULL;
+
+  if ((term1 = memchr (readbuf, '\r', bytesread)) == NULL)
+    return NULL;
+
+  if ((term2 = memchr (term1 + 1, '\r', bytesread - (term1 - readbuf) - 1)) == NULL)
+    return NULL;
+
+  *term2 = '\0';
+
+  return term1 + 1;
+}
+
+/***************************************************************************
  * sayhello_int:
  *
  * Send the HELLO and other commands to determine server capabilities.
@@ -1181,7 +1211,6 @@ sayhello_int (SLCD *slconn)
   /* Send CAPABILITIES flags if supported by server and protocol 3.x */
   if (capflag && slconn->protocol & SLPROTO3X)
   {
-    char *term1, *term2;
     char *extreply = 0;
 
     /* Send EXTREPLY capability flag */
@@ -1199,16 +1228,8 @@ sayhello_int (SLCD *slconn)
       return -1;
     }
 
-    /* Search for 2nd "\r" indicating extended reply message present */
-    extreply = 0;
-    if ((term1 = memchr (readbuf, '\r', bytesread)))
-    {
-      if ((term2 = memchr (term1 + 1, '\r', bytesread - (readbuf - term1) - 1)))
-      {
-        *term2   = '\0';
-        extreply = term1 + 1;
-      }
-    }
+    /* Extended reply message, if present */
+    extreply = extreply_int (readbuf, bytesread);
 
     /* Check response to CAPABILITIES */
     if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -1440,7 +1461,6 @@ negotiate_uni_v3 (SLCD *slconn)
   int acceptsel = 0; /* Count of accepted selectors */
   char *selptr;
   char *extreply = 0;
-  char *term1, *term2;
   char start_time[31] = {0};
   char end_time[31]   = {0};
   char sendstr[100]; /* A buffer for command strings */
@@ -1503,16 +1523,8 @@ negotiate_uni_v3 (SLCD *slconn)
           return -1;
         }
 
-        /* Search for 2nd "\r" indicating extended reply message present */
-        extreply = 0;
-        if ((term1 = memchr (readbuf, '\r', bytesread)))
-        {
-          if ((term2 = memchr (term1 + 1, '\r', bytesread - (readbuf - term1) - 1)))
-          {
-            *term2   = '\0';
-            extreply = term1 + 1;
-          }
-        }
+        /* Extended reply message, if present */
+        extreply = extreply_int (readbuf, bytesread);
 
         /* Check response to SELECT */
         if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -1660,7 +1672,6 @@ negotiate_multi_v3 (SLCD *slconn)
   int acceptsta = 0; /* Count of accepted stations */
   int acceptsel = 0; /* Count of accepted selectors */
   char *selptr;
-  char *term1, *term2;
   char *extreply      = 0;
   char start_time[31] = {0};
   char end_time[31]   = {0};
@@ -1723,16 +1734,8 @@ negotiate_multi_v3 (SLCD *slconn)
     }
     else
     {
-      /* Search for 2nd "\r" indicating extended reply message present */
-      extreply = 0;
-      if ((term1 = memchr (readbuf, '\r', bytesread)))
-      {
-        if ((term2 = memchr (term1 + 1, '\r', bytesread - (readbuf - term1) - 1)))
-        {
-          *term2   = '\0';
-          extreply = term1 + 1;
-        }
-      }
+      /* Extended reply message, if present */
+      extreply = extreply_int (readbuf, bytesread);
 
       /* Check the response */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -1798,16 +1801,8 @@ negotiate_multi_v3 (SLCD *slconn)
           }
           else
           {
-            /* Search for 2nd "\r" indicating extended reply message present */
-            extreply = 0;
-            if ((term1 = memchr (readbuf, '\r', bytesread)))
-            {
-              if ((term2 = memchr (term1 + 1, '\r', bytesread - (readbuf - term1) - 1)))
-              {
-                *term2   = '\0';
-                extreply = term1 + 1;
-              }
-            }
+            /* Extended reply message, if present */
+            extreply = extreply_int (readbuf, bytesread);
 
             /* Check response to SELECT */
             if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
@@ -1941,16 +1936,8 @@ negotiate_multi_v3 (SLCD *slconn)
     }
     else if (bytesread > 0)
     {
-      /* Search for 2nd "\r" indicating extended reply message present */
-      extreply = 0;
-      if ((term1 = memchr (readbuf, '\r', bytesread)))
-      {
-        if ((term2 = memchr (term1 + 1, '\r', bytesread - (readbuf - term1) - 1)))
-        {
-          *term2   = '\0';
-          extreply = term1 + 1;
-        }
-      }
+      /* Extended reply message, if present */
+      extreply = extreply_int (readbuf, bytesread);
 
       /* Check response to DATA/FETCH/TIME request */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)

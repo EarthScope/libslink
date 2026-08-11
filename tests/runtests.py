@@ -30,6 +30,7 @@ C_BINARIES = [
     "test_logging",
     "test_internals",
     "test_netprims",
+    "test_network",
 ]
 
 PYTHON_MODULES = [

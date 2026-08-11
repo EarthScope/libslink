@@ -9,6 +9,7 @@ test_statefile
 test_logging
 test_internals
 test_netprims
+test_network
 slharness
 
 __pycache__/
