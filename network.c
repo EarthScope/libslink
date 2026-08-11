@@ -186,18 +186,40 @@ tls_configure (SLCD *slconn, const char *nodename)
 
   sl_log_r (slconn, 1, 2, "[%s] Starting TLS handshake\n", slconn->sladdr);
 
-  while ((ret = mbedtls_ssl_handshake (&tlsctx->ssl)) != 0)
+  /* Bound the handshake by the configured I/O timeout (or a sane default if
+   * disabled) so a peer that opens the TCP connection and then falls silent
+   * cannot spin the loop forever. */
   {
-    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE &&
-        ret != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
-    {
-      sl_log_r (slconn, 2, 0, " [%s] mbedtls_ssl_handshake() returned -0x%x\n", slconn->sladdr,
-                (unsigned int)-ret);
-      return -1;
-    }
+    int timeout_secs = (slconn->iotimeout != 0)
+                            ? ((slconn->iotimeout > 0) ? slconn->iotimeout : -slconn->iotimeout)
+                            : 60;
+    int64_t handshake_deadline = sl_nstime () + SL_EPOCH2SLTIME (timeout_secs);
 
-    /* Wait for socket availability for 1 second */
-    sl_poll (slconn, 1, 1, 1000);
+    while ((ret = mbedtls_ssl_handshake (&tlsctx->ssl)) != 0)
+    {
+      if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE &&
+          ret != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
+      {
+        sl_log_r (slconn, 2, 0, " [%s] mbedtls_ssl_handshake() returned -0x%x\n", slconn->sladdr,
+                  (unsigned int)-ret);
+        return -1;
+      }
+
+      if (slconn->terminate)
+      {
+        sl_log_r (slconn, 1, 1, "[%s] TLS handshake terminated\n", slconn->sladdr);
+        return -1;
+      }
+
+      if (sl_nstime () > handshake_deadline)
+      {
+        sl_log_r (slconn, 2, 0, "[%s] TLS handshake timed out\n", slconn->sladdr);
+        return -1;
+      }
+
+      /* Wait for read availability for up to 1 second */
+      sl_poll (slconn, 1, 0, 1000);
+    }
   }
 
   sl_log_r (slconn, 1, 2, "[%s] Verifying TLS server certificate\n", slconn->sladdr);
@@ -930,20 +952,25 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
   if (timeout_ms < 0)
     return -1;
 
-  FD_ZERO (&readset);
-  FD_ZERO (&writeset);
-
-  if (readability)
-    FD_SET (slconn->link, &readset);
-
-  if (writability)
-    FD_SET (slconn->link, &writeset);
+  if (slconn->link == -1)
+    return -1;
 
   to.tv_sec = timeout_ms / 1000;
   to.tv_usec = (timeout_ms % 1000) * 1000;
 
   do
   {
+    /* select() may modify the fd sets in place, so rebuild them on every
+     * attempt, including EINTR retries */
+    FD_ZERO (&readset);
+    FD_ZERO (&writeset);
+
+    if (readability)
+      FD_SET (slconn->link, &readset);
+
+    if (writability)
+      FD_SET (slconn->link, &writeset);
+
     ret = select (slconn->link + 1, &readset, &writeset, NULL, &to);
 
     /* Limit retries to 100 */
@@ -1013,6 +1040,15 @@ sayhello_int (SLCD *slconn)
   int bytesread = 0;
   char readbuf[1024];
 
+  /* Capabilities and protocol support are properties of the server being
+   * connected to; re-derive them fresh for this connection rather than
+   * carrying forward a previous connection's results. A caller-forced
+   * protocol (sl_set_protocol()) is preserved. */
+  slconn->server_protocols = 0;
+
+  if (!slconn->protocol_forced)
+    slconn->protocol = UNSET_PROTO;
+
   /* Send HELLO */
   snprintf (sendstr, sizeof (sendstr), "HELLO\r\n");
 
@@ -1064,6 +1100,18 @@ sayhello_int (SLCD *slconn)
    * "SeedLink v#.# <optional text> <:: optional capability flags>"
    */
   capptr = strstr (servstr, "::");
+
+  /* Capabilities are a property of the server being connected to; clear any
+   * capabilities carried over from a previous connection so a server that
+   * advertises none does not leave a stale set in place. */
+  if (slconn->capabilities)
+    free (slconn->capabilities);
+  if (slconn->caparray)
+    free (slconn->caparray);
+
+  slconn->capabilities = NULL;
+  slconn->caparray = NULL;
+
   if (capptr)
   {
     /* Truncate server ID portion of string */
@@ -1076,13 +1124,7 @@ sayhello_int (SLCD *slconn)
     while (*capptr == ' ')
       capptr++;
 
-    if (slconn->capabilities)
-      free (slconn->capabilities);
-    if (slconn->caparray)
-      free (slconn->caparray);
-
     slconn->capabilities = strdup (capptr);
-    slconn->caparray = NULL;
   }
 
   /* Report server details */
@@ -1103,6 +1145,10 @@ sayhello_int (SLCD *slconn)
   {
     while (*capptr == ' ')
       capptr++;
+
+    /* Trailing spaces can leave capptr at the terminator */
+    if (*capptr == '\0')
+      break;
 
     if (strncmp (capptr, "SLPROTO:", 8) == 0)
     {
@@ -1138,7 +1184,9 @@ sayhello_int (SLCD *slconn)
       capflag = 1;
     }
 
-    capptr++;
+    /* A matched token may have landed exactly on the terminator */
+    if (*capptr)
+      capptr++;
   }
 
   /* Default to SeedLink 3.x if no protocols advertised by server are recognized */
@@ -1474,6 +1522,13 @@ negotiate_uni_v3 (SLCD *slconn)
   /* Generate V3, legacy SeedLink style date-time strings */
   if (slconn->start_time)
   {
+    if (strlen (slconn->start_time) > sizeof (start_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
+                slconn->start_time);
+      return -1;
+    }
+
     if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
@@ -1483,6 +1538,13 @@ negotiate_uni_v3 (SLCD *slconn)
   }
   if (slconn->end_time)
   {
+    if (strlen (slconn->end_time) > sizeof (end_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
+                slconn->end_time);
+      return -1;
+    }
+
     if (sl_commadatetime (end_time, slconn->end_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
@@ -1601,7 +1663,9 @@ negotiate_uni_v3 (SLCD *slconn)
     /* Append the last packet time if the feature is enabled */
     if (slconn->lastpkttime && strlen (curstream->timestamp))
     {
-      char timestr[31] = {0};
+      /* curstream->timestamp can hold up to 31 characters; sl_commadatetime()
+       * needs strlen(input) + 1 bytes for its output. */
+      char timestr[32] = {0};
 
       if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
       {
@@ -1681,6 +1745,13 @@ negotiate_multi_v3 (SLCD *slconn)
   /* Generate V3, legacy SeedLink style date-time strings */
   if (slconn->start_time)
   {
+    if (strlen (slconn->start_time) > sizeof (start_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
+                slconn->start_time);
+      return -1;
+    }
+
     if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
@@ -1690,6 +1761,13 @@ negotiate_multi_v3 (SLCD *slconn)
   }
   if (slconn->end_time)
   {
+    if (strlen (slconn->end_time) > sizeof (end_time) - 2)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
+                slconn->end_time);
+      return -1;
+    }
+
     if (sl_commadatetime (end_time, slconn->end_time) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
@@ -1870,7 +1948,9 @@ negotiate_multi_v3 (SLCD *slconn)
       /* Append the last packet time if the feature is enabled */
       if (slconn->lastpkttime && strlen (curstream->timestamp))
       {
-        char timestr[31] = {0};
+        /* curstream->timestamp can hold up to 31 characters; sl_commadatetime()
+         * needs strlen(input) + 1 bytes for its output. */
+        char timestr[32] = {0};
 
         if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
         {
@@ -2106,6 +2186,13 @@ negotiate_v4 (SLCD *slconn)
         {
           sl_log_r (slconn, 2, 0, "%s() Selector too long: %s\n", __func__, selptr);
 
+          while (cmdlist)
+          {
+            cmdptr = cmdlist->next;
+            free (cmdlist);
+            cmdlist = cmdptr;
+          }
+
           return -1;
         }
 
@@ -2278,7 +2365,7 @@ negotiate_v4 (SLCD *slconn)
     sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n", slconn->sladdr, stationcnt);
 
     /* Issue END or ENDFETCH command to finalize stream selection and start streaming */
-    snprintf (sendstr, sizeof (sendstr), (slconn->dialup) ? "ENDFETCH\r\n" : "END\r\n");
+    snprintf (sendstr, sizeof (sendstr), "%s\r\n", (slconn->dialup) ? "ENDFETCH" : "END");
 
     sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
               sendstr);

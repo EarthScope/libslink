@@ -58,6 +58,9 @@ sl_savestate (SLCD *slconn, const char *statefile)
   char line[200];
   int linelen;
 
+  if (!slconn || !statefile)
+    return -1;
+
   curstream = slconn->streams;
 
   /* Open the state file */
@@ -164,6 +167,9 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
 
   uint64_t seqnum;
   int count;
+
+  if (!slconn || !statefile)
+    return -1;
 
   /* Open the state file */
   if ((fp = fopen (statefile, "rb")) == NULL)

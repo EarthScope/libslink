@@ -102,6 +102,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
   int info_payload;
   int info_terminated;
   int was_keepalive;
+  int payload_completed;
+  int payload_pending;
 
   if (!slconn || !packetinfo || (plbuffersize > 0 && !plbuffer))
     return SLTERMINATE;
@@ -220,6 +222,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
 
         /* Process data in internal buffer */
         bytesconsumed = 0;
+        payload_completed = 0;
+        payload_pending = 0;
 
         /* Check for special cases of the server reporting end of streaming or errors
          * while awaiting a header (i.e. in between packets) */
@@ -232,8 +236,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
                       "[%s] End of selected time window or stream (FETCH/dial-up mode)\n",
                       slconn->sladdr);
 
-            bytesconsumed += 3;
-            break;
+            /* A completed request has nothing left to ask for again, so this
+             * ends the connection outright rather than reconnecting, regardless
+             * of dial-up mode. */
+            sl_disconnect (slconn);
+            *packetinfo = NULL;
+            return SLTERMINATE;
           }
 
           if (slconn->recvdatalen - bytesconsumed >= 5 &&
@@ -353,6 +361,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
 
             bytesconsumed += bytesread;
           }
+          /* A v3 payload of unknown length that could not yet be detected;
+           * more data is needed, not a stuck stream */
+          else
+          {
+            payload_pending = 1;
+          }
 
           /* Payload is complete; the length is declared in the v4 header and detected for v3 */
           if ((slconn->protocol & SLPROTO40 || slconn->stat->packetinfo.payloadlength > 0) &&
@@ -367,6 +381,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
 
             slconn->recvdatalen -= bytesconsumed;
             bytesconsumed = 0;
+            payload_completed = 1;
 
             /* Set state for header collection if payload is complete */
             slconn->stat->stream_state = HEADER;
@@ -394,20 +409,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
             {
               /* Multi-packet v3 keepalive responses are swallowed until the terminator */
             }
-            /* All other payloads are returned to the caller */
-            else
+            /* All other payloads are returned to the caller, unless stream tracking
+             * cannot be updated, e.g. an unparsable payload or an unexpected station;
+             * update_stream() logs the specific reason. Such a packet is dropped and
+             * streaming continues rather than terminating the connection. */
+            else if (update_stream (slconn, plbuffer) == 0)
             {
-              /* Update streaming tracking */
-              if (update_stream (slconn, plbuffer) == -1)
-              {
-                sl_log_r (slconn, 2, 0,
-                          "[%s] %s(): cannot update stream tracking, internal error\n",
-                          slconn->sladdr, __func__);
-                sl_disconnect (slconn);
-                *packetinfo = NULL;
-                return SLTERMINATE;
-              }
-
               *packetinfo = &slconn->stat->packetinfo;
               return SLPACKET;
             }
@@ -415,8 +422,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
         } /* Done reading payload */
 
         /* If a viable amount of data exists but has not been consumed something is wrong with the
-         * stream */
-        if (slconn->recvdatalen > SL_MIN_PAYLOAD && bytesconsumed == 0)
+         * stream. A completed payload already shifted its bytes out and zeroed
+         * bytesconsumed above, whether the packet was returned, swallowed as a
+         * keepalive, or dropped for failing stream tracking; none of those is stuck.
+         * A v3 payload awaiting more data to determine its length is also not stuck. */
+        if (slconn->recvdatalen > SL_MIN_PAYLOAD && bytesconsumed == 0 && !payload_completed &&
+            !payload_pending)
         {
           sl_log_r (slconn, 2, 0,
                     "[%s] %s(): cannot process received data (recvdatalen: %u, stream_state: %d)\n",
@@ -648,20 +659,54 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *b
 
   packetinfo = &slconn->stat->packetinfo;
 
-  /* Payload length is unknown for v3 until detected from the payload */
+  /* Payload length is unknown for v3 until detected.  Detect directly
+   * against the internal receive buffer, before anything is copied to the
+   * caller's buffer: a record with no blockette 1000 is only detectable by
+   * locating the start of the following record's header, which requires
+   * bytes beyond the end of this one still be available to detect against. */
   if (slconn->protocol & SLPROTO3X && packetinfo->payloadlength == 0)
   {
-    /* Return for more data if the minimum for detection is not available */
+    /* Wait for more data if the minimum for detection is not available */
     if (bytesavailable < SL_MIN_PAYLOAD)
     {
       return 0;
     }
 
-    /* Consume up to 128 bytes for detection */
-    bytestoconsume = (bytesavailable < 128) ? bytesavailable : 128;
+    detectedlength = detect ((const char *)buffer, bytesavailable, &payloadformat);
+
+    /* Return error if no recognized payload detected */
+    if (detectedlength < 0)
+    {
+      sl_log_r (slconn, 2, 0,
+                "[%s] %s(): non-miniSEED packet received for v3 protocol! Terminating.\n",
+                slconn->sladdr, __func__);
+      return -1;
+    }
+    /* Length not yet determined; wait for more data unless the internal
+     * receive buffer is already full, in which case it never will be */
+    else if (detectedlength == 0)
+    {
+      if (slconn->recvdatalen >= sizeof (slconn->recvbuffer))
+      {
+        sl_log_r (slconn, 2, 0,
+                  "[%s] %s(): cannot determine miniSEED v3 payload length within %zu bytes\n",
+                  slconn->sladdr, __func__, sizeof (slconn->recvbuffer));
+        return -1;
+      }
+
+      return 0;
+    }
+
+    if (packetinfo->payloadformat == SLPAYLOAD_UNKNOWN)
+    {
+      packetinfo->payloadformat = payloadformat;
+    }
+
+    packetinfo->payloadlength = detectedlength;
   }
+
   /* If remaining payload is smaller than available, consume remaining */
-  else if ((packetinfo->payloadlength - packetinfo->payloadcollected) < bytesavailable)
+  if ((packetinfo->payloadlength - packetinfo->payloadcollected) < bytesavailable)
   {
     bytestoconsume = packetinfo->payloadlength - packetinfo->payloadcollected;
   }
@@ -675,39 +720,13 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *b
   {
     sl_log_r (slconn, 2, 0,
               "[%s] %s(): provided buffer size (%u) is insufficient for payload (%u)\n",
-              slconn->sladdr, __func__, plbuffersize,
-              (packetinfo->payloadlength == 0) ? bytestoconsume : packetinfo->payloadlength);
+              slconn->sladdr, __func__, plbuffersize, packetinfo->payloadlength);
     return -1;
   }
 
   /* Copy payload data from internal buffer to payload buffer */
   memcpy (plbuffer + packetinfo->payloadcollected, buffer, bytestoconsume);
   packetinfo->payloadcollected += bytestoconsume;
-
-  /* If payload length is not yet known for V3, try to detect from payload */
-  if (slconn->protocol & SLPROTO3X && packetinfo->payloadlength == 0)
-  {
-    detectedlength = detect (plbuffer, packetinfo->payloadcollected, &payloadformat);
-
-    /* Return error if no recognized payload detected */
-    if (detectedlength < 0)
-    {
-      sl_log_r (slconn, 2, 0,
-                "[%s] %s(): non-miniSEED packet received for v3 protocol! Terminating.\n",
-                slconn->sladdr, __func__);
-      return -1;
-    }
-    /* Update packet info if length detected */
-    else if (detectedlength > 0)
-    {
-      if (packetinfo->payloadformat == SLPAYLOAD_UNKNOWN)
-      {
-        packetinfo->payloadformat = payloadformat;
-      }
-
-      packetinfo->payloadlength = detectedlength;
-    }
-  }
 
   return bytestoconsume;
 } /* End of receive_payload() */
@@ -799,7 +818,9 @@ update_stream (SLCD *slconn, const char *payload)
   if (curstream != NULL && strcmp (curstream->stationid, "*") == 0)
   {
     curstream->seqnum = packetinfo->seqnum;
-    strcpy (curstream->timestamp, timestamp);
+
+    if (timestamp[0])
+      strcpy (curstream->timestamp, timestamp);
 
     return 0;
   }
@@ -811,7 +832,9 @@ update_stream (SLCD *slconn, const char *payload)
     if (sl_globmatch (packetinfo->stationid, curstream->stationid))
     {
       curstream->seqnum = packetinfo->seqnum;
-      strcpy (curstream->timestamp, timestamp);
+
+      if (timestamp[0])
+        strcpy (curstream->timestamp, timestamp);
 
       updates++;
     }
@@ -884,6 +907,7 @@ sl_initslcd (const char *clientname, const char *clientversion)
 
   slconn->link = -1;
   slconn->protocol = UNSET_PROTO;
+  slconn->protocol_forced = 0;
   slconn->server_protocols = 0;
   slconn->capabilities = NULL;
   slconn->caparray = NULL;
@@ -940,6 +964,9 @@ sl_freeslcd (SLCD *slconn)
 {
   SLstream *curstream;
   SLstream *nextstream;
+
+  if (!slconn)
+    return;
 
   curstream = slconn->streams;
 
@@ -1592,6 +1619,7 @@ sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol)
     return -1;
 
   slconn->protocol = protocol;
+  slconn->protocol_forced = (protocol != UNSET_PROTO);
 
   return 0;
 } /* End of sl_set_protocol() */
@@ -1914,6 +1942,12 @@ sl_hascapability (SLCD *slconn, char *capability)
     /* Copy and replace spaces with terminating NULLs */
     slconn->caparray = strdup (slconn->capabilities);
 
+    if (slconn->caparray == NULL)
+    {
+      sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
+      return 0;
+    }
+
     for (idx = 0; idx < length; idx++)
     {
       if (slconn->caparray[idx] == ' ')
@@ -1951,17 +1985,24 @@ sl_hascapability (SLCD *slconn, char *capability)
 void
 sl_terminate (SLCD *slconn)
 {
+  if (!slconn)
+    return;
+
   sl_log_r (slconn, 1, 1, "[%s] Terminating connection\n", slconn->sladdr);
 
   slconn->terminate = 1;
 } /* End of sl_terminate() */
 
-/* Internal termination routine for use as a signal handler */
+/* Internal termination routine for use as a signal handler.
+ * Only sets the terminate flag directly; sl_terminate() is avoided here
+ * because it logs, and the logging path is not async-signal-safe. */
 static void
 internal_term_handler (int sig)
 {
   (void)sig;
-  sl_terminate (global_termination_SLCD);
+
+  if (global_termination_SLCD)
+    global_termination_SLCD->terminate = 1;
 }
 
 /** ************************************************************************
@@ -2116,7 +2157,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       swapflag = 1;
 
     uint16_t extralength = HO2u (*pMS3FSDH_EXTRALENGTH (buffer), swapflag);
-    uint32_t datalength = HO2u (*pMS3FSDH_DATALENGTH (buffer), swapflag);
+    uint32_t datalength = HO4u (*pMS3FSDH_DATALENGTH (buffer), swapflag);
 
     reclen = MS3FSDH_LENGTH                 /* Length of fixed portion of header */
              + *pMS3FSDH_SIDLENGTH (buffer) /* Length of source identifier */
@@ -2135,7 +2176,7 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
     blkt_offset = HO2u (*pMS2FSDH_BLOCKETTEOFFSET (buffer), swapflag);
 
     /* Loop through blockettes as long as number is non-zero and viable */
-    while (blkt_offset != 0 && blkt_offset > 47 && blkt_offset <= buflen)
+    while (blkt_offset != 0 && blkt_offset > 47 && (blkt_offset + 4) <= buflen)
     {
       memcpy (&blkt_type, buffer + blkt_offset, 2);
       memcpy (&next_blkt, buffer + blkt_offset + 2, 2);

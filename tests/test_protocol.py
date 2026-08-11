@@ -249,6 +249,43 @@ class TestV3MultiStation(ProtocolTestCase):
         # the order the two --station options were given on the command line.
         self.assertEqual(seen_stations, ["STATION TST1 XX", "STATION TST2 XX"])
 
+    def test_unexpected_station_is_dropped_not_fatal(self):
+        """A packet for a station outside the configured list is a
+        server-driven condition (truncated record, unexpected data), not an
+        internal error; it must be logged and dropped, with the connection
+        left open for the next, valid packet."""
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_multi(reader, conn, cmd)
+
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="ZZ", station="NOPE", channel="BHZ"))
+            )
+            conn.sendall(
+                mseed.frame_v3_data(2, mseed.build_ms2(network="XX", station="TST1", channel="BHN"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--station",
+                "XX_TST1:BHN",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(attempts), 1, "expected no reconnect after the unexpected station")
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertEqual(events["packets"][0]["station"], "XX_TST1")
+
 
 class TestV4(ProtocolTestCase):
     def test_basic_stream(self):
@@ -320,6 +357,58 @@ class TestProtocolSelection(ProtocolTestCase):
 
         self.assertIn("STATION XX_TEST", seen_commands)
         self.assertEqual(events["packets"][0]["format"], "3")
+
+    def test_reconnect_drops_stale_protocol_and_capabilities(self):
+        """Capabilities and protocol support are properties of the server
+        being connected to, not the client. A reconnect to a server that no
+        longer advertises v4 or any capabilities must not carry over the
+        previous connection's promotion to v4 or its capability string --
+        otherwise the client keeps sending SLPROTO 4.0 to a server that
+        never offered it."""
+        histories = {}
+
+        def handler(conn, reader, server, idx):
+            if idx == 1:
+                serve_hello(reader, conn)  # default: offers v4 with capabilities
+                cmd = serve_precommands(reader, conn)
+                serve_v4(reader, conn, cmd)
+
+                record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
+                conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
+                # Handler returns without an END; the connection closes and
+                # the client reconnects.
+            else:
+                serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")  # no capabilities at all
+                cmd = serve_precommands(reader, conn)
+                serve_v3_multi(reader, conn, cmd)
+
+                conn.sendall(
+                    mseed.frame_v3_data(
+                        1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ")
+                    )
+                )
+
+            histories[idx] = [c for c, _ in reader.history]
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--station",
+                "XX_TEST:BHZ",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "2",
+                "--timeout-seconds",
+                "12",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 2, events)
+        self.assertIn("SLPROTO 4.0", histories[1], histories)
+        self.assertNotIn("SLPROTO 4.0", histories[2], histories)
+        self.assertNotIn("CAPABILITIES", histories[2], histories)
+        self.assertEqual(histories[2][1], "STATION TEST XX", histories)
 
 
 class TestCapabilities(ProtocolTestCase):
@@ -447,6 +536,41 @@ class TestErrorAndEnd(ProtocolTestCase):
             ],
         )
 
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertEqual(events["result"], "0")  # SLTERMINATE
+
+    def test_server_end_outside_dialup_mode_terminates(self):
+        """A completed time window has nothing left to ask for again, so END
+        must end the connection even without --dialup; otherwise the client
+        reconnects, re-requests, receives END again, and repeats forever."""
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn)
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+            conn.sendall(b"END")
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "5",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(attempts), 1, "expected no reconnect attempt after END")
         self.assertEqual(len(events["packets"]), 1, events)
         self.assertEqual(events["result"], "0")  # SLTERMINATE
 

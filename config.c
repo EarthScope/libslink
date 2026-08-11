@@ -67,6 +67,9 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile, const char *defsel
   int fields = 0;
   int streamcount = 0;
 
+  if (!slconn || !streamfile)
+    return -1;
+
   /* Open the stream list file */
   if ((fp = fopen (streamfile, "rb")) == NULL)
   {
@@ -152,7 +155,6 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile, const char *defsel
  * For example:
  * "IU_COLA:*_B_H_? *_L_H_?"
  * "IU_KONO:B_H_E B_H_N,GE_WLF,MN_AQU:H_H_?"
- * "IU_KONO:B_H_?:3,GE_WLF:*:3"
  *
  * @param slconn The ::SLCD to which to add streams
  * @param streamlist A string bufffer containing the stream list

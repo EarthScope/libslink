@@ -113,7 +113,7 @@ sl_payload_info (const SLlog *log, const SLpacketinfo *packetinfo, const char *p
   /* Parse requested details from miniSEED v2 */
   if (packetinfo->payloadformat == SLPAYLOAD_MSEED2)
   {
-    if (packetinfo->payloadlength < 48)
+    if (packetinfo->payloadlength < 48 || plbuffer_size < 48)
     {
       sl_log_rl (log, 2, 1, "%s(): payload too short for miniSEEDv2\n", __func__);
       return -1;
@@ -202,8 +202,17 @@ sl_payload_info (const SLlog *log, const SLpacketinfo *packetinfo, const char *p
   /* Parse requested details from miniSEED v3 */
   else if (packetinfo->payloadformat == SLPAYLOAD_MSEED3)
   {
-    if (packetinfo->payloadlength < MS3FSDH_LENGTH ||
-        packetinfo->payloadlength < MS3FSDH_LENGTH + *pMS3FSDH_SIDLENGTH (plbuffer))
+    /* Checked separately from the source-identifier-length bound below since
+     * that bound requires reading a byte at a fixed offset within the fixed
+     * header, which is only safe once the buffer is known to hold it. */
+    if (packetinfo->payloadlength < MS3FSDH_LENGTH || plbuffer_size < MS3FSDH_LENGTH)
+    {
+      sl_log_rl (log, 2, 1, "%s(): payload too short for miniSEEDv3\n", __func__);
+      return -1;
+    }
+
+    if (packetinfo->payloadlength < MS3FSDH_LENGTH + *pMS3FSDH_SIDLENGTH (plbuffer) ||
+        plbuffer_size < MS3FSDH_LENGTH + *pMS3FSDH_SIDLENGTH (plbuffer))
     {
       sl_log_rl (log, 2, 1, "%s(): payload too short for miniSEEDv3\n", __func__);
       return -1;

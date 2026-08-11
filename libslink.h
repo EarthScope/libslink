@@ -267,11 +267,11 @@ typedef enum
 
 /** @def SL_EPOCH2SLTIME
     @brief macro to convert Unix/POSIX epoch time to high precision epoch time */
-#define SL_EPOCH2SLTIME(X) (X) * (int64_t) SLTMODULUS
+#define SL_EPOCH2SLTIME(X) ((X) * (int64_t) SLTMODULUS)
 
 /** @def SL_SLTIME2EPOCH
     @brief Macro to convert high precision epoch time to Unix/POSIX epoch time */
-#define SL_SLTIME2EPOCH(X) (X) / SLTMODULUS
+#define SL_SLTIME2EPOCH(X) ((X) / SLTMODULUS)
 
 /** @def sl_dtime
     @brief Macro to return current time as double epoch, replace legacy function */
@@ -360,7 +360,7 @@ typedef struct SLCD
 
   /// @cond HIDDEN_FIELDS
   SOCKET      link;             //The network socket descriptor
-  LIBPROTOCOL protocol;         //Protocol in use
+  LIBPROTOCOL protocol;         //Protocol in use, negotiated fresh on each connection
   uint32_t    server_protocols; //Server protocol versions supported by library
   char       *capabilities;     //HELLO capabilities supported by server (incomplete)
   char       *caparray;         //Array of capabilities
@@ -371,6 +371,7 @@ typedef struct SLCD
 
   uint8_t     recvbuffer[SL_RECV_BUFFER_SIZE]; // Network receive buffer
   uint32_t    recvdatalen;      // Length of data in receive buffer
+  uint8_t     protocol_forced;  //Caller fixed the protocol with sl_set_protocol()
   /// @endcond
 } SLCD;
 

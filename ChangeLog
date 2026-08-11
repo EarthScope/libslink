@@ -8,23 +8,42 @@
 	- Copy the parsed host and port without a fixed length limit in
 	sl_set_serveraddress().
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
-	- Reject an out-of-range miniSEED 2 B1000 record length exponent in detect().
 	- Terminate and trim the selectors parsed from a stream list file, and
 	fail when a stream cannot be added to the list.
 	- Reuse the star fast-forward byte when backtracking in the glob matcher.
 	- Stop freeing process-global PSA crypto state when a connection is
 	disconnected.
-	- Guard against NULL arguments and allocation failure in sl_request_info().
 	- Pass the pending command to sl_recvresp() during v4 negotiation and
 	tolerate a NULL command.
 	- Disconnect and return SLTERMINATE when a received station ID is too
 	large for the buffer.
-	- Treat a zero-length v4 payload as a complete payload, it will fail.
+	- Treat a zero-length v4 payload as complete and report it to the
+	caller, rather than waiting on bytes that will never arrive.
 	- Correct the CA certificate environment variable names in the TLS log
 	message and documentation to LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH.
 	- Wrap the v3 resumption sequence to the six hex digits of the wire format.
 	- Reject date-time strings too long for their conversion buffers.
 	- Avoid a double free of the client version in sl_set_clientname().
+	- Fix miniSEED payload length detection in detect().
+	- Stop the HELLO capability parser from reading past the end of the
+	capabilities string.
+	- Preserve a stream's resume timestamp across non-miniSEED payloads.
+	- Recover instead of terminating when stream tracking cannot be updated
+	for a received packet.
+	- Return SLTERMINATE instead of reconnecting forever after END is
+	received outside dial-up mode.
+	- Reset negotiated protocol state and HELLO capabilities on each
+	connection, unless the caller forced a protocol with sl_set_protocol().
+	- Bound the TLS handshake with a deadline and honor connection
+	termination during it.
+	- Free the command list on the selector-too-long error path in
+	negotiate_v4().
+	- Bound sl_payload_info()'s reads by the caller's buffer size, not just
+	the payload length
+	- Guard against NULL arguments and allocation failure in many functions.
+	- Avoid logging from the termination signal handler.
+	- Parenthesize the SL_EPOCH2SLTIME and SL_SLTIME2EPOCH macros.
+	- Sync libslink.def with the public functions declared in libslink.h
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 	- Update Mbed-TLS to v3.6.6.
 

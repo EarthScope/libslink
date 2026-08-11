@@ -442,13 +442,65 @@ test_receive_payload_v3_detects_length (void)
 
   rv = receive_payload (slconn, plbuffer, sizeof (plbuffer), wire, sizeof (wire));
 
-  SLT_EQ_INT ((int)rv, sizeof (wire), "an undetected v3 payload consumes up to 128 bytes for detection");
+  SLT_EQ_INT ((int)rv, sizeof (wire),
+             "once detected, a v3 payload consumes all of what's available toward it");
   SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, sizeof (wire),
-              "payloadcollected tracks the bytes consumed for detection");
+              "payloadcollected tracks the bytes consumed");
   SLT_EQ_UINT (slconn->stat->packetinfo.payloadlength, 512,
               "payloadlength is set from the record length detected in the B1000 blockette");
   SLT_EQ_INT (slconn->stat->packetinfo.payloadformat, SLPAYLOAD_MSEED2,
              "payloadformat is set once detected");
+
+  sl_freeslcd (slconn);
+}
+
+static void
+test_receive_payload_v3_no_b1000_multi_chunk (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t wire[128]     = {0};
+  char    plbuffer[64]  = {0}; /* Exactly the true record length, no headroom */
+  MS2Fields f;
+  int64_t rv;
+
+  memset (&f, 0, sizeof (f));
+  f.network = "XX";
+  f.station = "TEST";
+  f.channel = "BHZ";
+  f.year    = 2024;
+  f.day     = 216;
+  /* numblockettes/blocketteoffset left at 0: no B1000 to read a length from */
+
+  fx_ms2_fixed (wire, sizeof (wire), &f, 0);
+
+  /* A second valid fixed header at the 64-byte boundary marks the true end
+   * of the first record, for detect()'s fallback scan to find. */
+  fx_ms2_fixed (wire + 64, sizeof (wire) - 64, &f, 0);
+
+  slconn->protocol = SLPROTO3X;
+  slconn->stat->packetinfo.payloadlength    = 0;
+  slconn->stat->packetinfo.payloadcollected = 0;
+
+  /* First chunk: below SL_MIN_PAYLOAD, and too little of the buffer for
+   * detect() to see the next record's header. Nothing is copied or
+   * consumed while waiting for more to arrive. */
+  rv = receive_payload (slconn, plbuffer, sizeof (plbuffer), wire, 40);
+
+  SLT_EQ_INT ((int)rv, 0, "an undetectable chunk consumes nothing rather than guessing");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadlength, 0,
+              "payload length stays unknown until the next header is visible");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, 0,
+              "nothing is collected while length detection is pending");
+
+  /* Second chunk: the rest of the buffer has arrived, exposing the next
+   * record's header at offset 64 to detect()'s fallback scan. */
+  rv = receive_payload (slconn, plbuffer, sizeof (plbuffer), wire, sizeof (wire));
+
+  SLT_EQ_INT ((int)rv, 64, "the record is consumed up to its detected length, not beyond it");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadlength, 64,
+              "payload length comes from the offset of the following record's header");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, 64,
+              "payloadcollected lands exactly on the detected length, with no overshoot");
 
   sl_freeslcd (slconn);
 }
@@ -606,6 +658,7 @@ main (void)
 
   SLT_RUN (test_receive_payload_v4_zero_length);
   SLT_RUN (test_receive_payload_v3_detects_length);
+  SLT_RUN (test_receive_payload_v3_no_b1000_multi_chunk);
 
   SLT_RUN (test_update_stream_multistation_match);
   SLT_RUN (test_update_stream_no_match);
