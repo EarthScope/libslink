@@ -6,6 +6,7 @@
 	callback as an authentication failure.
 	- Correct the CA certificate environment variable names in the TLS log
 	message and documentation to LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH.
+	- Free the authentication value allocated by sl_set_auth_envvars().
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

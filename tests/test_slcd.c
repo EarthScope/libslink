@@ -434,12 +434,10 @@ test_request_info_null_guards (void)
                    "known bug (finding 12): sl_request_info(slconn, NULL) should return an error, not crash");
 }
 
-/* --- fable-review finding 5: sl_set_auth_envvars() allocates a "USERPASS
- * user pass" string and installs it as auth_data with auth_finish == NULL,
- * so neither the library nor sl_freeslcd() ever frees it.  This leak is
- * only observable under a leak-detecting sanitizer (see tests/README.md);
- * here we just exercise the path and confirm the callback wiring is
- * correct. --- */
+/* Exercises sl_set_auth_envvars(), including that the constructed auth_data
+ * string is released by a subsequent authentication call and by
+ * sl_freeslcd(); leak-freedom itself is only observable under a
+ * leak-detecting sanitizer (see tests/README.md). */
 static void
 test_auth_envvars (void)
 {
@@ -451,15 +449,26 @@ test_auth_envvars (void)
   SLT_EQ_INT (sl_set_auth_envvars (slconn, "SLTEST_USER", "SLTEST_PASS"), 0,
              "sl_set_auth_envvars() succeeds when both variables are set");
   SLT_NOT_NULL (slconn->auth_value, "auth_value callback installed");
-  SLT_NULL (slconn->auth_finish, "auth_finish callback is left unset (finding 5: the auth_data string is never freed)");
+  SLT_NULL (slconn->auth_finish, "auth_finish callback is left unset");
   SLT_EQ_STR ((const char *)slconn->auth_data, "USERPASS alice s3cr3t", "auth_data holds the constructed USERPASS value");
 
   unsetenv ("SLTEST_PASS");
   SLT_EQ_INT (sl_set_auth_envvars (slconn, "SLTEST_USER", "SLTEST_PASS"), -1,
              "sl_set_auth_envvars() fails when a variable is missing");
 
+  setenv ("SLTEST_PASS", "n3wpass", 1);
+  SLT_EQ_INT (sl_set_auth_envvars (slconn, "SLTEST_USER", "SLTEST_PASS"), 0,
+             "sl_set_auth_envvars() succeeds again after resetting the missing variable");
+  SLT_EQ_STR ((const char *)slconn->auth_data, "USERPASS alice n3wpass",
+             "auth_data holds the newly constructed value, replacing (and freeing) the prior one");
+
+  SLT_EQ_INT (sl_set_auth_params (slconn, NULL, NULL, NULL), 0,
+             "sl_set_auth_params() clears the authentication parameters");
+  SLT_NULL (slconn->auth_data, "auth_data is released, not left dangling, when parameters are cleared");
+
   unsetenv ("SLTEST_USER");
-  sl_freeslcd (slconn); /* the still-allocated auth_data string leaks; see tests/README.md */
+  unsetenv ("SLTEST_PASS");
+  sl_freeslcd (slconn);
 }
 
 int

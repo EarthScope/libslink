@@ -146,10 +146,13 @@ passes in a plain build; run it under ASan to see the failure.
 ### Implementation-behavior findings (`fable-review.md`)
 
 `fable-review.md` lists 12 findings against this codebase. Findings 1,
-3, and 4 are fixed (`ChangeLog` `2026.222`) and are covered by regression
+3, 4, and 5 are fixed (`ChangeLog` `2026.222`) and are covered by regression
 tests (`TestKeepaliveAndInfoRegression` and `TestAuthValueNullRegression`
-in `test_protocol.py`, and `TestTLS.test_unsupported_tls_cert_env_var_name_is_not_honored`
-in `test_tls.py`). Findings that are reachable and deterministic
+in `test_protocol.py`, `TestTLS.test_unsupported_tls_cert_env_var_name_is_not_honored`
+in `test_tls.py`, and `test_slcd.test_auth_envvars`, which asserts that
+`auth_data` is released both by a subsequent authentication call and by
+`sl_freeslcd()`; leak-freedom itself is only observable under a
+leak-detecting tool such as `leaks` or `-fsanitize=address`). Findings that are reachable and deterministic
 through this suite are written as ordinary tests asserting the
 **correct** behavior, so they show up as `not ok` / `FAIL` today and
 will flip to passing once each is fixed. This is the current baseline
@@ -182,11 +185,6 @@ or infrastructure this suite doesn't build):
   guaranteed to be caught) when the response places its first `\r` far
   enough into the buffer. This suite does not attempt that construction;
   it would need to be verified under `-fsanitize=address`.
-- **Finding 5** (`sl_set_auth_envvars()` leaks the constructed
-  `USERPASS` string, since `auth_finish` is left unset). The code path
-  is exercised by `test_slcd.test_auth_envvars`, but a leak has no
-  observable effect in a plain run — check for it with
-  `-fsanitize=address` (or `leaks`/`valgrind`) instead.
 - **Finding 7** (`sl_senddata()` treats a short `send()`/
   `mbedtls_ssl_write()` as a complete write). Not covered: reliably
   forcing a short write requires controlling the OS socket buffer size

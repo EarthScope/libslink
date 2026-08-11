@@ -37,6 +37,8 @@ static int64_t receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffers
                                 uint8_t *buffer, uint32_t bytesavailable);
 static int update_stream (SLCD *slconn, const char *payload);
 static int64_t detect (const char *record, uint64_t recbuflen, char *payloadformat);
+static const char *internal_auth_value_data (const char *server, void *auth_data);
+static void free_internal_auth_data (SLCD *slconn);
 
 /* Initialize the global termination handler */
 SLCD *global_termination_SLCD = NULL;
@@ -972,6 +974,7 @@ sl_freeslcd (SLCD *slconn)
   free (slconn->clientversion);
   free (slconn->stat);
   free (slconn->log);
+  free_internal_auth_data (slconn);
   free (slconn);
 } /* End of sl_freeslcd() */
 
@@ -1202,6 +1205,26 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
     return 0;
 } /* End of sl_set_timewindow() */
 
+/* Internal auth_value handler to return auth_data */
+static const char *
+internal_auth_value_data (const char *server, void *auth_data)
+{
+  (void)server; /* Unused parameter */
+  return (const char *)auth_data;
+}
+
+/* Free the auth_data allocated by sl_set_auth_envvars(), if present */
+static void
+free_internal_auth_data (SLCD *slconn)
+{
+  if (slconn->auth_value == internal_auth_value_data && slconn->auth_data)
+  {
+    memset (slconn->auth_data, 0, strlen ((char *)slconn->auth_data));
+    free (slconn->auth_data);
+    slconn->auth_data = NULL;
+  }
+}
+
 /** ************************************************************************
  * @brief Set SeedLink connection authentication parameters (v4 only)
  *
@@ -1226,9 +1249,11 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
  *
  * The \a auth_finish callback, if not NULL, is executed when authentication
  * is complete. This can be used to free memory or perform other cleanup tasks.
+ * Note that it runs on every connection attempt, not only at teardown, so it
+ * must not free anything needed by a later reconnect.
  *
  * The \a auth_data parameter is a pointer to caller-supplied data that
- * is passed to the callback functions.
+ * is passed to the callback functions; the library never frees it.
  *
  * There is no requirement that servers must support authentication, so
  * the user must ensure that the target server supports authentication.
@@ -1250,6 +1275,9 @@ sl_set_auth_params (SLCD *slconn,
     if (!slconn)
         return -1;
 
+    if (auth_data != slconn->auth_data)
+        free_internal_auth_data (slconn);
+
     slconn->auth_value  = auth_value;
     slconn->auth_finish = auth_finish;
     slconn->auth_data   = auth_data;
@@ -1257,19 +1285,15 @@ sl_set_auth_params (SLCD *slconn,
     return 0;
 } /* End of sl_set_auth_params() */
 
-/* Internal auth_value handler to return auth_data */
-const char *
-internal_auth_value_data (const char *server, void *auth_data)
-{
-  (void)server; /* Unused parameter */
-  return (const char *)auth_data;
-}
-
 /** ************************************************************************
  * @brief Configure authentication with environment variables
  *
  * Use the specified environment variables to set the authentication
  * parameters for the SeedLink connection.
+ *
+ * The constructed authentication value is owned by the library and is
+ * released by sl_freeslcd() or by a subsequent call that sets the
+ * authentication parameters.
  *
  * @param[in] slconn     SeedLink connection description
  * @param[in] uservar    Environment variable for username
