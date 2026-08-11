@@ -112,7 +112,6 @@ than against the implementation's own behavior:
 
 | Spec section | Deviation | Test |
 |---|---|---|
-| v4 "Differences ... version 3 and 4" (a v4 server "can also support SeedLink 3 protocol") | `sayhello_int()` (`network.c`) treats any `ERROR` response to `SLPROTO 4.0` as fatal to the whole connection attempt and never tries a v3 handshake on the same connection — a server that always rejects `SLPROTO` (while genuinely offering v3) can never be reached by this client | `test_spec_v4.TestErrorCodes.test_error_unsupported_to_slproto_should_fall_back_to_v3` — retries forever, never falls back |
 | v3 "SeedLink packet structure" (six-digit hex sequence field) | `negotiate_uni_v3()`/`negotiate_multi_v3()` (`network.c`) format a resumption sequence with `"%0" PRIX64` — the `0` flag has no effect without an explicit width, so a sequence one past the 24-bit boundary is sent as 7+ hex digits, not wrapped into six | `test_spec_v3.TestCommandSyntax.test_data_sequence_number_should_stay_within_six_hex_digits` |
 
 **Also found while building this suite, sanitizer-only (like Finding 5
@@ -191,3 +190,16 @@ or infrastructure this suite doesn't build):
   per process).
 - **Finding 10** (duplicated `NULL` check in `globmatch.c`) is dead code
   with no observable behavior; intentionally not tested.
+
+**Rejected:**
+
+- **Finding 16** (an `ERROR` response to `SLPROTO 4.0` should fall back to a
+  v3 handshake on the same connection). `sayhello_int()` (`network.c:1184`)
+  only sends `SLPROTO 4.0` when the server's own HELLO capabilities
+  advertised `SLPROTO:4.x`, or the caller explicitly forced v4 via
+  `sl_set_protocol()`. An `ERROR` reply is therefore the server
+  contradicting capabilities it just advertised (or the caller's explicit
+  request), not a server that merely prefers v3 — treating that as fatal
+  and logging it, rather than silently downgrading past it, is the correct
+  behavior. Pinned by
+  `test_spec_v4.TestErrorCodes.test_error_to_slproto_from_a_v4_advertising_server_is_fatal`.
