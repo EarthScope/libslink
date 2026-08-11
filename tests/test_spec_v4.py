@@ -153,17 +153,13 @@ class TestPacketHeader(ProtocolTestCase):
         self.assertEqual(events["packets"][0]["station"], stationid)
 
     def test_station_id_over_21_bytes_should_not_hang_the_client(self):
-        """Deviation from the spec (protocol.html, "Station and stream
-        identifiers": no length restriction is placed on station
-        identifiers). SL_MAX_STATIONID (libslink.h) is 22, and
-        slutils.c's station-ID read path logs "received station ID is
-        too large" and `break`s out of the read loop when
-        stationidlength exceeds 21 -- but that `break` only exits the
-        inner while, leaving stream_state stuck at STATIONID forever:
-        sl_collect() never returns, and the process cannot be stopped by
-        its own --timeout-seconds (that check only runs between
-        sl_collect() calls). A 22-byte station ID, well within a
-        realistic identifier length, hangs the client indefinitely."""
+        """protocol.html, "Station and stream identifiers": no length
+        restriction is placed on station identifiers, but SL_MAX_STATIONID
+        (libslink.h) is 22, so an identifier of 22 bytes or more cannot be
+        represented in SLpacketinfo.stationid. sl_collect() reports this as
+        a fatal, non-recoverable error -- disconnecting and returning
+        SLTERMINATE -- rather than reconnect-looping on the same oversized
+        ID forever."""
         stationid = "X" * 22
 
         def handler(conn, reader, server, idx):
@@ -175,11 +171,13 @@ class TestPacketHeader(ProtocolTestCase):
 
         # subprocess_timeout well under what a hang would need; run_scenario
         # turns the resulting subprocess.TimeoutExpired into self.fail().
-        self.run_scenario(
+        events, _ = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "5"],
             subprocess_timeout=8,
         )
+
+        self.assertEqual(events["result"], "0")  # SLTERMINATE
 
     def test_zero_length_payload_should_not_wedge_the_stream(self):
         """Deviation from the spec (protocol.html, "Data packet

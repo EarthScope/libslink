@@ -19,6 +19,8 @@
 	- Guard against NULL arguments and allocation failure in sl_request_info().
 	- Pass the pending command to sl_recvresp() during v4 negotiation and
 	tolerate a NULL command.
+	- Disconnect and return SLTERMINATE when a received station ID is too
+	large for the buffer.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

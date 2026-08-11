@@ -54,7 +54,8 @@ SLCD *global_termination_SLCD = NULL;
  * This function will automatically reconnect on connection errors,
  * and other recoverable failures.  Fatal, non-recoverable errors
  * include: invalid arguments, authentication failures, the end of the
- * stream in dial-up mode, and internal errors.
+ * stream in dial-up mode, internal errors, and protocol values that
+ * cannot be represented, such as an oversized station ID.
  *
  * The returned \a packetinfo contains the details including: sequence
  * number, payload length, payload type, and how much of the payload
@@ -295,12 +296,14 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           if (slconn->stat->packetinfo.stationidlength > (sizeof (slconn->stat->packetinfo.stationid) - 1))
           {
             sl_log_r (slconn, 2, 0,
-                      "[%s] %s() received station ID is too large (%u) for buffer (%zu)\n",
+                      "[%s] %s(): received station ID is too large (%u) for buffer (%zu)\n",
                       slconn->sladdr, __func__,
                       slconn->stat->packetinfo.stationidlength,
                       sizeof (slconn->stat->packetinfo.stationid) - 1);
 
-            break;
+            sl_disconnect (slconn);
+            *packetinfo = NULL;
+            return SLTERMINATE;
           }
           else
           {
