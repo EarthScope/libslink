@@ -497,7 +497,8 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
  * @brief Close a connction to a SeedLink server
  *
  * The network socket associated with ::SLCD is closed and all memory
- * allocated for the TLS context is freed.
+ * allocated for the TLS context is freed.  Process-global PSA crypto
+ * state, shared by all connections, is left initialized.
  *
  * @param slconn Close the connection associated with the ::SLCD
  *
@@ -528,7 +529,6 @@ sl_disconnect (SLCD *slconn)
     mbedtls_ssl_config_free (&tlsctx->conf);
     mbedtls_ctr_drbg_free (&tlsctx->ctr_drbg);
     mbedtls_entropy_free (&tlsctx->entropy);
-    mbedtls_psa_crypto_free();
 
     free (slconn->tlsctx);
     slconn->tlsctx = NULL;
