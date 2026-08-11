@@ -404,34 +404,36 @@ test_printslcd (void)
   sl_freeslcd (slconn);
 }
 
-/* --- fable-review finding 12: sl_request_info() dereferences slconn and
- * calls strdup(infostr) without NULL guards, unlike every other setter.
+/* sl_request_info() guards against a NULL slconn and a NULL infostr,
+ * returning -1 rather than dereferencing either.
  *
  * Each probe below builds whatever SLCD it needs itself: since survives()
- * now runs probes in a fork+exec'd copy of this binary (see above), a
+ * runs probes in a fork+exec'd copy of this binary (see above), a
  * probe can no longer rely on state a parent-process test left in a
- * global -- the exec'd child starts with fresh, zero-initialized globals. --- */
+ * global -- the exec'd child starts with fresh, zero-initialized globals.
+ * Each probe exits non-zero if sl_request_info() returns anything but -1,
+ * so survives() also catches a guard that swallows the error silently. */
 
 static void
 trigger_request_info_null_slconn (void)
 {
-  sl_request_info (NULL, "STREAMS");
+  _exit (sl_request_info (NULL, "STREAMS") == -1 ? 0 : 1);
 }
 
 static void
 trigger_request_info_null_infostr (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
-  sl_request_info (slconn, NULL);
+  _exit (sl_request_info (slconn, NULL) == -1 ? 0 : 1);
 }
 
 static void
 test_request_info_null_guards (void)
 {
   assert_survives ("request_info_null_slconn",
-                   "known bug (finding 12): sl_request_info(NULL, ...) should return an error, not crash");
+                   "sl_request_info(NULL, ...) returns an error instead of crashing");
   assert_survives ("request_info_null_infostr",
-                   "known bug (finding 12): sl_request_info(slconn, NULL) should return an error, not crash");
+                   "sl_request_info(slconn, NULL) returns an error instead of crashing");
 }
 
 /* Exercises sl_set_auth_envvars(), including that the constructed auth_data

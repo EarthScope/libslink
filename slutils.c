@@ -1850,6 +1850,9 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
 int
 sl_request_info (SLCD *slconn, const char *infostr)
 {
+  if (!slconn || !infostr)
+    return -1;
+
   if (slconn->info != NULL)
   {
     sl_log_r (slconn, 2, 0, "[%s] Cannot request INFO '%.20s', another is pending\n",
@@ -1858,7 +1861,14 @@ sl_request_info (SLCD *slconn, const char *infostr)
   }
   else
   {
-    slconn->info = strdup(infostr);
+    slconn->info = strdup (infostr);
+
+    if (slconn->info == NULL)
+    {
+      sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+      return -1;
+    }
+
     return 0;
   }
 } /* End of sl_request_info() */

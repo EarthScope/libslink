@@ -16,6 +16,7 @@
 	- Reuse the star fast-forward byte when backtracking in the glob matcher.
 	- Stop freeing process-global PSA crypto state when a connection is
 	disconnected.
+	- Guard against NULL arguments and allocation failure in sl_request_info().
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

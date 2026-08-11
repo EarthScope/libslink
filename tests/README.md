@@ -165,7 +165,6 @@ for this table:
 |---|---|---|
 | 8 | B1000 record-length shift UB (`slutils.c`) | `test_internals.test_detect_ms2_b1000_reclen_overflow` |
 | 9 | `config.c`'s `%199c` captures trailing whitespace | `test_streams.test_streamlist_file_trailing_whitespace` |
-| 12 | `sl_request_info()` missing NULL guards (`slutils.c`) | `test_slcd.test_request_info_null_guards` — crashes on `NULL` `slconn` or `NULL` infostr |
 | — | `libslink.def` export list is out of sync with `libslink.h` (typos, two missing entries, three static-inline names wrongly listed) | `test_exports.py`, both test methods |
 
 **Found while building this suite, not in `fable-review.md`:**
