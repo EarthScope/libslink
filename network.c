@@ -150,7 +150,7 @@ tls_configure (SLCD *slconn, const char *nodename)
   {
     sl_log_r (slconn, 1, 0, "[%s] No trusted CA certificates found, connections may not work\n", slconn->sladdr);
     sl_log_r (slconn, 1, 0, "[%s]   CA cert locations can be specified with the following environment variables:\n", slconn->sladdr);
-    sl_log_r (slconn, 1, 0, "[%s]   LIBSLINK_TLS_CERT_FILE and LIBSLINK_TLS_CERT_PATH\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 0, "[%s]   LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH\n", slconn->sladdr);
   }
 
   if ((ret = mbedtls_ssl_config_defaults (&tlsctx->conf,
@@ -2475,8 +2475,8 @@ setsocktimeo_int (SOCKET socket, int timeout)
  * Load Certificate Authority certs for TLS connection cert verification.
  *
  * CA certs are loaded from the following locations (in order):
- * - Environment variable LIBSLINK_TLS_CERT_FILE
- * - Environment variable LIBSLINK_TLS_CERT_PATH (all files in path)
+ * - Environment variable LIBSLINK_CA_CERT_FILE
+ * - Environment variable LIBSLINK_CA_CERT_PATH (all files in path)
  * - Known CA cert files and paths
  *
  * Returns number of CA certs files/paths loaded.

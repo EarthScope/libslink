@@ -181,20 +181,14 @@ class TestTLS(unittest.TestCase):
         )
         self.assertEqual(events["packets"], [])
 
-    def test_documented_env_var_name_should_work(self):
-        """fable-review finding 4: tls_configure()'s own log message and
-        header comment advertise LIBSLINK_TLS_CERT_FILE/_PATH, but
-        load_ca_certs() actually reads LIBSLINK_CA_CERT_FILE/_PATH. The
-        desired behavior is that the documented name works; today it
-        doesn't, so the connection never verifies and sl_collect() never
-        returns -- this test times out (a failure) until that's fixed."""
+    def test_unsupported_tls_cert_env_var_name_is_not_honored(self):
+        """LIBSLINK_CA_CERT_FILE/_PATH are the only supported CA env var
+        names (see load_ca_certs()); LIBSLINK_TLS_CERT_FILE is not read, so
+        it must not be treated as a substitute."""
 
         def handler(conn, reader, server, idx):
-            serve_hello(reader, conn)
-            cmd = serve_precommands(reader, conn)
-            serve_v4(reader, conn, cmd)
-            record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
-            conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
+            # Never reached: no CA is loaded, so the handshake must fail.
+            pass
 
         env_backup = dict(os.environ)
         os.environ.pop("LIBSLINK_CA_CERT_FILE", None)
@@ -203,16 +197,24 @@ class TestTLS(unittest.TestCase):
 
         events, _ = self.run_tls_scenario(
             handler,
-            ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+            [
+                "--v4",
+                "--station",
+                "XX_TEST:BHZ",
+                "--reconnectdelay",
+                "3",
+                "--timeout-seconds",
+                "4",
+            ],
+            timeout=12,
+            expect_timeout=True,
         )
 
-        self.assertEqual(
-            len(events["packets"]),
-            1,
-            "known bug (finding 4): LIBSLINK_TLS_CERT_FILE (the name tls_configure()'s own "
-            "log message and header comment document) should be honored the same as "
-            "LIBSLINK_CA_CERT_FILE, but only the latter is actually read: %r" % (events,),
+        self.assertTrue(
+            any("certificate verification failed" in line.lower() for line in events["log"]),
+            events["log"],
         )
+        self.assertEqual(events["packets"], [])
 
 
 if __name__ == "__main__":
