@@ -111,12 +111,8 @@ test_detect_ms2_looping_blockette_chain (void)
   SLT_EQ_INT ((int)reclen, -1, "detect() rejects a blockette chain that loops back on itself");
 }
 
-/* fable-review finding 8: the B1000 record-length field is decoded as
- * `(unsigned int)1 << *pMS2B1000_RECLEN(...)`.  The field is an
- * unvalidated uint8_t, so a value of 32 or more shifts a 32-bit unsigned
- * int by an out-of-range amount -- undefined behavior in C, which on
- * this platform's codegen wraps the shift amount modulo 32 and silently
- * returns a bogus, far-too-small record length instead of rejecting it. */
+/* The B1000 record-length field is a uint8_t exponent of two; only 6-20
+ * (64 bytes to 1 MiB) are accepted as valid record lengths. */
 static void
 test_detect_ms2_b1000_reclen_overflow (void)
 {
@@ -139,9 +135,60 @@ test_detect_ms2_b1000_reclen_overflow (void)
 
   reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
 
-  SLT_ASSERT (reclen <= 0,
-             "known bug (finding 8): an out-of-range B1000 record-length exponent "
-             "should be rejected, not silently wrapped into a bogus record length");
+  SLT_EQ_INT ((int)reclen, -1,
+             "detect() rejects an out-of-range B1000 record length exponent (too large)");
+}
+
+static void
+test_detect_ms2_b1000_reclen_too_small (void)
+{
+  uint8_t buf[128] = {0};
+  MS2Fields f;
+  char payloadformat;
+  int64_t reclen;
+
+  memset (&f, 0, sizeof (f));
+  f.network        = "XX";
+  f.station        = "TEST";
+  f.channel         = "BHZ";
+  f.year            = 2024;
+  f.day             = 216;
+  f.numblockettes   = 1;
+  f.blocketteoffset = MS2_FIXED_LENGTH;
+
+  fx_ms2_fixed (buf, sizeof (buf), &f, 0);
+  fx_ms2_b1000 (buf, sizeof (buf), MS2_FIXED_LENGTH, 11, 0, 3 /* out of range: < 6 */, 0, 0);
+
+  reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
+
+  SLT_EQ_INT ((int)reclen, -1,
+             "detect() rejects an out-of-range B1000 record length exponent (too small)");
+}
+
+static void
+test_detect_ms2_b1000_reclen_max_valid (void)
+{
+  uint8_t buf[128] = {0};
+  MS2Fields f;
+  char payloadformat;
+  int64_t reclen;
+
+  memset (&f, 0, sizeof (f));
+  f.network        = "XX";
+  f.station        = "TEST";
+  f.channel         = "BHZ";
+  f.year            = 2024;
+  f.day             = 216;
+  f.numblockettes   = 1;
+  f.blocketteoffset = MS2_FIXED_LENGTH;
+
+  fx_ms2_fixed (buf, sizeof (buf), &f, 0);
+  fx_ms2_b1000 (buf, sizeof (buf), MS2_FIXED_LENGTH, 11, 0, 20 /* 2^20 = 1 MiB, top of range */, 0, 0);
+
+  reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
+
+  SLT_EQ_INT ((int)reclen, 1048576,
+             "detect() accepts the top of the valid B1000 record length exponent range");
 }
 
 static void
@@ -449,6 +496,8 @@ main (void)
   SLT_RUN (test_detect_ms2_without_b1000);
   SLT_RUN (test_detect_ms2_looping_blockette_chain);
   SLT_RUN (test_detect_ms2_b1000_reclen_overflow);
+  SLT_RUN (test_detect_ms2_b1000_reclen_too_small);
+  SLT_RUN (test_detect_ms2_b1000_reclen_max_valid);
   SLT_RUN (test_detect_too_short);
   SLT_RUN (test_detect_ms3);
 

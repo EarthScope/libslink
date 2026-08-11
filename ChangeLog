@@ -10,6 +10,7 @@
 	- Copy the parsed host and port without a fixed length limit in
 	sl_set_serveraddress().
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
+	- Reject an out-of-range miniSEED 2 B1000 record length exponent in detect().
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

@@ -2127,9 +2127,20 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       if (blkt_type == 1000 &&
           (blkt_offset + 8) <= buflen)
       {
-        /* Field 3 of B1000 is a uint8_t value describing the buffer
-         * length as 2^(value).  Calculate 2-raised with a shift. */
-        reclen = (unsigned int)1 << *pMS2B1000_RECLEN(buffer+blkt_offset);
+        /* Field 3 of B1000 is a uint8_t value describing the record
+         * length as 2^(value).  Valid exponents span 64 bytes (6) to
+         * 1 MiB (20); reject anything outside that range rather than
+         * shift by an out-of-range amount. */
+        uint8_t reclen_exp = *pMS2B1000_RECLEN(buffer+blkt_offset);
+
+        if (reclen_exp < 6 || reclen_exp > 20)
+        {
+          sl_log (2, 0, "Invalid miniSEED2 B1000 record length exponent (%u)\n",
+                  reclen_exp);
+          return -1;
+        }
+
+        reclen = (int64_t)1 << reclen_exp;
 
         break;
       }
