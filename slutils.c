@@ -22,10 +22,10 @@
  ***************************************************************************/
 
 #include <errno.h>
+#include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <signal.h>
 
 #include "globmatch.h"
 #include "libslink.h"
@@ -92,8 +92,7 @@ SLCD *global_termination_SLCD = NULL;
  * @retval SLAUTHFAIL  Authentication failed
  ***************************************************************************/
 int
-sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
-            char *plbuffer, uint32_t plbuffersize)
+sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint32_t plbuffersize)
 {
   int64_t bytesread;
   int64_t current_time;
@@ -119,16 +118,14 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
       }
 
       /* Throttle the loop while delaying */
-      if (slconn->stat->conn_state == DOWN &&
-          slconn->stat->netdly_time &&
+      if (slconn->stat->conn_state == DOWN && slconn->stat->netdly_time &&
           slconn->stat->netdly_time > current_time)
       {
         sl_usleep (500000);
       }
 
       /* Connect to server if disconnected */
-      if (slconn->stat->conn_state == DOWN &&
-          slconn->stat->netdly_time < current_time)
+      if (slconn->stat->conn_state == DOWN && slconn->stat->netdly_time < current_time)
       {
         int connect_status = sl_connect (slconn, 1);
 
@@ -139,11 +136,11 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
 
         if (connect_status > 0)
         {
-          slconn->stat->conn_state     = UP;
-          slconn->stat->netto_time     = 0;
-          slconn->stat->netdly_time    = 0;
+          slconn->stat->conn_state = UP;
+          slconn->stat->netto_time = 0;
+          slconn->stat->netdly_time = 0;
           slconn->stat->keepalive_time = 0;
-          slconn->stat->query_state    = NoQuery;
+          slconn->stat->query_state = NoQuery;
         }
         else
         {
@@ -160,8 +157,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         {
           if (sl_configlink (slconn) == -1)
           {
-            sl_log_r (slconn, 2, 0, "[%s] %s(): negotiation with server failed\n",
-                      slconn->sladdr, __func__);
+            sl_log_r (slconn, 2, 0, "[%s] %s(): negotiation with server failed\n", slconn->sladdr,
+                      __func__);
             break;
           }
         }
@@ -170,8 +167,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
       }
 
       /* Send INFO request if one not in progress */
-      if (slconn->stat->conn_state == STREAMING &&
-          slconn->stat->query_state == NoQuery &&
+      if (slconn->stat->conn_state == STREAMING && slconn->stat->query_state == NoQuery &&
           slconn->info)
       {
         if (sl_send_info (slconn, slconn->info, 1) != -1)
@@ -180,8 +176,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         }
         else
         {
-          sl_log_r (slconn, 2, 0, "[%s] %s(): error sending INFO request\n",
-                    slconn->sladdr, __func__);
+          sl_log_r (slconn, 2, 0, "[%s] %s(): error sending INFO request\n", slconn->sladdr,
+                    __func__);
           slconn->stat->query_state = NoQuery;
         }
 
@@ -195,10 +191,9 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         /* Receive data into internal buffer (skip if connection already closed) */
         if (slconn->terminate == 0 && slconn->link != -1)
         {
-          bytesread = sl_recvdata (slconn,
-                                   slconn->recvbuffer + slconn->recvdatalen,
-                                   sizeof (slconn->recvbuffer) - slconn->recvdatalen,
-                                   slconn->sladdr);
+          bytesread =
+              sl_recvdata (slconn, slconn->recvbuffer + slconn->recvdatalen,
+                           sizeof (slconn->recvbuffer) - slconn->recvdatalen, slconn->sladdr);
 
           if (bytesread < 0)
           {
@@ -216,8 +211,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
 
             if (poll_state < 0 && slconn->terminate == 0)
             {
-              sl_log_r (slconn, 2, 0, "[%s] %s(): polling error: %s\n",
-                        slconn->sladdr, __func__, sl_strerror ());
+              sl_log_r (slconn, 2, 0, "[%s] %s(): polling error: %s\n", slconn->sladdr, __func__,
+                        sl_strerror ());
               break;
             }
           }
@@ -233,7 +228,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           if (slconn->recvdatalen - bytesconsumed >= 3 &&
               memcmp (slconn->recvbuffer + bytesconsumed, "END", 3) == 0)
           {
-            sl_log_r (slconn, 1, 1, "[%s] End of selected time window or stream (FETCH/dial-up mode)\n",
+            sl_log_r (slconn, 1, 1,
+                      "[%s] End of selected time window or stream (FETCH/dial-up mode)\n",
                       slconn->sladdr);
 
             bytesconsumed += 3;
@@ -259,14 +255,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           if ((slconn->protocol & SLPROTO3X && bytesavailable >= SLHEADSIZE_V3) ||
               (slconn->protocol & SLPROTO40 && bytesavailable >= SLHEADSIZE_V4))
           {
-            bytesread = receive_header (slconn,
-                                        slconn->recvbuffer + bytesconsumed,
-                                        bytesavailable);
+            bytesread = receive_header (slconn, slconn->recvbuffer + bytesconsumed, bytesavailable);
 
             if (bytesread < 0)
             {
-              sl_log_r (slconn, 2, 0, "[%s] %s(): error receiving header: %s\n",
-                        slconn->sladdr, __func__, sl_strerror ());
+              sl_log_r (slconn, 2, 0, "[%s] %s(): error receiving header: %s\n", slconn->sladdr,
+                        __func__, sl_strerror ());
               break;
             }
             else if (bytesread > 0)
@@ -275,12 +269,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
               if (slconn->stat->packetinfo.stationidlength > 0)
               {
                 slconn->stat->packetinfo.stationid[0] = '\0';
-                slconn->stat->stream_state            = STATIONID;
+                slconn->stat->stream_state = STATIONID;
               }
               else
               {
                 slconn->stat->packetinfo.payloadcollected = 0;
-                slconn->stat->stream_state                = PAYLOAD;
+                slconn->stat->stream_state = PAYLOAD;
               }
 
               bytesconsumed += bytesread;
@@ -293,12 +287,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             slconn->stat->packetinfo.stationidlength > 0 &&
             (slconn->recvdatalen - bytesconsumed) >= slconn->stat->packetinfo.stationidlength)
         {
-          if (slconn->stat->packetinfo.stationidlength > (sizeof (slconn->stat->packetinfo.stationid) - 1))
+          if (slconn->stat->packetinfo.stationidlength >
+              (sizeof (slconn->stat->packetinfo.stationid) - 1))
           {
             sl_log_r (slconn, 2, 0,
                       "[%s] %s(): received station ID is too large (%u) for buffer (%zu)\n",
-                      slconn->sladdr, __func__,
-                      slconn->stat->packetinfo.stationidlength,
+                      slconn->sladdr, __func__, slconn->stat->packetinfo.stationidlength,
                       sizeof (slconn->stat->packetinfo.stationid) - 1);
 
             sl_disconnect (slconn);
@@ -307,15 +301,14 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           }
           else
           {
-            memcpy (slconn->stat->packetinfo.stationid,
-                    slconn->recvbuffer + bytesconsumed,
+            memcpy (slconn->stat->packetinfo.stationid, slconn->recvbuffer + bytesconsumed,
                     slconn->stat->packetinfo.stationidlength);
 
             slconn->stat->packetinfo.stationid[slconn->stat->packetinfo.stationidlength] = '\0';
 
             /* Set state for payload collection */
             slconn->stat->packetinfo.payloadcollected = 0;
-            slconn->stat->stream_state                = PAYLOAD;
+            slconn->stat->stream_state = PAYLOAD;
 
             bytesconsumed += slconn->stat->packetinfo.stationidlength;
           }
@@ -333,8 +326,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             /* Shift any remaining data in the buffer to the start */
             if (bytesconsumed > 0 && bytesconsumed < slconn->recvdatalen)
             {
-              memmove (slconn->recvbuffer,
-                       slconn->recvbuffer + bytesconsumed,
+              memmove (slconn->recvbuffer, slconn->recvbuffer + bytesconsumed,
                        slconn->recvdatalen - bytesconsumed);
             }
 
@@ -346,18 +338,17 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           }
 
           bytesread = receive_payload (slconn, plbuffer, plbuffersize,
-                                       slconn->recvbuffer + bytesconsumed,
-                                       bytesavailable);
+                                       slconn->recvbuffer + bytesconsumed, bytesavailable);
 
           if (bytesread < 0)
           {
-            sl_log_r (slconn, 2, 0, "[%s] %s(): error receiving payload: %s\n",
-                      slconn->sladdr, __func__, sl_strerror ());
+            sl_log_r (slconn, 2, 0, "[%s] %s(): error receiving payload: %s\n", slconn->sladdr,
+                      __func__, sl_strerror ());
             break;
           }
           if (bytesread > 0)
           {
-            slconn->stat->netto_time     = 0;
+            slconn->stat->netto_time = 0;
             slconn->stat->keepalive_time = 0;
 
             bytesconsumed += bytesread;
@@ -370,8 +361,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             /* Shift any remaining data in the buffer to the start */
             if (bytesconsumed > 0 && bytesconsumed < slconn->recvdatalen)
             {
-              memmove (slconn->recvbuffer,
-                       slconn->recvbuffer + bytesconsumed,
+              memmove (slconn->recvbuffer, slconn->recvbuffer + bytesconsumed,
                        slconn->recvdatalen - bytesconsumed);
             }
 
@@ -385,8 +375,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             info_terminated = (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFOTERM ||
                                (slconn->stat->packetinfo.payloadformat == SLPAYLOAD_JSON &&
                                 slconn->stat->packetinfo.payloadsubformat == SLPAYLOAD_JSON_INFO));
-            info_payload    = (info_terminated ||
-                               slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO);
+            info_payload =
+                (info_terminated || slconn->stat->packetinfo.payloadformat == SLPAYLOAD_MSEED2INFO);
 
             was_keepalive = (info_payload && slconn->stat->query_state == KeepAliveQuery);
 
@@ -410,7 +400,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
               /* Update streaming tracking */
               if (update_stream (slconn, plbuffer) == -1)
               {
-                sl_log_r (slconn, 2, 0, "[%s] %s(): cannot update stream tracking, internal error\n",
+                sl_log_r (slconn, 2, 0,
+                          "[%s] %s(): cannot update stream tracking, internal error\n",
                           slconn->sladdr, __func__);
                 sl_disconnect (slconn);
                 *packetinfo = NULL;
@@ -423,10 +414,12 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           }
         } /* Done reading payload */
 
-        /* If a viable amount of data exists but has not been consumed something is wrong with the stream */
+        /* If a viable amount of data exists but has not been consumed something is wrong with the
+         * stream */
         if (slconn->recvdatalen > SL_MIN_PAYLOAD && bytesconsumed == 0)
         {
-          sl_log_r (slconn, 2, 0, "[%s] %s(): cannot process received data (recvdatalen: %u, stream_state: %d)\n",
+          sl_log_r (slconn, 2, 0,
+                    "[%s] %s(): cannot process received data (recvdatalen: %u, stream_state: %d)\n",
                     slconn->sladdr, __func__, slconn->recvdatalen, slconn->stat->stream_state);
           break;
         }
@@ -434,8 +427,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         /* Shift any remaining data in the buffer to the start */
         if (bytesconsumed > 0 && bytesconsumed < slconn->recvdatalen)
         {
-          memmove (slconn->recvbuffer,
-                   slconn->recvbuffer + bytesconsumed,
+          memmove (slconn->recvbuffer, slconn->recvbuffer + bytesconsumed,
                    slconn->recvdatalen - bytesconsumed);
         }
 
@@ -444,8 +436,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
         /* Connection closed and buffer exhausted or can't progress - break to reconnect */
         if (slconn->link == -1 && (slconn->recvdatalen == 0 || bytesconsumed == 0))
         {
-          sl_log_r (slconn, 2, 0, "[%s] %s(): connection closed\n",
-                    slconn->sladdr, __func__);
+          sl_log_r (slconn, 2, 0, "[%s] %s(): connection closed\n", slconn->sladdr, __func__);
           break;
         }
 
@@ -460,18 +451,16 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
       current_time = sl_nstime ();
 
       /* Check for network idle timeout */
-      if (slconn->stat->conn_state == STREAMING &&
-          slconn->netto && slconn->stat->netto_time &&
+      if (slconn->stat->conn_state == STREAMING && slconn->netto && slconn->stat->netto_time &&
           slconn->stat->netto_time < current_time)
       {
-        sl_log_r (slconn, 1, 0, "[%s] network timeout, no data for %d seconds\n",
-                  slconn->sladdr, slconn->netto);
+        sl_log_r (slconn, 1, 0, "[%s] network timeout, no data for %d seconds\n", slconn->sladdr,
+                  slconn->netto);
         break;
       }
 
       /* Check if keepalive packet needs to be sent */
-      if (slconn->stat->conn_state == STREAMING &&
-          slconn->stat->query_state == NoQuery &&
+      if (slconn->stat->conn_state == STREAMING && slconn->stat->query_state == NoQuery &&
           slconn->keepalive && slconn->stat->keepalive_time &&
           slconn->stat->keepalive_time < current_time)
       {
@@ -484,7 +473,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
           break;
         }
 
-        slconn->stat->query_state    = KeepAliveQuery;
+        slconn->stat->query_state = KeepAliveQuery;
         slconn->stat->keepalive_time = 0;
       }
 
@@ -517,8 +506,7 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
     /* Check for conditions that should not trigger reconnection:
      * - Explicit termination requested
      * - End of time window in dial-up mode (only if we were streaming) */
-    if (slconn->terminate ||
-        (slconn->dialup && slconn->stat->conn_state == STREAMING))
+    if (slconn->terminate || (slconn->dialup && slconn->stat->conn_state == STREAMING))
     {
       break;
     }
@@ -526,11 +514,11 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
     /* Prepare for reconnection */
     sl_log_r (slconn, 1, 1, "[%s] reconnecting in %d seconds\n", slconn->sladdr, slconn->netdly);
     sl_disconnect (slconn);
-    slconn->stat->conn_state   = DOWN;
+    slconn->stat->conn_state = DOWN;
     slconn->stat->stream_state = HEADER;
-    slconn->recvdatalen        = 0;
-    slconn->stat->netto_time   = 0;
-    slconn->stat->netdly_time  = sl_nstime () + SL_EPOCH2SLTIME (slconn->netdly);
+    slconn->recvdatalen = 0;
+    slconn->stat->netto_time = 0;
+    slconn->stat->netdly_time = sl_nstime () + SL_EPOCH2SLTIME (slconn->netdly);
 
   } /* End of reconnection loop */
 
@@ -568,9 +556,10 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
     /* Parse v3 INFO header */
     if (memcmp (buffer, INFOSIGNATURE, 6) == 0)
     {
-      slconn->stat->packetinfo.seqnum        = SL_UNSETSEQUENCE;
+      slconn->stat->packetinfo.seqnum = SL_UNSETSEQUENCE;
       slconn->stat->packetinfo.payloadlength = 0;
-      slconn->stat->packetinfo.payloadformat = (buffer[SLHEADSIZE_V3 - 1] == '*') ? SLPAYLOAD_MSEED2INFO : SLPAYLOAD_MSEED2INFOTERM;
+      slconn->stat->packetinfo.payloadformat =
+          (buffer[SLHEADSIZE_V3 - 1] == '*') ? SLPAYLOAD_MSEED2INFO : SLPAYLOAD_MSEED2INFOTERM;
     }
     /* Parse v3 data header */
     else if (memcmp (buffer, SIGNATURE_V3, 2) == 0)
@@ -602,7 +591,7 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
     /* Parse v4 header */
     if (memcmp (buffer, SIGNATURE_V4, 2) == 0)
     {
-      slconn->stat->packetinfo.payloadformat    = buffer[2];
+      slconn->stat->packetinfo.payloadformat = buffer[2];
       slconn->stat->packetinfo.payloadsubformat = buffer[3];
       memcpy (&slconn->stat->packetinfo.payloadlength, buffer + 4, 4);
       memcpy (&slconn->stat->packetinfo.seqnum, buffer + 8, 8);
@@ -646,8 +635,8 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
  * -1 :  on error
  ***************************************************************************/
 int64_t
-receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
-                 uint8_t *buffer, uint32_t bytesavailable)
+receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *buffer,
+                 uint32_t bytesavailable)
 {
   SLpacketinfo *packetinfo = NULL;
   uint32_t bytestoconsume = 0;
@@ -684,7 +673,8 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 
   if (bytestoconsume > plbuffersize - packetinfo->payloadcollected)
   {
-    sl_log_r (slconn, 2, 0, "[%s] %s(): provided buffer size (%u) is insufficient for payload (%u)\n",
+    sl_log_r (slconn, 2, 0,
+              "[%s] %s(): provided buffer size (%u) is insufficient for payload (%u)\n",
               slconn->sladdr, __func__, plbuffersize,
               (packetinfo->payloadlength == 0) ? bytestoconsume : packetinfo->payloadlength);
     return -1;
@@ -738,7 +728,7 @@ update_stream (SLCD *slconn, const char *payload)
 {
   SLpacketinfo *packetinfo = NULL;
   SLstream *curstream;
-  int updates  = 0;
+  int updates = 0;
 
   char timestamp[32] = {0};
   char sourceid[64] = {0};
@@ -764,11 +754,9 @@ update_stream (SLCD *slconn, const char *payload)
   if (packetinfo->payloadformat == SLPAYLOAD_MSEED2 ||
       packetinfo->payloadformat == SLPAYLOAD_MSEED3)
   {
-    if (sl_payload_info (slconn->log, packetinfo,
-                         payload, packetinfo->payloadlength,
+    if (sl_payload_info (slconn->log, packetinfo, payload, packetinfo->payloadlength,
                          (packetinfo->stationidlength == 0) ? sourceid : NULL, sizeof (sourceid),
-                         timestamp, sizeof (timestamp),
-                         NULL, NULL) == -1)
+                         timestamp, sizeof (timestamp), NULL, NULL) == -1)
     {
       sl_log_r (slconn, 2, 0, "[%s] %s(): cannot extract payload info for miniSEED\n",
                 slconn->sladdr, __func__);
@@ -790,7 +778,8 @@ update_stream (SLCD *slconn, const char *payload)
 
             if (count >= sizeof (packetinfo->stationid))
             {
-              sl_log_r (slconn, 2, 0, "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%zu)\n",
+              sl_log_r (slconn, 2, 0,
+                        "[%s] %s(): extracted NET_STA ID from miniSEED is too large (%zu)\n",
                         slconn->sladdr, __func__, count);
               return -1;
             }
@@ -807,8 +796,7 @@ update_stream (SLCD *slconn, const char *payload)
   curstream = slconn->streams;
 
   /* For all-station mode */
-  if (curstream != NULL &&
-      strcmp (curstream->stationid, "*") == 0)
+  if (curstream != NULL && strcmp (curstream->stationid, "*") == 0)
   {
     curstream->seqnum = packetinfo->seqnum;
     strcpy (curstream->timestamp, timestamp);
@@ -833,11 +821,11 @@ update_stream (SLCD *slconn, const char *payload)
 
   /* If no updates then no match was found */
   if (updates == 0)
-    sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n",
-              slconn->sladdr, packetinfo->stationid);
+    sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n", slconn->sladdr,
+              packetinfo->stationid);
 
   return (updates == 0) ? -1 : 0;
-  } /* End of update_stream() */
+} /* End of update_stream() */
 
 /** ************************************************************************
  * @brief Initialize a new ::SLCD
@@ -870,37 +858,37 @@ sl_initslcd (const char *clientname, const char *clientversion)
   memset (slconn, 0, sizeof (SLCD));
 
   /* Set defaults */
-  slconn->sladdr        = NULL;
-  slconn->slhost        = NULL;
-  slconn->slport        = NULL;
-  slconn->clientname    = NULL;
+  slconn->sladdr = NULL;
+  slconn->slhost = NULL;
+  slconn->slport = NULL;
+  slconn->clientname = NULL;
   slconn->clientversion = NULL;
-  slconn->start_time    = NULL;
-  slconn->end_time      = NULL;
-  slconn->keepalive     = 0;
-  slconn->iotimeout     = 60;
-  slconn->netto         = 600;
-  slconn->netdly        = 30;
-  slconn->auth_value    = NULL;
-  slconn->auth_finish   = NULL;
-  slconn->auth_data     = NULL;
-  slconn->streams       = NULL;
-  slconn->info          = NULL;
-  slconn->noblock       = 0;
-  slconn->dialup        = 0;
-  slconn->batchmode     = 0;
-  slconn->lastpkttime   = 1;
-  slconn->terminate     = 0;
-  slconn->resume        = 1;
-  slconn->multistation  = 0;
+  slconn->start_time = NULL;
+  slconn->end_time = NULL;
+  slconn->keepalive = 0;
+  slconn->iotimeout = 60;
+  slconn->netto = 600;
+  slconn->netdly = 30;
+  slconn->auth_value = NULL;
+  slconn->auth_finish = NULL;
+  slconn->auth_data = NULL;
+  slconn->streams = NULL;
+  slconn->info = NULL;
+  slconn->noblock = 0;
+  slconn->dialup = 0;
+  slconn->batchmode = 0;
+  slconn->lastpkttime = 1;
+  slconn->terminate = 0;
+  slconn->resume = 1;
+  slconn->multistation = 0;
 
-  slconn->link             = -1;
-  slconn->protocol         = UNSET_PROTO;
+  slconn->link = -1;
+  slconn->protocol = UNSET_PROTO;
   slconn->server_protocols = 0;
-  slconn->capabilities     = NULL;
-  slconn->caparray         = NULL;
-  slconn->tls              = 0;
-  slconn->tlsctx           = NULL;
+  slconn->capabilities = NULL;
+  slconn->caparray = NULL;
+  slconn->tls = 0;
+  slconn->tlsctx = NULL;
 
   /* Allocate the associated persistent state struct */
   if ((slconn->stat = (SLstat *)malloc (sizeof (SLstat))) == NULL)
@@ -917,13 +905,13 @@ sl_initslcd (const char *clientname, const char *clientversion)
   slconn->stat->packetinfo.payloadcollected = 0;
   slconn->stat->packetinfo.payloadformat = SLPAYLOAD_UNKNOWN;
 
-  slconn->stat->netto_time     = 0;
-  slconn->stat->netdly_time    = 0;
+  slconn->stat->netto_time = 0;
+  slconn->stat->netdly_time = 0;
   slconn->stat->keepalive_time = 0;
 
-  slconn->stat->conn_state   = DOWN;
+  slconn->stat->conn_state = DOWN;
   slconn->stat->stream_state = HEADER;
-  slconn->stat->query_state  = NoQuery;
+  slconn->stat->query_state = NoQuery;
 
   slconn->log = NULL;
 
@@ -1000,7 +988,7 @@ sl_freeslcd (SLCD *slconn)
 int
 sl_set_clientname (SLCD *slconn, const char *name, const char *version)
 {
-  char *newname    = NULL;
+  char *newname = NULL;
   char *newversion = NULL;
 
   if (!slconn || !name)
@@ -1029,7 +1017,7 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
   free (slconn->clientname);
   free (slconn->clientversion);
 
-  slconn->clientname    = newname;
+  slconn->clientname = newname;
   slconn->clientversion = newversion;
 
   return 0;
@@ -1089,8 +1077,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
 
   /* Check for host enclosed in square brackets, e.g. for raw IPv6 addresses */
   if ((open = strchr (server_address, '[')) != NULL &&
-      (close = strchr (server_address, ']')) != NULL &&
-      open < close)
+      (close = strchr (server_address, ']')) != NULL && open < close)
   {
     search = close + 1;
   }
@@ -1128,7 +1115,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   else
   {
     hostptr = server_address;
-    hostlen = (size_t) (separator - server_address);
+    hostlen = (size_t)(separator - server_address);
 
     /* Handle case of separator present but nothing following */
     if (strlen (separator + 1) > 0)
@@ -1157,8 +1144,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   if (server_address != slconn->sladdr)
     new_sladdr = strdup (server_address);
 
-  if (new_slhost == NULL ||
-      new_slport == NULL ||
+  if (new_slhost == NULL || new_slport == NULL ||
       (server_address != slconn->sladdr && new_sladdr == NULL))
   {
     free (new_sladdr);
@@ -1182,7 +1168,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   slconn->slport = new_slport;
 
   /* Set TLS flag if port is the TLS default */
-  if (strcmp(slconn->slport, SL_SECURE_PORT) == 0)
+  if (strcmp (slconn->slport, SL_SECURE_PORT) == 0)
   {
     sl_set_tlsmode (slconn, 1);
   }
@@ -1211,27 +1197,27 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
 int
 sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
 {
-    if (!slconn || (!start_time && !end_time))
-        return -1;
+  if (!slconn || (!start_time && !end_time))
+    return -1;
 
-    free (slconn->start_time);
-    free (slconn->end_time);
-    slconn->start_time = NULL;
-    slconn->end_time = NULL;
+  free (slconn->start_time);
+  free (slconn->end_time);
+  slconn->start_time = NULL;
+  slconn->end_time = NULL;
 
-    if (start_time && (slconn->start_time = strdup (start_time)) == NULL)
-    {
-        sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
-        return -1;
-    }
+  if (start_time && (slconn->start_time = strdup (start_time)) == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
 
-    if (end_time && (slconn->end_time = strdup (end_time)) == NULL)
-    {
-        sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
-        return -1;
-    }
+  if (end_time && (slconn->end_time = strdup (end_time)) == NULL)
+  {
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
 
-    return 0;
+  return 0;
 } /* End of sl_set_timewindow() */
 
 /* Internal auth_value handler to return auth_data */
@@ -1296,22 +1282,20 @@ free_internal_auth_data (SLCD *slconn)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_set_auth_params (SLCD *slconn,
-                    const char *(*auth_value) (const char *server, void *auth_data),
-                    void (*auth_finish) (const char *server, void *auth_data),
-                    void *auth_data)
+sl_set_auth_params (SLCD *slconn, const char *(*auth_value) (const char *server, void *auth_data),
+                    void (*auth_finish) (const char *server, void *auth_data), void *auth_data)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    if (auth_data != slconn->auth_data)
-        free_internal_auth_data (slconn);
+  if (auth_data != slconn->auth_data)
+    free_internal_auth_data (slconn);
 
-    slconn->auth_value  = auth_value;
-    slconn->auth_finish = auth_finish;
-    slconn->auth_data   = auth_data;
+  slconn->auth_value = auth_value;
+  slconn->auth_finish = auth_finish;
+  slconn->auth_data = auth_data;
 
-    return 0;
+  return 0;
 } /* End of sl_set_auth_params() */
 
 /** ************************************************************************
@@ -1346,7 +1330,8 @@ sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar)
 
   if (username == NULL || password == NULL)
   {
-    sl_log_r (NULL, 2, 0, "%s(): error retrieving authentication environment variables\n", __func__);
+    sl_log_r (NULL, 2, 0, "%s(): error retrieving authentication environment variables\n",
+              __func__);
 
     if (username == NULL)
     {
@@ -1370,15 +1355,10 @@ sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar)
     return -1;
   }
 
-  snprintf (auth_value, avlength,
-            "USERPASS %s %s",
-            username, password);
+  snprintf (auth_value, avlength, "USERPASS %s %s", username, password);
 
   /* Set the authentication parameters */
-  sl_set_auth_params (slconn,
-                      internal_auth_value_data,
-                      NULL,
-                      auth_value);
+  sl_set_auth_params (slconn, internal_auth_value_data, NULL, auth_value);
 
   return 0;
 }
@@ -1400,12 +1380,12 @@ sl_set_auth_envvars (SLCD *slconn, const char *uservar, const char *passvar)
 int
 sl_set_keepalive (SLCD *slconn, int keepalive)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->keepalive = keepalive;
+  slconn->keepalive = keepalive;
 
-    return 0;
+  return 0;
 } /* End of sl_set_keepalive() */
 
 /** ************************************************************************
@@ -1426,12 +1406,12 @@ sl_set_keepalive (SLCD *slconn, int keepalive)
 int
 sl_set_iotimeout (SLCD *slconn, int iotimeout)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->iotimeout = iotimeout;
+  slconn->iotimeout = iotimeout;
 
-    return 0;
+  return 0;
 } /* End of sl_set_iotimeout() */
 
 /** ************************************************************************
@@ -1451,12 +1431,12 @@ sl_set_iotimeout (SLCD *slconn, int iotimeout)
 int
 sl_set_idletimeout (SLCD *slconn, int idletimeout)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->netto = idletimeout;
+  slconn->netto = idletimeout;
 
-    return 0;
+  return 0;
 } /* End of sl_set_idletimeout() */
 
 /** ************************************************************************
@@ -1477,12 +1457,12 @@ sl_set_idletimeout (SLCD *slconn, int idletimeout)
 int
 sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->netdly = reconnectdelay;
+  slconn->netdly = reconnectdelay;
 
-    return 0;
+  return 0;
 } /* End of sl_set_reconnectdelay() */
 
 /** ************************************************************************
@@ -1505,12 +1485,12 @@ sl_set_reconnectdelay (SLCD *slconn, int reconnectdelay)
 int
 sl_set_blockingmode (SLCD *slconn, int nonblock)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->noblock = (nonblock) ? 1 : 0;
+  slconn->noblock = (nonblock) ? 1 : 0;
 
-    return 0;
+  return 0;
 } /* End of sl_set_blockingmode() */
 
 /** ************************************************************************
@@ -1531,12 +1511,12 @@ sl_set_blockingmode (SLCD *slconn, int nonblock)
 int
 sl_set_dialupmode (SLCD *slconn, int dialup)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->dialup = (dialup) ? 1 : 0;
+  slconn->dialup = (dialup) ? 1 : 0;
 
-    return 0;
+  return 0;
 } /* End of sl_set_dialupmode() */
 
 /** ************************************************************************
@@ -1557,12 +1537,12 @@ sl_set_dialupmode (SLCD *slconn, int dialup)
 int
 sl_set_batchmode (SLCD *slconn, int batchmode)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->batchmode = (batchmode) ? 1 : 0;
+  slconn->batchmode = (batchmode) ? 1 : 0;
 
-    return 0;
+  return 0;
 } /* End of sl_set_batchmode() */
 
 /** ************************************************************************
@@ -1584,12 +1564,12 @@ sl_set_batchmode (SLCD *slconn, int batchmode)
 int
 sl_set_tlsmode (SLCD *slconn, int tlsmode)
 {
-    if (!slconn)
-        return -1;
+  if (!slconn)
+    return -1;
 
-    slconn->tls = (tlsmode) ? 1 : 0;
+  slconn->tls = (tlsmode) ? 1 : 0;
 
-    return 0;
+  return 0;
 } /* End of sl_set_tlsmode() */
 
 /** ************************************************************************
@@ -1644,8 +1624,7 @@ sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol)
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_add_stream (SLCD *slconn, const char *stationid,
-               const char *selectors, uint64_t seqnum,
+sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint64_t seqnum,
                const char *timestamp)
 {
   SLstream *curstream;
@@ -1663,8 +1642,8 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   {
     if (strcmp (slconn->streams->stationid, "*") == 0)
     {
-      sl_log_r (slconn, 2, 0, "[%s] %s(): all-station mode already configured!\n",
-                slconn->sladdr, __func__);
+      sl_log_r (slconn, 2, 0, "[%s] %s(): all-station mode already configured!\n", slconn->sladdr,
+                __func__);
       return -1;
     }
   }
@@ -1675,8 +1654,8 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   {
     if (strlen (timestamp) > sizeof (isotime) - 2)
     {
-      sl_log_r (slconn, 2, 0, "%s(): timestamp for %s entry is too long: '%s'\n",
-                __func__, stationid, timestamp);
+      sl_log_r (slconn, 2, 0, "%s(): timestamp for %s entry is too long: '%s'\n", __func__,
+                stationid, timestamp);
       return -1;
     }
 
@@ -1684,8 +1663,8 @@ sl_add_stream (SLCD *slconn, const char *stationid,
 
     if (sl_isodatetime (isotime, isotime) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n",
-                __func__, stationid, isotime);
+      sl_log_r (slconn, 2, 0, "%s(): could not convert timestamp for %s entry: '%s'\n", __func__,
+                stationid, isotime);
       return -1;
     }
   }
@@ -1726,7 +1705,9 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   while (curstream)
   {
     /* Determine wildcard partition */
-    partition = (strchr (curstream->stationid, '*')) ? 3 : (strchr (curstream->stationid, '?')) ? 2 : 1;
+    partition = (strchr (curstream->stationid, '*'))   ? 3
+                : (strchr (curstream->stationid, '?')) ? 2
+                                                       : 1;
 
     /* Compare partitions */
     if (newparitition < partition)
@@ -1747,13 +1728,13 @@ sl_add_stream (SLCD *slconn, const char *stationid,
     }
 
     followstream = curstream;
-    curstream  = curstream->next;
+    curstream = curstream->next;
   }
 
   /* Add new entry to the list */
   if (followstream)
   {
-    newstream->next    = followstream->next;
+    newstream->next = followstream->next;
     followstream->next = newstream;
   }
   else
@@ -1787,8 +1768,8 @@ sl_add_stream (SLCD *slconn, const char *stationid,
  * @retval -1 : error
  ***************************************************************************/
 int
-sl_set_allstation_params (SLCD *slconn, const char *selectors,
-                          uint64_t seqnum, const char *timestamp)
+sl_set_allstation_params (SLCD *slconn, const char *selectors, uint64_t seqnum,
+                          const char *timestamp)
 {
   SLstream *newstream;
   char isotime[32] = {0};
@@ -1802,8 +1783,8 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
   {
     if (strlen (timestamp) > sizeof (isotime) - 2)
     {
-      sl_log_r (slconn, 2, 0, "%s(): timestamp for all-station mode is too long: '%s'\n",
-                __func__, timestamp);
+      sl_log_r (slconn, 2, 0, "%s(): timestamp for all-station mode is too long: '%s'\n", __func__,
+                timestamp);
       return -1;
     }
 
@@ -1833,8 +1814,8 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors,
   }
   else if (strcmp (newstream->stationid, "*") != 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n",
-              slconn->sladdr, __func__);
+    sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n", slconn->sladdr,
+              __func__);
     return -1;
   }
 
@@ -1931,7 +1912,7 @@ sl_hascapability (SLCD *slconn, char *capability)
   if (slconn->caparray == NULL)
   {
     /* Copy and replace spaces with terminating NULLs */
-    slconn->caparray = strdup(slconn->capabilities);
+    slconn->caparray = strdup (slconn->capabilities);
 
     for (idx = 0; idx < length; idx++)
     {
@@ -2004,9 +1985,9 @@ sl_set_termination_handler (SLCD *slconn)
   global_termination_SLCD = slconn;
 
 #if defined(SLP_WIN)
-  signal(SIGINT, internal_term_handler);
-  signal(SIGTERM, internal_term_handler);
-  signal(SIGABRT, internal_term_handler);
+  signal (SIGINT, internal_term_handler);
+  signal (SIGTERM, internal_term_handler);
+  signal (SIGABRT, internal_term_handler);
 #else
   struct sigaction sa;
 
@@ -2044,10 +2025,14 @@ sl_printslcd (SLCD *slconn)
   sl_log_r (slconn, 0, 0, "             Address: %s\n", slconn->sladdr ? slconn->sladdr : "NULL");
   sl_log_r (slconn, 0, 0, "                Host: %s\n", slconn->slhost ? slconn->slhost : "NULL");
   sl_log_r (slconn, 0, 0, "                Port: %s\n", slconn->slport ? slconn->slport : "NULL");
-  sl_log_r (slconn, 0, 0, "         Client name: %s\n", slconn->clientname ? slconn->clientname : "NULL");
-  sl_log_r (slconn, 0, 0, "      Client version: %s\n", slconn->clientversion ? slconn->clientversion : "NULL");
-  sl_log_r (slconn, 0, 0, "          Start time: %s\n", slconn->start_time ? slconn->start_time : "NULL");
-  sl_log_r (slconn, 0, 0, "            End time: %s\n", slconn->end_time ? slconn->end_time : "NULL");
+  sl_log_r (slconn, 0, 0, "         Client name: %s\n",
+            slconn->clientname ? slconn->clientname : "NULL");
+  sl_log_r (slconn, 0, 0, "      Client version: %s\n",
+            slconn->clientversion ? slconn->clientversion : "NULL");
+  sl_log_r (slconn, 0, 0, "          Start time: %s\n",
+            slconn->start_time ? slconn->start_time : "NULL");
+  sl_log_r (slconn, 0, 0, "            End time: %s\n",
+            slconn->end_time ? slconn->end_time : "NULL");
   sl_log_r (slconn, 0, 0, "          Keep alive: %d seconds\n", slconn->keepalive);
   sl_log_r (slconn, 0, 0, "         I/O timeout: %d seconds\n", slconn->iotimeout);
   sl_log_r (slconn, 0, 0, "        Idle timeout: %d seconds\n", slconn->netto);
@@ -2072,10 +2057,11 @@ sl_printslcd (SLCD *slconn)
     else if (curstream->seqnum == SL_ALLDATASEQUENCE)
       strcpy (sequence, "ALLDATA");
     else
-      snprintf (sequence, sizeof(sequence), "%" PRIu64, curstream->seqnum);
+      snprintf (sequence, sizeof (sequence), "%" PRIu64, curstream->seqnum);
 
     sl_log_r (slconn, 0, 0, "             Station ID: %s\n", curstream->stationid);
-    sl_log_r (slconn, 0, 0, "                  Selectors: %s\n", curstream->selectors ? curstream->selectors : "NULL");
+    sl_log_r (slconn, 0, 0, "                  Selectors: %s\n",
+              curstream->selectors ? curstream->selectors : "NULL");
     sl_log_r (slconn, 0, 0, "                   Sequence: %s\n", sequence);
     sl_log_r (slconn, 0, 0, "                 Time stamp: %s\n", curstream->timestamp);
     curstream = curstream->next;
@@ -2129,8 +2115,8 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
     if (!sl_littleendianhost ())
       swapflag = 1;
 
-    uint16_t extralength = HO2u(*pMS3FSDH_EXTRALENGTH (buffer), swapflag);
-    uint32_t datalength = HO2u(*pMS3FSDH_DATALENGTH (buffer), swapflag);
+    uint16_t extralength = HO2u (*pMS3FSDH_EXTRALENGTH (buffer), swapflag);
+    uint32_t datalength = HO2u (*pMS3FSDH_DATALENGTH (buffer), swapflag);
 
     reclen = MS3FSDH_LENGTH                 /* Length of fixed portion of header */
              + *pMS3FSDH_SIDLENGTH (buffer) /* Length of source identifier */
@@ -2143,15 +2129,13 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
     reclen = 0;
 
     /* Check to see if byte swapping is needed by checking for sane year and day */
-    if (!MS_ISVALIDYEARDAY (*pMS2FSDH_YEAR(buffer), *pMS2FSDH_DAY(buffer)))
+    if (!MS_ISVALIDYEARDAY (*pMS2FSDH_YEAR (buffer), *pMS2FSDH_DAY (buffer)))
       swapflag = 1;
 
-    blkt_offset = HO2u(*pMS2FSDH_BLOCKETTEOFFSET (buffer), swapflag);
+    blkt_offset = HO2u (*pMS2FSDH_BLOCKETTEOFFSET (buffer), swapflag);
 
     /* Loop through blockettes as long as number is non-zero and viable */
-    while (blkt_offset != 0 &&
-           blkt_offset > 47 &&
-           blkt_offset <= buflen)
+    while (blkt_offset != 0 && blkt_offset > 47 && blkt_offset <= buflen)
     {
       memcpy (&blkt_type, buffer + blkt_offset, 2);
       memcpy (&next_blkt, buffer + blkt_offset + 2, 2);
@@ -2163,19 +2147,17 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       }
 
       /* Found a 1000 blockette, not truncated */
-      if (blkt_type == 1000 &&
-          (blkt_offset + 8) <= buflen)
+      if (blkt_type == 1000 && (blkt_offset + 8) <= buflen)
       {
         /* Field 3 of B1000 is a uint8_t value describing the record
          * length as 2^(value).  Valid exponents span 64 bytes (6) to
          * 1 MiB (20); reject anything outside that range rather than
          * shift by an out-of-range amount. */
-        uint8_t reclen_exp = *pMS2B1000_RECLEN(buffer+blkt_offset);
+        uint8_t reclen_exp = *pMS2B1000_RECLEN (buffer + blkt_offset);
 
         if (reclen_exp < 6 || reclen_exp > 20)
         {
-          sl_log (2, 0, "Invalid miniSEED2 B1000 record length exponent (%u)\n",
-                  reclen_exp);
+          sl_log (2, 0, "Invalid miniSEED2 B1000 record length exponent (%u)\n", reclen_exp);
           return -1;
         }
 
@@ -2187,8 +2169,10 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       /* Safety check for invalid offset */
       if (next_blkt != 0 && (next_blkt < 4 || (next_blkt - 4) <= blkt_offset))
       {
-        sl_log (2, 0, "Invalid miniSEED2 blockette offset (%d) less than or equal to current offset (%d)\n",
-                next_blkt, blkt_offset);
+        sl_log (
+            2, 0,
+            "Invalid miniSEED2 blockette offset (%d) less than or equal to current offset (%d)\n",
+            next_blkt, blkt_offset);
         return -1;
       }
 

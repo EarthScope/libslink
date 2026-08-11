@@ -44,7 +44,7 @@ static int _match_charclass (const char **pp, unsigned char c);
  * @returns 0 if string does not match pattern and non-zero otherwise.
  ***************************************************************************/
 int
-GLOBMATCH(globmatch) (const char *string, const char *pattern)
+GLOBMATCH (globmatch) (const char *string, const char *pattern)
 {
   const char *star_p = NULL;   /* position of the most recent '*' in pattern */
   const char *star_s = NULL;   /* position in string when that '*' was seen */
@@ -182,7 +182,7 @@ static int
 _match_charclass (const char **pp, unsigned char c)
 {
   const char *p;
-  int negate  = 0;
+  int negate = 0;
   int matched = 0;
 
   if (pp == NULL || *pp == NULL)

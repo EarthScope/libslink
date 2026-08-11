@@ -57,8 +57,7 @@
  * @sa sl_add_streamlist(), sl_add_stream()
  ***************************************************************************/
 int
-sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
-                        const char *defselect)
+sl_add_streamlist_file (SLCD *slconn, const char *streamfile, const char *defselect)
 {
   FILE *fp;
   char *cp;
@@ -87,8 +86,8 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
 
   while (fgets (line, sizeof (line), fp))
   {
-    memset (stationid, 0, sizeof(stationid));
-    memset (selectors, 0, sizeof(selectors));
+    memset (stationid, 0, sizeof (stationid));
+    memset (selectors, 0, sizeof (selectors));
 
     /* Terminate string at first carriage return or newline */
     if ((cp = strchr (line, '\r')) != NULL || (cp = strchr (line, '\n')) != NULL)
@@ -107,12 +106,10 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
       *--cp = '\0';
 
     /* Add this stream to the stream list */
-    if (sl_add_stream (slconn, stationid,
-                       (selectors[0]) ? selectors : defselect,
-                       SL_UNSETSEQUENCE, NULL))
+    if (sl_add_stream (slconn, stationid, (selectors[0]) ? selectors : defselect, SL_UNSETSEQUENCE,
+                       NULL))
     {
-      sl_log_r (slconn, 2, 0, "cannot add stream %s from %s\n",
-                stationid, streamfile);
+      sl_log_r (slconn, 2, 0, "cannot add stream %s from %s\n", stationid, streamfile);
       fclose (fp);
       return -1;
     }
@@ -166,8 +163,7 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
  * @sa sl_add_streamlist_file(), sl_add_stream()
  ***************************************************************************/
 int
-sl_add_streamlist (SLCD *slconn, const char *streamlist,
-                   const char *defselect)
+sl_add_streamlist (SLCD *slconn, const char *streamlist, const char *defselect)
 {
   char *parselist;
   char *stream;
@@ -205,9 +201,8 @@ sl_add_streamlist (SLCD *slconn, const char *streamlist,
     /* Add non-empty streams to list, using default selectors if none parsed */
     if (strlen (stream) > 0)
     {
-      if (sl_add_stream (slconn, stream,
-                         (selectors) ? selectors : defselect,
-                         SL_UNSETSEQUENCE, NULL))
+      if (sl_add_stream (slconn, stream, (selectors) ? selectors : defselect, SL_UNSETSEQUENCE,
+                         NULL))
       {
         sl_log_r (slconn, 2, 0, "cannot add stream %s\n", stream);
         free (parselist);

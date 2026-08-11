@@ -32,12 +32,12 @@
 
 #include "libslink.h"
 
+#include "mbedtls/include/mbedtls/ctr_drbg.h"
 #include "mbedtls/include/mbedtls/debug.h"
+#include "mbedtls/include/mbedtls/entropy.h"
+#include "mbedtls/include/mbedtls/error.h"
 #include "mbedtls/include/mbedtls/net_sockets.h"
 #include "mbedtls/include/mbedtls/ssl.h"
-#include "mbedtls/include/mbedtls/entropy.h"
-#include "mbedtls/include/mbedtls/ctr_drbg.h"
-#include "mbedtls/include/mbedtls/error.h"
 
 /* Some portable macros to test error conditions */
 #if defined(SLP_WIN)
@@ -90,9 +90,9 @@ tls_debug (void *ctx, int level, const char *file, int line, const char *str)
 int
 tls_configure (SLCD *slconn, const char *nodename)
 {
-  TLSCTX *tlsctx         = NULL;
+  TLSCTX *tlsctx = NULL;
   const char *seed_value = (slconn->clientname) ? slconn->clientname : "SeedLink Client";
-  char *evalue           = NULL;
+  char *evalue = NULL;
   uint32_t flags;
   int debug_level = 0;
   int ret;
@@ -136,30 +136,32 @@ tls_configure (SLCD *slconn, const char *nodename)
     return -1;
   }
 
-  if ((ret = mbedtls_ctr_drbg_seed (&tlsctx->ctr_drbg, mbedtls_entropy_func,
-                                    &tlsctx->entropy,
-                                    (const unsigned char *)seed_value,
-                                    strlen (seed_value))) != 0)
+  if ((ret = mbedtls_ctr_drbg_seed (&tlsctx->ctr_drbg, mbedtls_entropy_func, &tlsctx->entropy,
+                                    (const unsigned char *)seed_value, strlen (seed_value))) != 0)
   {
     sl_log_r (slconn, 2, 0, "mbedtls_ctr_drbg_seed() returned %d\n", ret);
     return -1;
   }
 
   /* Load Certificate Authority certificates */
-  if (load_ca_certs(slconn) == 0)
+  if (load_ca_certs (slconn) == 0)
   {
-    sl_log_r (slconn, 1, 0, "[%s] No trusted CA certificates found, connections may not work\n", slconn->sladdr);
-    sl_log_r (slconn, 1, 0, "[%s]   CA cert locations can be specified with the following environment variables:\n", slconn->sladdr);
-    sl_log_r (slconn, 1, 0, "[%s]   LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 0, "[%s] No trusted CA certificates found, connections may not work\n",
+              slconn->sladdr);
+    sl_log_r (
+        slconn, 1, 0,
+        "[%s]   CA cert locations can be specified with the following environment variables:\n",
+        slconn->sladdr);
+    sl_log_r (slconn, 1, 0, "[%s]   LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH\n",
+              slconn->sladdr);
   }
 
-  if ((ret = mbedtls_ssl_config_defaults (&tlsctx->conf,
-                                          MBEDTLS_SSL_IS_CLIENT,
+  if ((ret = mbedtls_ssl_config_defaults (&tlsctx->conf, MBEDTLS_SSL_IS_CLIENT,
                                           MBEDTLS_SSL_TRANSPORT_STREAM,
                                           MBEDTLS_SSL_PRESET_DEFAULT)) != 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_config_defaults() returned %d\n",
-              slconn->sladdr, ret);
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_config_defaults() returned %d\n", slconn->sladdr,
+              ret);
     return -1;
   }
 
@@ -170,31 +172,27 @@ tls_configure (SLCD *slconn, const char *nodename)
 
   if ((ret = mbedtls_ssl_setup (&tlsctx->ssl, &tlsctx->conf)) != 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_setup() returned %d\n",
-              slconn->sladdr, ret);
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_setup() returned %d\n", slconn->sladdr, ret);
     return -1;
   }
 
   if ((ret = mbedtls_ssl_set_hostname (&tlsctx->ssl, nodename)) != 0)
   {
-    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_set_hostname() returned %d\n",
-              slconn->sladdr, ret);
+    sl_log_r (slconn, 2, 0, "[%s] mbedtls_ssl_set_hostname() returned %d\n", slconn->sladdr, ret);
     return -1;
   }
 
-  mbedtls_ssl_set_bio (&tlsctx->ssl, &tlsctx->server_fd,
-                       mbedtls_net_send, mbedtls_net_recv, NULL);
+  mbedtls_ssl_set_bio (&tlsctx->ssl, &tlsctx->server_fd, mbedtls_net_send, mbedtls_net_recv, NULL);
 
   sl_log_r (slconn, 1, 2, "[%s] Starting TLS handshake\n", slconn->sladdr);
 
   while ((ret = mbedtls_ssl_handshake (&tlsctx->ssl)) != 0)
   {
-    if (ret != MBEDTLS_ERR_SSL_WANT_READ &&
-        ret != MBEDTLS_ERR_SSL_WANT_WRITE &&
+    if (ret != MBEDTLS_ERR_SSL_WANT_READ && ret != MBEDTLS_ERR_SSL_WANT_WRITE &&
         ret != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
     {
-      sl_log_r (slconn, 2, 0, " [%s] mbedtls_ssl_handshake() returned -0x%x\n",
-                slconn->sladdr, (unsigned int)-ret);
+      sl_log_r (slconn, 2, 0, " [%s] mbedtls_ssl_handshake() returned -0x%x\n", slconn->sladdr,
+                (unsigned int)-ret);
       return -1;
     }
 
@@ -209,7 +207,8 @@ tls_configure (SLCD *slconn, const char *nodename)
     /* Check if continuing despite cerfication failure */
     if ((evalue = getenv ("LIBSLINK_CERT_UNVERIFIED_OK")) != NULL)
     {
-      sl_log_r (slconn, 1, 0, "[%s] Continuing with unverified cert [LIBSLINK_CERT_UNVERIFIED_OK]\n",
+      sl_log_r (slconn, 1, 0,
+                "[%s] Continuing with unverified cert [LIBSLINK_CERT_UNVERIFIED_OK]\n",
                 slconn->sladdr);
     }
     else
@@ -261,7 +260,7 @@ SOCKET
 sl_connect (SLCD *slconn, int sayhello)
 {
   struct addrinfo *addr0 = NULL;
-  struct addrinfo *addr  = NULL;
+  struct addrinfo *addr = NULL;
   struct addrinfo hints;
   int valueone = 1;
   int sockstat;
@@ -281,8 +280,7 @@ sl_connect (SLCD *slconn, int sayhello)
   {
     if (sl_set_serveraddress (slconn, slconn->sladdr))
     {
-      sl_log_r (slconn, 2, 0, "server address not in in recognized format: %s\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 2, 0, "server address not in in recognized format: %s\n", slconn->sladdr);
       return -1;
     }
   }
@@ -295,7 +293,7 @@ sl_connect (SLCD *slconn, int sayhello)
 
   /* Resolve for either IPv4 or IPv6 (PF_UNSPEC) for a TCP stream (SOCK_STREAM) */
   memset (&hints, 0, sizeof (hints));
-  hints.ai_family   = PF_UNSPEC;
+  hints.ai_family = PF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
 
   /* Resolve server address */
@@ -369,8 +367,7 @@ sl_connect (SLCD *slconn, int sayhello)
     }
     else if (sockstat == 0)
     {
-      sl_log_r (slconn, 2, 1, "[%s] socket connect time-out (10s)\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 2, 1, "[%s] socket connect time-out (10s)\n", slconn->sladdr);
     }
 
     sl_disconnect (slconn);
@@ -387,8 +384,7 @@ sl_connect (SLCD *slconn, int sayhello)
 
   /* Set the SO_KEEPALIVE socket option, although not really useful */
   if (setsockopt (slconn->link, SOL_SOCKET, SO_KEEPALIVE, (void *)&valueone, sizeof (valueone)) < 0)
-    sl_log_r (slconn, 1, 1, "[%s] cannot set SO_KEEPALIVE socket option\n",
-              slconn->sladdr);
+    sl_log_r (slconn, 1, 1, "[%s] cannot set SO_KEEPALIVE socket option\n", slconn->sladdr);
 
   /* Make sure enabled batch mode is in an initial state */
   if (slconn->batchmode)
@@ -480,11 +476,9 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 
   snprintf (sendstr, sizeof (sendstr), "INFO %s\r\n", infostr);
 
-  sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n",
-            slconn->sladdr, infostr);
+  sl_log_r (slconn, 1, verbose, "[%s] requesting INFO %s\n", slconn->sladdr, infostr);
 
-  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                   slconn->sladdr, (void *)NULL, 0) < 0)
+  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, (void *)NULL, 0) < 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] error sending INFO request\n", slconn->sladdr);
     return -1;
@@ -537,7 +531,6 @@ sl_disconnect (SLCD *slconn)
   return -1;
 } /* End of sl_disconnect() */
 
-
 /** ************************************************************************
  * @brief Connect to a SeedLink server, issue HELLO and parse response
  *
@@ -575,21 +568,20 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   /* Send HELLO */
   snprintf (sendstr, sizeof (sendstr), "HELLO\r\n");
 
-  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-            (int)strcspn (sendstr, "\r\n"), sendstr);
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+            sendstr);
 
-  sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-               NULL, 0);
+  sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, NULL, 0);
 
   /* Recv the two lines of response */
-  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr) - 1,
-                   sendstr, slconn->sladdr) < 0)
+  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr) - 1, sendstr, slconn->sladdr) <
+      0)
   {
     return -1;
   }
 
-  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr) - 1,
-                   sendstr, slconn->sladdr) < 0)
+  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr) - 1, sendstr, slconn->sladdr) <
+      0)
   {
     return -1;
   }
@@ -633,10 +625,9 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
  * @sa sl_collect()
  ***************************************************************************/
 int
-sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
-             const char *ident, void *resp, int resplen)
+sl_senddata (SLCD *slconn, void *buffer, size_t buflen, const char *ident, void *resp, int resplen)
 {
-  int bytesread = 0; /* bytes read into resp */
+  int bytesread = 0;    /* bytes read into resp */
   size_t sentbytes = 0; /* total bytes sent */
   int64_t byteswritten;
   int stallcnt = 0; /* counter for the no-progress trapdoor */
@@ -647,11 +638,10 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
     {
       TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
 
-      byteswritten = mbedtls_ssl_write (&tlsctx->ssl, (unsigned char *)buffer + sentbytes,
-                                         buflen - sentbytes);
+      byteswritten =
+          mbedtls_ssl_write (&tlsctx->ssl, (unsigned char *)buffer + sentbytes, buflen - sentbytes);
 
-      if (byteswritten < 0 &&
-          byteswritten != MBEDTLS_ERR_SSL_WANT_READ &&
+      if (byteswritten < 0 && byteswritten != MBEDTLS_ERR_SSL_WANT_READ &&
           byteswritten != MBEDTLS_ERR_SSL_WANT_WRITE &&
           byteswritten != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
       {
@@ -660,8 +650,7 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
     }
     else
     {
-      byteswritten = send (slconn->link, (char *)buffer + sentbytes,
-                            buflen - sentbytes, 0);
+      byteswritten = send (slconn->link, (char *)buffer + sentbytes, buflen - sentbytes, 0);
 
       if (byteswritten < 0 && !IS_EWOULDBLOCK () && !IS_EINTR (byteswritten))
       {
@@ -679,10 +668,8 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
     /* Trap door if 30 seconds has elapsed without progress, (1000ms x 30) */
     if (stallcnt++ > 30)
     {
-      sl_log_r (slconn, 2, 0, "[%s] timeout sending '%.*s'\n",
-                (ident) ? ident : "",
-                (int)strcspn ((char *)buffer, "\r\n"),
-                (char *)buffer);
+      sl_log_r (slconn, 2, 0, "[%s] timeout sending '%.*s'\n", (ident) ? ident : "",
+                (int)strcspn ((char *)buffer, "\r\n"), (char *)buffer);
       return -1;
     }
 
@@ -698,10 +685,8 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
 
   if (sentbytes < buflen)
   {
-    sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n",
-              (ident) ? ident : "",
-              (int)strcspn ((char *)buffer, "\r\n"),
-              (char *)buffer);
+    sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n", (ident) ? ident : "",
+              (int)strcspn ((char *)buffer, "\r\n"), (char *)buffer);
     return -1;
   }
 
@@ -737,8 +722,7 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
  * @sa sl_collect()
  ***************************************************************************/
 int64_t
-sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
-             const char *ident)
+sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes, const char *ident)
 {
   int64_t bytesread = 0;
 
@@ -776,16 +760,15 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
   else if (bytesread < 0)
   {
     /* Return 0 when no data for nonblocking IO */
-    if ((slconn->tlsctx && (bytesread == MBEDTLS_ERR_SSL_WANT_READ ||
-                            bytesread == MBEDTLS_ERR_SSL_WANT_WRITE)) ||
+    if ((slconn->tlsctx &&
+         (bytesread == MBEDTLS_ERR_SSL_WANT_READ || bytesread == MBEDTLS_ERR_SSL_WANT_WRITE)) ||
         IS_EWOULDBLOCK ())
     {
       return 0;
     }
 
     /* Return -1 on connection reset */
-    if ((slconn->tlsctx && bytesread == MBEDTLS_ERR_NET_CONN_RESET) ||
-        IS_ECONNRESET ())
+    if ((slconn->tlsctx && bytesread == MBEDTLS_ERR_NET_CONN_RESET) || IS_ECONNRESET ())
     {
       return -1;
     }
@@ -805,8 +788,8 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
       }
       else
       {
-        sl_log_r (slconn, 2, 0, "[%s] %s(): %" PRId64 ": %s\n",
-                  (ident) ? ident : "", __func__, bytesread, sl_strerror ());
+        sl_log_r (slconn, 2, 0, "[%s] %s(): %" PRId64 ": %s\n", (ident) ? ident : "", __func__,
+                  bytesread, sl_strerror ());
 
         return -1;
       }
@@ -846,13 +829,12 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
  * @sa sl_collect()
  ***************************************************************************/
 int
-sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
-             const char *command, const char *ident)
+sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes, const char *command, const char *ident)
 {
   size_t bytesread = 0; /* total bytes read */
 
   int recvret = 0;     /* return from sl_recvdata */
-  int ackcnt  = 0;     /* counter for the read loop */
+  int ackcnt = 0;      /* counter for the read loop */
   int ackpoll = 50000; /* poll at 0.05 seconds for reading */
 
   const char *cmdstr = (command) ? command : "";
@@ -882,16 +864,13 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     }
     else if (recvret < 0)
     {
-      sl_log_r (slconn, 2, 0, "[%s] bad response to '%.*s'\n",
-                ident,
-                (int)strcspn (cmdstr, "\r\n"),
+      sl_log_r (slconn, 2, 0, "[%s] bad response to '%.*s'\n", ident, (int)strcspn (cmdstr, "\r\n"),
                 cmdstr);
       return -1;
     }
 
     /* Done if '\r\n' is recv'd */
-    if (bytesread >= 2 &&
-        *(char *)((char *)buffer + bytesread - 2) == '\r' &&
+    if (bytesread >= 2 && *(char *)((char *)buffer + bytesread - 2) == '\r' &&
         *(char *)((char *)buffer + bytesread - 1) == '\n')
     {
       return (int)bytesread;
@@ -900,10 +879,8 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     /* Trap door if 30 seconds has elapsed, (ackpoll x 600) */
     if (ackcnt > 600)
     {
-      sl_log_r (slconn, 2, 0, "[%s] timeout waiting for response to '%.*s'\n",
-                ident,
-                (int)strcspn (cmdstr, "\r\n"),
-                cmdstr);
+      sl_log_r (slconn, 2, 0, "[%s] timeout waiting for response to '%.*s'\n", ident,
+                (int)strcspn (cmdstr, "\r\n"), cmdstr);
       return -1;
     }
 
@@ -962,7 +939,7 @@ sl_poll (SLCD *slconn, int readability, int writability, int timeout_ms)
   if (writability)
     FD_SET (slconn->link, &writeset);
 
-  to.tv_sec  = timeout_ms / 1000;
+  to.tv_sec = timeout_ms / 1000;
   to.tv_usec = (timeout_ms % 1000) * 1000;
 
   do
@@ -1026,7 +1003,7 @@ sayhello_int (SLCD *slconn)
   char servstr[200];  /* The remote server ident */
   char sitestr[200];  /* The site/data center ident */
   char *capptr;       /* Pointer to capabilities flags */
-  char capflag   = 0; /* CAPABILITIES command is supported by server */
+  char capflag = 0;   /* CAPABILITIES command is supported by server */
   size_t servcnt = 0;
   size_t sitecnt = 0;
 
@@ -1039,11 +1016,10 @@ sayhello_int (SLCD *slconn)
   /* Send HELLO */
   snprintf (sendstr, sizeof (sendstr), "HELLO\r\n");
 
-  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-            (int)strcspn (sendstr, "\r\n"), sendstr);
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+            sendstr);
 
-  ret = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                     NULL, 0);
+  ret = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, NULL, 0);
 
   if (ret < 0)
   {
@@ -1052,14 +1028,12 @@ sayhello_int (SLCD *slconn)
   }
 
   /* Recv the two lines of response: server ID and site installation ID */
-  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr),
-                   sendstr, slconn->sladdr) < 0)
+  if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr), sendstr, slconn->sladdr) < 0)
   {
     return -1;
   }
 
-  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr),
-                   sendstr, slconn->sladdr) < 0)
+  if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr), sendstr, slconn->sladdr) < 0)
   {
     return -1;
   }
@@ -1107,7 +1081,7 @@ sayhello_int (SLCD *slconn)
     if (slconn->caparray)
       free (slconn->caparray);
 
-    slconn->capabilities = strdup(capptr);
+    slconn->capabilities = strdup (capptr);
     slconn->caparray = NULL;
   }
 
@@ -1118,9 +1092,8 @@ sayhello_int (SLCD *slconn)
   /* Validate that the server ID starts with "SeedLink" */
   if (strncasecmp (servstr, "SEEDLINK", 8))
   {
-    sl_log_r (slconn, 2, 0,
-              "[%s] unrecognized server identification: '%s'\n",
-              slconn->sladdr, servstr);
+    sl_log_r (slconn, 2, 0, "[%s] unrecognized server identification: '%s'\n", slconn->sladdr,
+              servstr);
     return -1;
   }
 
@@ -1133,14 +1106,11 @@ sayhello_int (SLCD *slconn)
 
     if (strncmp (capptr, "SLPROTO:", 8) == 0)
     {
-      ret = sscanf (capptr, "SLPROTO:%" SCNu8 ".%" SCNu8,
-                    &server_major,
-                    &server_minor);
+      ret = sscanf (capptr, "SLPROTO:%" SCNu8 ".%" SCNu8, &server_major, &server_minor);
 
       if (ret < 1)
       {
-        sl_log_r (slconn, 1, 1,
-                  "[%s] could not parse protocol version from SLPROTO flag: %s\n",
+        sl_log_r (slconn, 1, 1, "[%s] could not parse protocol version from SLPROTO flag: %s\n",
                   slconn->sladdr, capptr);
       }
       else if (server_major == 3)
@@ -1174,7 +1144,8 @@ sayhello_int (SLCD *slconn)
   /* Default to SeedLink 3.x if no protocols advertised by server are recognized */
   if (slconn->server_protocols == 0)
   {
-    sl_log_r (slconn, 1, 1, "[%s] no recognized protocol version, defaulting to 3.x\n", slconn->sladdr);
+    sl_log_r (slconn, 1, 1, "[%s] no recognized protocol version, defaulting to 3.x\n",
+              slconn->sladdr);
 
     slconn->server_protocols = SLPROTO3X;
   }
@@ -1187,11 +1158,11 @@ sayhello_int (SLCD *slconn)
     snprintf (sendstr, sizeof (sendstr), "SLPROTO 4.0\r\n");
 
     /* Send SLPROTO and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-              (int)strcspn (sendstr, "\r\n"), sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+              sendstr);
 
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                             readbuf, sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                             sizeof (readbuf));
 
     if (bytesread < 0)
     { /* Error from sl_senddata() */
@@ -1206,21 +1177,19 @@ sayhello_int (SLCD *slconn)
     }
     else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
     {
-      char *cp = readbuf + (bytesread-1);
+      char *cp = readbuf + (bytesread - 1);
 
       /* Trim space, \r, and \n while terminating response string */
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
       sl_log_r (slconn, 1, 2, "[%s] %.*s not accepted: %s\n", slconn->sladdr,
-                (int)strcspn (sendstr, "\r\n"), sendstr,
-                readbuf + 6);
+                (int)strcspn (sendstr, "\r\n"), sendstr, readbuf + 6);
       return -1;
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] invalid response to SLPROTO command: %.*s\n", slconn->sladdr,
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to SLPROTO command: %.*s\n", slconn->sladdr,
                 bytesread, readbuf);
       return -1;
     }
@@ -1243,8 +1212,7 @@ sayhello_int (SLCD *slconn)
 
   /* Report server capabilities */
   if (slconn->capabilities)
-    sl_log_r (slconn, 1, 1, "[%s] server capabilities: %s\n", slconn->sladdr,
-              slconn->capabilities);
+    sl_log_r (slconn, 1, 1, "[%s] server capabilities: %s\n", slconn->sladdr, slconn->capabilities);
 
   /* Send CAPABILITIES flags if supported by server and protocol 3.x */
   if (capflag && slconn->protocol & SLPROTO3X)
@@ -1255,11 +1223,11 @@ sayhello_int (SLCD *slconn)
     snprintf (sendstr, sizeof (sendstr), "CAPABILITIES EXTREPLY\r\n");
 
     /* Send CAPABILITIES and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-              (int)strcspn (sendstr, "\r\n"), sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+              sendstr);
 
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                             readbuf, sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                             sizeof (readbuf));
 
     if (bytesread < 0)
     { /* Error from sl_senddata() */
@@ -1283,8 +1251,7 @@ sayhello_int (SLCD *slconn)
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] invalid response to CAPABILITIES command: %.*s\n",
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to CAPABILITIES command: %.*s\n",
                 slconn->sladdr, bytesread, readbuf);
       return -1;
     }
@@ -1294,19 +1261,18 @@ sayhello_int (SLCD *slconn)
   if (slconn->protocol & SLPROTO40)
   {
     /* Create USERAGENT, optional client name and version */
-    snprintf (sendstr, sizeof (sendstr),
-              "USERAGENT %s%s%s libslink/%s\r\n",
+    snprintf (sendstr, sizeof (sendstr), "USERAGENT %s%s%s libslink/%s\r\n",
               (slconn->clientname) ? slconn->clientname : "",
               (slconn->clientname && slconn->clientversion) ? "/" : "",
               (slconn->clientname && slconn->clientversion) ? slconn->clientversion : "",
               LIBSLINK_VERSION);
 
     /* Send USERAGENT and recv response */
-    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-              (int)strcspn (sendstr, "\r\n"), sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+              sendstr);
 
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                             readbuf, sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                             sizeof (readbuf));
 
     if (bytesread < 0)
     { /* Error from sl_senddata() */
@@ -1316,33 +1282,29 @@ sayhello_int (SLCD *slconn)
     /* Check response to USERAGENT */
     if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
     {
-      sl_log_r (slconn, 1, 2, "[%s] USERAGENT accepted\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 1, 2, "[%s] USERAGENT accepted\n", slconn->sladdr);
     }
     else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
     {
-      char *cp = readbuf + (bytesread-1);
+      char *cp = readbuf + (bytesread - 1);
 
       /* Trim space, \r, and \n while terminating response string */
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
-      sl_log_r (slconn, 1, 2, "[%s] USERAGENT not accepted: %s\n", slconn->sladdr,
-                readbuf+6);
+      sl_log_r (slconn, 1, 2, "[%s] USERAGENT not accepted: %s\n", slconn->sladdr, readbuf + 6);
       return -1;
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] invalid response to USERAGENT command: %.*s\n",
-                slconn->sladdr, bytesread, readbuf);
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to USERAGENT command: %.*s\n", slconn->sladdr,
+                bytesread, readbuf);
       return -1;
     }
   }
 
   /* Send AUTH if auth_value() callback set and protocol >= v4 */
-  if (slconn->auth_value &&
-      slconn->protocol & SLPROTO40)
+  if (slconn->auth_value && slconn->protocol & SLPROTO40)
   {
     /* Call user-supplied callback function that returns authentication value */
     const char *auth_value = slconn->auth_value (slconn->sladdr, slconn->auth_data);
@@ -1350,8 +1312,7 @@ sayhello_int (SLCD *slconn)
     /* NULL or empty value means no credentials are available */
     if (auth_value == NULL || *auth_value == '\0')
     {
-      sl_log_r (slconn, 2, 0, "[%s] no authentication value available\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 2, 0, "[%s] no authentication value available\n", slconn->sladdr);
 
       if (slconn->auth_finish)
         slconn->auth_finish (slconn->sladdr, slconn->auth_data);
@@ -1359,7 +1320,7 @@ sayhello_int (SLCD *slconn)
       return SLAUTHFAIL;
     }
 
-    if (strlen(auth_value) > sizeof (sendstr) - 10)
+    if (strlen (auth_value) > sizeof (sendstr) - 10)
     {
       sl_log_r (slconn, 2, 0, "[%s] authentication value too large (%d bytes), maximum: %d bytes\n",
                 slconn->sladdr, (int)strlen (auth_value), (int)sizeof (sendstr) - 10);
@@ -1371,9 +1332,7 @@ sayhello_int (SLCD *slconn)
     }
 
     /* Create full AUTH command */
-    snprintf (sendstr, sizeof (sendstr),
-              "AUTH %s\r\n",
-              auth_value);
+    snprintf (sendstr, sizeof (sendstr), "AUTH %s\r\n", auth_value);
 
     /* Call user-supplied finish callback function */
     if (slconn->auth_finish)
@@ -1382,8 +1341,8 @@ sayhello_int (SLCD *slconn)
     /* Send AUTH and recv response */
     sl_log_r (slconn, 1, 2, "[%s] sending: AUTH ...\n", slconn->sladdr);
 
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                             readbuf, sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                             sizeof (readbuf));
 
     /* Clear memory with authentication value */
     memset (sendstr, 0, sizeof (sendstr));
@@ -1396,33 +1355,29 @@ sayhello_int (SLCD *slconn)
     /* Check response to AUTH */
     if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
     {
-      sl_log_r (slconn, 1, 2, "[%s] AUTH accepted\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 1, 2, "[%s] AUTH accepted\n", slconn->sladdr);
     }
     else if (!strncmp (readbuf, "ERROR", 5) && bytesread >= 6)
     {
-      char *cp = readbuf + (bytesread-1);
+      char *cp = readbuf + (bytesread - 1);
 
       /* Trim space, \r, and \n while terminating response string */
       while (*cp == ' ' || *cp == '\r' || *cp == '\n')
         *cp-- = '\0';
 
-      sl_log_r (slconn, 1, 0, "[%s] AUTH not accepted: %s\n", slconn->sladdr,
-                readbuf+6);
+      sl_log_r (slconn, 1, 0, "[%s] AUTH not accepted: %s\n", slconn->sladdr, readbuf + 6);
       return SLAUTHFAIL;
     }
     else
     {
-      sl_log_r (slconn, 2, 0,
-                "[%s] invalid response to AUTH command: %.*s\n",
-                slconn->sladdr, bytesread, readbuf);
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to AUTH command: %.*s\n", slconn->sladdr,
+                bytesread, readbuf);
       return -1;
     }
   }
 
   /* Send BATCH if v3 and set */
-  if (slconn->protocol & SLPROTO3X &&
-      slconn->batchmode)
+  if (slconn->protocol & SLPROTO3X && slconn->batchmode)
   {
     if (batchmode_int (slconn) < 0)
     {
@@ -1456,11 +1411,11 @@ batchmode_int (SLCD *slconn)
   /* Send BATCH and recv response */
   snprintf (sendstr, sizeof (sendstr), "BATCH\r\n");
 
-  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-            (int)strcspn (sendstr, "\r\n"), sendstr);
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+            sendstr);
 
-  bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr,
-                           readbuf, sizeof (readbuf));
+  bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                           sizeof (readbuf));
 
   if (bytesread < 0)
   { /* Error from sl_senddata() */
@@ -1479,9 +1434,8 @@ batchmode_int (SLCD *slconn)
   }
   else
   {
-    sl_log_r (slconn, 2, 0,
-              "[%s] invalid response to BATCH command: %.*s\n",
-              slconn->sladdr, bytesread, readbuf);
+    sl_log_r (slconn, 2, 0, "[%s] invalid response to BATCH command: %.*s\n", slconn->sladdr,
+              bytesread, readbuf);
     return -1;
   }
 
@@ -1506,13 +1460,13 @@ batchmode_int (SLCD *slconn)
 static SOCKET
 negotiate_uni_v3 (SLCD *slconn)
 {
-  int sellen    = 0;
+  int sellen = 0;
   int bytesread = 0;
   int acceptsel = 0; /* Count of accepted selectors */
   char *selptr;
   char *extreply = 0;
   char start_time[31] = {0};
-  char end_time[31]   = {0};
+  char end_time[31] = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
@@ -1522,8 +1476,8 @@ negotiate_uni_v3 (SLCD *slconn)
   {
     if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
-                __func__, slconn->start_time);
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
+                slconn->start_time);
       return -1;
     }
   }
@@ -1531,8 +1485,8 @@ negotiate_uni_v3 (SLCD *slconn)
   {
     if (sl_commadatetime (end_time, slconn->end_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
-                __func__, slconn->end_time);
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
+                slconn->end_time);
       return -1;
     }
   }
@@ -1565,9 +1519,8 @@ negotiate_uni_v3 (SLCD *slconn)
         sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
                   (int)strcspn (sendstr, "\r\n"), sendstr);
 
-        bytesread = sl_senddata (slconn, (void *)sendstr,
-                                 strlen (sendstr), slconn->sladdr,
-                                 readbuf, sizeof (readbuf));
+        bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, readbuf,
+                                 sizeof (readbuf));
         if (bytesread < 0)
         { /* Error from sl_senddata() */
           return -1;
@@ -1579,20 +1532,21 @@ negotiate_uni_v3 (SLCD *slconn)
         /* Check response to SELECT */
         if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
         {
-          sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n", slconn->sladdr,
-                    sellen, selptr, (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
+          sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n", slconn->sladdr, sellen,
+                    selptr, (extreply) ? "{" : "", (extreply) ? extreply : "",
+                    (extreply) ? "}" : "");
           acceptsel++;
         }
         else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
         {
           sl_log_r (slconn, 1, 2, "[%s] selector %.*s not accepted %s%s%s\n", slconn->sladdr,
-                    sellen, selptr, (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
+                    sellen, selptr, (extreply) ? "{" : "", (extreply) ? extreply : "",
+                    (extreply) ? "}" : "");
         }
         else
         {
-          sl_log_r (slconn, 2, 0,
-                    "[%s] invalid response to SELECT command: %.*s\n",
-                    slconn->sladdr, bytesread, readbuf);
+          sl_log_r (slconn, 2, 0, "[%s] invalid response to SELECT command: %.*s\n", slconn->sladdr,
+                    bytesread, readbuf);
           return -1;
         }
       }
@@ -1601,14 +1555,12 @@ negotiate_uni_v3 (SLCD *slconn)
     /* Fail if none of the given selectors were accepted */
     if (!acceptsel)
     {
-      sl_log_r (slconn, 2, 0, "[%s] no data stream selector(s) accepted\n",
-                slconn->sladdr);
+      sl_log_r (slconn, 2, 0, "[%s] no data stream selector(s) accepted\n", slconn->sladdr);
       return -1;
     }
     else
     {
-      sl_log_r (slconn, 1, 2, "[%s] %d selector(s) accepted\n",
-                slconn->sladdr, acceptsel);
+      sl_log_r (slconn, 1, 2, "[%s] %d selector(s) accepted\n", slconn->sladdr, acceptsel);
     }
   } /* End of selector processing */
 
@@ -1626,8 +1578,7 @@ negotiate_uni_v3 (SLCD *slconn)
       snprintf (sendstr, sizeof (sendstr), "TIME %.31s\r\n", start_time);
     }
 
-    sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-              slconn->sladdr);
+    sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n", slconn->sladdr);
   }
   else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
   {
@@ -1635,8 +1586,8 @@ negotiate_uni_v3 (SLCD *slconn)
 
     /* The v3 wire sequence field is six hex digits, wrapping at FFFFFF */
     uint32_t wireseq = (curstream->seqnum == SL_ALLDATASEQUENCE)
-                            ? 0
-                            : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
+                           ? 0
+                           : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
 
     if (slconn->dialup)
     {
@@ -1644,36 +1595,31 @@ negotiate_uni_v3 (SLCD *slconn)
     }
     else
     {
-      snprintf (cmd, sizeof(cmd), "DATA");
+      snprintf (cmd, sizeof (cmd), "DATA");
     }
 
     /* Append the last packet time if the feature is enabled */
-    if (slconn->lastpkttime &&
-        strlen (curstream->timestamp))
+    if (slconn->lastpkttime && strlen (curstream->timestamp))
     {
       char timestr[31] = {0};
 
       if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
       {
-        sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n",
-                  __func__, curstream->timestamp);
+        sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n", __func__,
+                  curstream->timestamp);
         return -1;
       }
 
-      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd,
-                wireseq, timestr);
+      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd, wireseq, timestr);
 
-      sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ") at %.31s\n",
+      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ") at %.31s\n",
                 slconn->sladdr, wireseq, wireseq, timestr);
     }
     else
     {
-      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd,
-                wireseq);
+      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd, wireseq);
 
-      sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
+      sl_log_r (slconn, 1, 1, "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
                 slconn->sladdr, wireseq, wireseq);
     }
   }
@@ -1691,8 +1637,7 @@ negotiate_uni_v3 (SLCD *slconn)
     sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n", slconn->sladdr);
   }
 
-  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                   slconn->sladdr, (void *)NULL, 0) < 0)
+  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, (void *)NULL, 0) < 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] error sending DATA/FETCH/TIME request\n", slconn->sladdr);
     return -1;
@@ -1718,14 +1663,14 @@ negotiate_uni_v3 (SLCD *slconn)
 static SOCKET
 negotiate_multi_v3 (SLCD *slconn)
 {
-  int sellen    = 0;
+  int sellen = 0;
   int bytesread = 0;
   int acceptsta = 0; /* Count of accepted stations */
   int acceptsel = 0; /* Count of accepted selectors */
   char *selptr;
-  char *extreply      = 0;
+  char *extreply = 0;
   char start_time[31] = {0};
-  char end_time[31]   = {0};
+  char end_time[31] = {0};
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
@@ -1738,8 +1683,8 @@ negotiate_multi_v3 (SLCD *slconn)
   {
     if (sl_commadatetime (start_time, slconn->start_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n",
-                __func__, slconn->start_time);
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
+                slconn->start_time);
       return -1;
     }
   }
@@ -1747,8 +1692,8 @@ negotiate_multi_v3 (SLCD *slconn)
   {
     if (sl_commadatetime (end_time, slconn->end_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n",
-                __func__, slconn->end_time);
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
+                slconn->end_time);
       return -1;
     }
   }
@@ -1759,21 +1704,18 @@ negotiate_multi_v3 (SLCD *slconn)
   while (curstream != NULL)
   {
     /* Generate independent network and station strings from NET_STA */
-    strncpy (net, curstream->stationid, sizeof(net));
+    strncpy (net, curstream->stationid, sizeof (net));
     if ((sta = strchr (net, '_')))
       *sta++ = '\0';
 
     /* Send the STATION command */
     snprintf (sendstr, sizeof (sendstr), "STATION %s %s\r\n", (sta) ? sta : "", net);
 
-    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n",
-              curstream->stationid,
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", curstream->stationid,
               (int)strcspn (sendstr, "\r\n"), sendstr);
 
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                             curstream->stationid,
-                             (slconn->batchmode == 2) ? (void *)NULL : readbuf,
-                             sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), curstream->stationid,
+                             (slconn->batchmode == 2) ? (void *)NULL : readbuf, sizeof (readbuf));
 
     if (bytesread < 0)
     {
@@ -1833,14 +1775,12 @@ negotiate_multi_v3 (SLCD *slconn)
           /* Build SELECT command, send it and receive response */
           snprintf (sendstr, sizeof (sendstr), "SELECT %.*s\r\n", sellen, selptr);
 
-          sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n",
-                    curstream->stationid,
+          sl_log_r (slconn, 1, 2, "[%s] sending: SELECT %.*s\n", curstream->stationid,
                     (int)strcspn (sendstr, "\r\n"), sendstr);
 
-          bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                                   curstream->stationid,
-                                   (slconn->batchmode == 2) ? (void *)NULL : readbuf,
-                                   sizeof (readbuf));
+          bytesread =
+              sl_senddata (slconn, (void *)sendstr, strlen (sendstr), curstream->stationid,
+                           (slconn->batchmode == 2) ? (void *)NULL : readbuf, sizeof (readbuf));
 
           if (bytesread < 0)
           {
@@ -1858,23 +1798,22 @@ negotiate_multi_v3 (SLCD *slconn)
             /* Check response to SELECT */
             if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
             {
-              sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n",
-                        curstream->stationid, sellen, selptr,
-                        (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
+              sl_log_r (slconn, 1, 2, "[%s] selector %.*s is OK %s%s%s\n", curstream->stationid,
+                        sellen, selptr, (extreply) ? "{" : "", (extreply) ? extreply : "",
+                        (extreply) ? "}" : "");
               acceptsel++;
             }
             else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
             {
               sl_log_r (slconn, 2, 0, "[%s] selector %.*s not accepted %s%s%s\n",
-                        curstream->stationid, sellen, selptr,
-                        (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
+                        curstream->stationid, sellen, selptr, (extreply) ? "{" : "",
+                        (extreply) ? extreply : "", (extreply) ? "}" : "");
             }
             else
             {
-              sl_log_r (slconn, 2, 0,
-                        "[%s] invalid response to SELECT command: %.*s\n",
+              sl_log_r (slconn, 2, 0, "[%s] invalid response to SELECT command: %.*s\n",
                         curstream->stationid, bytesread, readbuf);
-            return -1;
+              return -1;
             }
           }
         }
@@ -1883,14 +1822,12 @@ negotiate_multi_v3 (SLCD *slconn)
       /* Fail if none of the given selectors were accepted */
       if (!acceptsel)
       {
-        sl_log_r (slconn, 2, 0, "[%s] no data stream selector(s) accepted\n",
-                  curstream->stationid);
+        sl_log_r (slconn, 2, 0, "[%s] no data stream selector(s) accepted\n", curstream->stationid);
         return -1;
       }
       else
       {
-        sl_log_r (slconn, 1, 2, "[%s] %d selector(s) accepted\n",
-                  curstream->stationid, acceptsel);
+        sl_log_r (slconn, 1, 2, "[%s] %d selector(s) accepted\n", curstream->stationid, acceptsel);
       }
 
       acceptsel = 0; /* Reset the accepted selector count */
@@ -1910,8 +1847,7 @@ negotiate_multi_v3 (SLCD *slconn)
       {
         snprintf (sendstr, sizeof (sendstr), "TIME %.31s %.31s\r\n", start_time, end_time);
       }
-      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n",
-                curstream->stationid);
+      sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n", curstream->stationid);
     }
     else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
     {
@@ -1919,8 +1855,8 @@ negotiate_multi_v3 (SLCD *slconn)
 
       /* The v3 wire sequence field is six hex digits, wrapping at FFFFFF */
       uint32_t wireseq = (curstream->seqnum == SL_ALLDATASEQUENCE)
-                              ? 0
-                              : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
+                             ? 0
+                             : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
 
       if (slconn->dialup)
       {
@@ -1932,20 +1868,18 @@ negotiate_multi_v3 (SLCD *slconn)
       }
 
       /* Append the last packet time if the feature is enabled */
-      if (slconn->lastpkttime &&
-          strlen (curstream->timestamp))
+      if (slconn->lastpkttime && strlen (curstream->timestamp))
       {
         char timestr[31] = {0};
 
         if (sl_commadatetime (timestr, curstream->timestamp) == NULL)
         {
-          sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n",
-                    __func__, curstream->timestamp);
+          sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n", __func__,
+                    curstream->timestamp);
           return -1;
         }
 
-        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd,
-                  wireseq, timestr);
+        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd, wireseq, timestr);
 
         sl_log_r (slconn, 1, 1,
                   "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ") at %.31s\n",
@@ -1953,11 +1887,9 @@ negotiate_multi_v3 (SLCD *slconn)
       }
       else
       {
-        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd,
-                  wireseq);
+        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd, wireseq);
 
-        sl_log_r (slconn, 1, 1,
-                  "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
+        sl_log_r (slconn, 1, 1, "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
                   curstream->stationid, wireseq, wireseq);
       }
     }
@@ -1972,15 +1904,12 @@ negotiate_multi_v3 (SLCD *slconn)
         snprintf (sendstr, sizeof (sendstr), "DATA\r\n");
       }
 
-      sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n",
-                curstream->stationid);
+      sl_log_r (slconn, 1, 1, "[%s] requesting next available data\n", curstream->stationid);
     }
 
     /* Send the TIME/DATA/FETCH command and receive response */
-    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                             curstream->stationid,
-                             (slconn->batchmode == 2) ? (void *)NULL : readbuf,
-                             sizeof (readbuf));
+    bytesread = sl_senddata (slconn, (void *)sendstr, strlen (sendstr), curstream->stationid,
+                             (slconn->batchmode == 2) ? (void *)NULL : readbuf, sizeof (readbuf));
 
     if (bytesread < 0)
     {
@@ -1994,15 +1923,14 @@ negotiate_multi_v3 (SLCD *slconn)
       /* Check response to DATA/FETCH/TIME request */
       if (!strncmp (readbuf, "OK\r", 3) && bytesread >= 4)
       {
-        sl_log_r (slconn, 1, 2, "[%s] DATA/FETCH/TIME command is OK %s%s%s\n",
-                  curstream->stationid,
+        sl_log_r (slconn, 1, 2, "[%s] DATA/FETCH/TIME command is OK %s%s%s\n", curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
       }
       else if (!strncmp (readbuf, "ERROR\r", 6) && bytesread >= 7)
       {
         sl_log_r (slconn, 2, 0, "[%s] DATA/FETCH/TIME command is not accepted %s%s%s\n",
-                  curstream->stationid,
-                  (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
+                  curstream->stationid, (extreply) ? "{" : "", (extreply) ? extreply : "",
+                  (extreply) ? "}" : "");
       }
       else
       {
@@ -2024,18 +1952,16 @@ negotiate_multi_v3 (SLCD *slconn)
   }
   else
   {
-    sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n",
-              slconn->sladdr, acceptsta);
+    sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n", slconn->sladdr, acceptsta);
   }
 
   /* Issue END action command */
   snprintf (sendstr, sizeof (sendstr), "END\r\n");
 
-  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-            (int)strcspn (sendstr, "\r\n"), sendstr);
+  sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+            sendstr);
 
-  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                   slconn->sladdr, (void *)NULL, 0) < 0)
+  if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, (void *)NULL, 0) < 0)
   {
     sl_log_r (slconn, 2, 0, "[%s] error sending END command\n", slconn->sladdr);
     return -1;
@@ -2063,16 +1989,16 @@ static SOCKET
 negotiate_v4 (SLCD *slconn)
 {
   int stationcnt = 0; /* Station count */
-  int errorcnt   = 0; /* Error count */
-  int bytesread  = 0;
-  size_t sellen  = 0;
+  int errorcnt = 0;   /* Error count */
+  int bytesread = 0;
+  size_t sellen = 0;
   char *selptr;
   char *cp;
   char *cmd_selector;
-  char selector[32]   = {0};
+  char selector[32] = {0};
   char v4selector[32] = {0};
   char start_time[31] = {0};
-  char end_time[31]   = {0};
+  char end_time[31] = {0};
   char sendstr[32];  /* A buffer for small command strings */
   char readbuf[200]; /* A buffer for responses */
   SLstream *curstream;
@@ -2096,15 +2022,15 @@ negotiate_v4 (SLCD *slconn)
   {
     if (strlen (slconn->start_time) > sizeof (start_time) - 2)
     {
-      sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n",
-                __func__, slconn->start_time);
+      sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
+                slconn->start_time);
       return -1;
     }
 
     if (sl_isodatetime (start_time, slconn->start_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be converted '%s'\n",
-                __func__, slconn->start_time);
+      sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be converted '%s'\n", __func__,
+                slconn->start_time);
       return -1;
     }
   }
@@ -2112,15 +2038,15 @@ negotiate_v4 (SLCD *slconn)
   {
     if (strlen (slconn->end_time) > sizeof (end_time) - 2)
     {
-      sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n",
-                __func__, slconn->end_time);
+      sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
+                slconn->end_time);
       return -1;
     }
 
     if (sl_isodatetime (end_time, slconn->end_time) == NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be converted '%s'\n",
-                __func__, slconn->end_time);
+      sl_log_r (slconn, 2, 0, "%s(): End time string cannot be converted '%s'\n", __func__,
+                slconn->end_time);
       return -1;
     }
   }
@@ -2131,7 +2057,7 @@ negotiate_v4 (SLCD *slconn)
   while (curstream != NULL)
   {
     /* Allocate new command in list */
-    if ((cmdptr = (struct cmd_s *)malloc(sizeof(struct cmd_s))) == NULL)
+    if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
       while (cmdlist)
@@ -2159,9 +2085,7 @@ negotiate_v4 (SLCD *slconn)
     cmdtail->next = NULL;
 
     /* Generate STATION command */
-    snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-              "STATION %s\r",
-              curstream->stationid);
+    snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "STATION %s\r", curstream->stationid);
 
     stationcnt++;
 
@@ -2173,7 +2097,7 @@ negotiate_v4 (SLCD *slconn)
 
       while (1)
       {
-      /* Parse space-separated selectors and submit individually */
+        /* Parse space-separated selectors and submit individually */
         selptr += sellen;
         selptr += strspn (selptr, " ");
         sellen = strcspn (selptr, " ");
@@ -2222,15 +2146,13 @@ negotiate_v4 (SLCD *slconn)
           cmdtail->next = NULL;
 
           /* Generate SELECT command */
-          snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                    "SELECT %s\r",
-                    cmd_selector);
+          snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "SELECT %s\r", cmd_selector);
         }
       }
     } /* End of selector processing */
 
     /* Allocate new command in list */
-    if ((cmdptr = (struct cmd_s *)malloc(sizeof(struct cmd_s))) == NULL)
+    if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
       while (cmdlist)
@@ -2253,38 +2175,29 @@ negotiate_v4 (SLCD *slconn)
     {
       if (curstream->seqnum != SL_UNSETSEQUENCE)
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA %" PRIu64 " %s%s%s\r",
-                  (curstream->seqnum + 1),
-                  start_time,
-                  (end_time[0]) ? " " : "",
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA %" PRIu64 " %s%s%s\r",
+                  (curstream->seqnum + 1), start_time, (end_time[0]) ? " " : "",
                   (end_time[0]) ? end_time : "");
       }
       else
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA ALL %s%s%s\r",
-                  start_time,
-                  (end_time[0]) ? " " : "",
-                  (end_time[0]) ? end_time : "");
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL %s%s%s\r", start_time,
+                  (end_time[0]) ? " " : "", (end_time[0]) ? end_time : "");
       }
     }
     else
     {
       if (curstream->seqnum == SL_UNSETSEQUENCE)
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA\r");
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA\r");
       }
       else if (curstream->seqnum == SL_ALLDATASEQUENCE)
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA ALL\r");
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL\r");
       }
       else
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd),
-                  "DATA %" PRIu64 "\r",
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA %" PRIu64 "\r",
                   (curstream->seqnum + 1));
       }
     }
@@ -2296,11 +2209,9 @@ negotiate_v4 (SLCD *slconn)
   cmdptr = cmdlist;
   while (cmdptr)
   {
-    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n",
-              cmdptr->nsid, cmdptr->cmd);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", cmdptr->nsid, cmdptr->cmd);
 
-    bytesread = sl_senddata (slconn, (void *)cmdptr->cmd,
-                             strlen (cmdptr->cmd), cmdptr->nsid,
+    bytesread = sl_senddata (slconn, (void *)cmdptr->cmd, strlen (cmdptr->cmd), cmdptr->nsid,
                              (void *)NULL, 0);
 
     if (bytesread < 0)
@@ -2322,8 +2233,7 @@ negotiate_v4 (SLCD *slconn)
   cmdptr = cmdlist;
   while (cmdptr)
   {
-    bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf),
-                             cmdptr->cmd, cmdptr->nsid);
+    bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf), cmdptr->cmd, cmdptr->nsid);
 
     if (bytesread < 0)
     {
@@ -2338,26 +2248,25 @@ negotiate_v4 (SLCD *slconn)
     }
 
     /* Terminate command and response at first carriage return */
-    if ((cp = strchr(cmdptr->cmd, '\r')))
+    if ((cp = strchr (cmdptr->cmd, '\r')))
       *cp = '\0';
-    if ((cp = strchr(readbuf, '\r')))
+    if ((cp = strchr (readbuf, '\r')))
       *cp = '\0';
 
     if (bytesread >= 2 && !strncmp (readbuf, "OK", 2))
     {
-      sl_log_r (slconn, 1, 2, "[%s] Command OK (%s)\n",
-                cmdptr->nsid, cmdptr->cmd);
+      sl_log_r (slconn, 1, 2, "[%s] Command OK (%s)\n", cmdptr->nsid, cmdptr->cmd);
     }
     else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5))
     {
-      sl_log_r (slconn, 2, 0, "[%s] Command not accepted (%s): %s\n",
-                cmdptr->nsid, cmdptr->cmd, readbuf);
+      sl_log_r (slconn, 2, 0, "[%s] Command not accepted (%s): %s\n", cmdptr->nsid, cmdptr->cmd,
+                readbuf);
       errorcnt++;
     }
     else
     {
-      sl_log_r (slconn, 2, 0, "[%s] invalid response to command (%s): %s\n",
-                cmdptr->nsid, cmdptr->cmd, readbuf);
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to command (%s): %s\n", cmdptr->nsid,
+                cmdptr->cmd, readbuf);
       errorcnt++;
     }
 
@@ -2366,17 +2275,16 @@ negotiate_v4 (SLCD *slconn)
 
   if (errorcnt == 0)
   {
-    sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n",
-              slconn->sladdr, stationcnt);
+    sl_log_r (slconn, 1, 1, "[%s] %d station(s) accepted\n", slconn->sladdr, stationcnt);
 
     /* Issue END or ENDFETCH command to finalize stream selection and start streaming */
     snprintf (sendstr, sizeof (sendstr), (slconn->dialup) ? "ENDFETCH\r\n" : "END\r\n");
 
-    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr,
-              (int)strcspn (sendstr, "\r\n"), sendstr);
+    sl_log_r (slconn, 1, 2, "[%s] sending: %.*s\n", slconn->sladdr, (int)strcspn (sendstr, "\r\n"),
+              sendstr);
 
-    if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr),
-                     slconn->sladdr, (void *)NULL, 0) < 0)
+    if (sl_senddata (slconn, (void *)sendstr, strlen (sendstr), slconn->sladdr, (void *)NULL, 0) <
+        0)
     {
       sl_log_r (slconn, 2, 0, "[%s] error sending END command\n", slconn->sladdr);
       errorcnt++;
@@ -2505,7 +2413,7 @@ setsocktimeo_int (SOCKET socket, int timeout)
 #if defined(SO_RCVTIMEO) && defined(SO_SNDTIMEO)
   struct timeval tval;
 
-  tval.tv_sec  = timeout;
+  tval.tv_sec = timeout;
   tval.tv_usec = 0;
 
   if (setsockopt (socket, SOL_SOCKET, SO_RCVTIMEO, &tval, sizeof (tval)))
@@ -2539,22 +2447,19 @@ static int
 load_ca_certs (SLCD *slconn)
 {
   TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
-  int ca_loaded  = 0;
-  char *evalue   = NULL;
+  int ca_loaded = 0;
+  char *evalue = NULL;
   int ret;
 
   /* Common locations for Certificate Authority files on Linux/BSD systems */
-  char *ca_known_files[] = {
-      "/etc/ssl/cert.pem",
-      "/etc/ssl/certs/ca-certificates.crt",
-      "/etc/pki/tls/certs/ca-bundle.crt",
-      "/etc/ssl/ca-bundle.pem",
-      "/etc/pki/tls/cacert.pem",
-      "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"};
+  char *ca_known_files[] = {"/etc/ssl/cert.pem",
+                            "/etc/ssl/certs/ca-certificates.crt",
+                            "/etc/pki/tls/certs/ca-bundle.crt",
+                            "/etc/ssl/ca-bundle.pem",
+                            "/etc/pki/tls/cacert.pem",
+                            "/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"};
 
-  char *ca_known_paths[] = {
-      "/etc/ssl/certs",
-      "/etc/pki/tls/certs"};
+  char *ca_known_paths[] = {"/etc/ssl/certs", "/etc/pki/tls/certs"};
 
   /* Read trusted CA file */
   if ((evalue = getenv ("LIBSLINK_CA_CERT_FILE")) != NULL)
@@ -2564,8 +2469,8 @@ load_ca_certs (SLCD *slconn)
 
     if ((ret = mbedtls_x509_crt_parse_file (&tlsctx->cacert, evalue)) != 0)
     {
-      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_file() returned -0x%x\n",
-                slconn->sladdr, (unsigned int)-ret);
+      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_file() returned -0x%x\n", slconn->sladdr,
+                (unsigned int)-ret);
       return -1;
     }
 
@@ -2580,8 +2485,8 @@ load_ca_certs (SLCD *slconn)
 
     if ((ret = mbedtls_x509_crt_parse_path (&tlsctx->cacert, evalue)) != 0)
     {
-      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_path() returned -0x%x\n",
-                slconn->sladdr, (unsigned int)-ret);
+      sl_log_r (slconn, 2, 0, "[%s] mbedtls_x509_crt_parse_path() returned -0x%x\n", slconn->sladdr,
+                (unsigned int)-ret);
       return -1;
     }
 
@@ -2592,15 +2497,15 @@ load_ca_certs (SLCD *slconn)
   if (ca_loaded == 0)
   {
     /* Search known CA file locations, stop after finding one */
-    for (size_t i = 0; i < sizeof(ca_known_files) / sizeof(ca_known_files[0]); i++)
+    for (size_t i = 0; i < sizeof (ca_known_files) / sizeof (ca_known_files[0]); i++)
     {
       if (access (ca_known_files[i], R_OK) != 0)
       {
         continue;
       }
 
-      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert file (%s)\n",
-                slconn->sladdr, ca_known_files[i]);
+      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert file (%s)\n", slconn->sladdr,
+                ca_known_files[i]);
 
       if ((ret = mbedtls_x509_crt_parse_file (&tlsctx->cacert, ca_known_files[i])) != 0)
       {
@@ -2614,15 +2519,15 @@ load_ca_certs (SLCD *slconn)
     }
 
     /* Search known CA cert path locations, read all locations */
-    for (size_t i = 0; i < sizeof(ca_known_paths) / sizeof(ca_known_paths[0]); i++)
+    for (size_t i = 0; i < sizeof (ca_known_paths) / sizeof (ca_known_paths[0]); i++)
     {
       if (access (ca_known_paths[i], R_OK) != 0)
       {
         continue;
       }
 
-      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert files from path (%s)\n",
-                slconn->sladdr, ca_known_paths[i]);
+      sl_log_r (slconn, 1, 2, "[%s] Reading TLS CA cert files from path (%s)\n", slconn->sladdr,
+                ca_known_paths[i]);
 
       if ((ret = mbedtls_x509_crt_parse_path (&tlsctx->cacert, ca_known_paths[i])) != 0)
       {
