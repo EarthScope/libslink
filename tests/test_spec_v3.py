@@ -1,0 +1,391 @@
+#!/usr/bin/env python3
+"""SeedLink protocol v3 conformance tests.
+
+Organizing document: https://www.seiscomp.de/doc/apps/seedlink.html#seedlink
+
+Companion to test_spec_v4.py: every test class here is named after a
+section of the v3 spec and every test's docstring/comment quotes or
+paraphrases the specific requirement it enforces, rather than merely
+exercising whatever path the current implementation happens to take
+(that's what test_protocol.py is for). Where libslink diverges from the
+spec, the test asserts the *spec's* behavior and fails today -- see
+README.md's "Spec-conformance deviations" table for the running list.
+"""
+
+import os
+import sys
+import unittest
+
+sys.path.insert(0, os.path.dirname(__file__))
+
+from slmock import mseed, spec
+from slmock.server import serve_hello, serve_precommands, serve_v3_multi, serve_v3_uni
+from test_protocol import ProtocolTestCase
+
+
+class TestPacketFraming(ProtocolTestCase):
+    """seiscomp docs, "SeedLink packet structure": the 8-byte 'SL' +
+    six-digit hex sequence header, 512-byte miniSEED payload."""
+
+    def test_header_is_8_bytes_signature_plus_six_hex_digits(self):
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(0xABCDEF, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertEqual(events["packets"][0]["seq"], 0xABCDEF)
+        self.assertEqual(events["packets"][0]["length"], 512)
+
+    def test_sequence_number_wraps_at_ffffff(self):
+        # "Wraparound occurs at FFFFFF (16,777,215)" -- the packet after
+        # the maximum 6-hex-digit value wraps back to 0, not to a 7th digit.
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(0xFFFFFF, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+            conn.sendall(
+                mseed.frame_v3_data(0x000000, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--allstation", "BHZ", "--max-packets", "2", "--timeout-seconds", "8"],
+        )
+
+        self.assertEqual([p["seq"] for p in events["packets"]], [0xFFFFFF, 0])
+
+
+class TestCommandSyntax(ProtocolTestCase):
+    """seiscomp docs, "Commands": v3-specific syntax -- comma-delimited
+    time, hex sequence numbers in DATA/FETCH, FETCH vs DATA, and command
+    framing."""
+
+    def test_every_command_is_legal_v3_syntax(self):
+        seen = []
+
+        def handler(conn, reader, server, idx):
+            reader.strict_protocol = 3  # validated as each command is read
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            commands = serve_v3_uni(reader, conn, cmd)
+            seen.extend(commands)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        for cmd in seen:
+            verb = cmd.split(" ", 1)[0]
+            self.assertIn(verb, spec.V3_VERBS, seen)
+
+    def test_time_command_uses_comma_delimited_format(self):
+        captured = {}
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            commands = serve_v3_uni(reader, conn, cmd)
+            captured["commands"] = commands
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--time-start",
+                "2024-01-01T00:00:00",
+                "--time-end",
+                "2024-01-02T00:00:00",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        time_cmd = [c for c in captured["commands"] if c.startswith("TIME")][0]
+        self.assertEqual(time_cmd, "TIME 2024,01,01,00,00,00 2024,01,02,00,00,00")
+        self.assertEqual(len(events["packets"]), 1, events)
+
+    def test_fetch_used_in_dialup_mode_data_in_realtime(self):
+        for dialup, expect_verb in ((True, "FETCH"), (False, "DATA")):
+            with self.subTest(dialup=dialup):
+                captured = {}
+
+                def handler(conn, reader, server, idx):
+                    serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+                    cmd = serve_precommands(reader, conn)
+                    commands = serve_v3_uni(reader, conn, cmd)
+                    captured["commands"] = commands
+                    conn.sendall(
+                        mseed.frame_v3_data(
+                            1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ")
+                        )
+                    )
+                    if dialup:
+                        conn.sendall(b"END")
+
+                args = ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"]
+                if dialup:
+                    args.append("--dialup")
+
+                events, _ = self.run_scenario(handler, args)
+
+                self.assertEqual(captured["commands"][-1], expect_verb, captured["commands"])
+                self.assertEqual(len(events["packets"]), 1, (dialup, events))
+
+    def test_data_sequence_number_should_stay_within_six_hex_digits(self):
+        """Deviation from the spec (seiscomp docs, "SeedLink packet
+        structure": the wire sequence field is exactly six hex digits,
+        wrapping at FFFFFF/16,777,215). negotiate_uni_v3()/
+        negotiate_multi_v3() (network.c) format the resumption sequence
+        with `"%s %0" PRIX64` -- the "0" flag has no effect without an
+        explicit width, so a sequence number one past the 24-bit
+        boundary is sent as a 7-hex-digit argument ("1000001"), not
+        wrapped into six digits. A client resuming from a sequence
+        number in that range (e.g. persisted from a prior v4 session,
+        or simply because more than 16,777,215 packets have been sent)
+        asks for something the v3 wire format itself cannot represent."""
+        captured = {}
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            stations = serve_v3_multi(reader, conn, cmd)
+            captured["stations"] = stations
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--station",
+                "XX_TEST:BHZ:16777216",  # one past the 6-hex-digit/24-bit boundary
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        data_line = [line for line in events["log"] if "resuming data from" in line][0]
+        hexseq = data_line.split("resuming data from ")[1].split(" ")[0]
+        self.assertEqual(
+            len(hexseq),
+            6,
+            "DATA sequence argument %r is %d hex digits, not the spec's fixed six: %r"
+            % (hexseq, len(hexseq), data_line),
+        )
+
+
+class TestHandshakeOrdering(ProtocolTestCase):
+    """seiscomp docs, "Handshaking": modifier commands (SELECT, STATION)
+    are acknowledged OK/ERROR; action commands (DATA/FETCH/TIME/END) are
+    not. Uni-station has no STATION/END; multi-station requires both."""
+
+    def test_uni_station_has_no_station_or_end_command(self):
+        seen = []
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            commands = serve_v3_uni(reader, conn, cmd)
+            seen.extend(commands)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertFalse(any(c.startswith("STATION") or c == "END" for c in seen), seen)
+
+    def test_multi_station_requires_station_and_final_end(self):
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            # serve_v3_multi() itself asserts the negotiation ends in a
+            # bare, unacknowledged END -- raises if it doesn't.
+            stations = serve_v3_multi(reader, conn, cmd)
+            self.assertEqual(stations, ["STATION TEST XX"])
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+
+    def test_modifier_commands_are_acknowledged_action_commands_are_not(self):
+        # SELECT (a modifier) gets an explicit OK/ERROR; DATA (an action
+        # command in uni-station mode) does not -- serve_v3_uni() already
+        # only ever writes a response for SELECT lines, so a client that
+        # incorrectly waited for one after DATA would simply hang here
+        # until the scenario's own timeout.
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
+        )
+        self.assertEqual(len(events["packets"]), 1, events)
+
+
+class TestInfo(ProtocolTestCase):
+    """seiscomp docs, "INFO": XML embedded in a pseudo-miniSEED2 record
+    behind the SLINFO header; '*'-flagged continuation for multi-packet
+    responses."""
+
+    def test_each_info_level_is_requested_and_delivered(self):
+        levels = ("ID", "CAPABILITIES", "STATIONS", "STREAMS", "GAPS", "CONNECTIONS", "ALL")
+
+        for level in levels:
+            with self.subTest(level=level):
+                def handler(conn, reader, server, idx, level=level):
+                    serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+                    cmd = serve_precommands(reader, conn)
+                    serve_v3_uni(reader, conn, cmd)
+                    cmd = reader.read_command()
+                    self.assertEqual(cmd, "INFO " + level, cmd)
+                    record = mseed.build_ms2_info(("<%s/>" % level).encode())
+                    conn.sendall(mseed.frame_v3_info(record, terminated=True))
+
+                events, _ = self.run_scenario(
+                    handler,
+                    [
+                        "--v3",
+                        "--info",
+                        level,
+                        "--allstation",
+                        "BHZ",
+                        "--max-packets",
+                        "1",
+                        "--timeout-seconds",
+                        "8",
+                    ],
+                )
+
+                self.assertEqual(len(events["packets"]), 1, (level, events))
+                self.assertIn(("<%s/>" % level).encode(), events["packets"][0]["payload"])
+
+    def test_continued_response_is_reassembled_from_both_fragments(self):
+        # The '*' continuation flag (byte 7 of the SLINFO header) marks a
+        # non-final fragment; the caller is expected to concatenate
+        # fragments up to the first non-'*' (terminated) one.
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            cmd = reader.read_command()
+            self.assertEqual(cmd, "INFO ID", cmd)
+            part1 = mseed.build_ms2_info(b"<seedlink><part1/>")
+            part2 = mseed.build_ms2_info(b"<part2/></seedlink>")
+            conn.sendall(mseed.frame_v3_info(part1, terminated=False))
+            conn.sendall(mseed.frame_v3_info(part2, terminated=True))
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--info",
+                "ID",
+                "--allstation",
+                "BHZ",
+                "--max-packets",
+                "2",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 2, events)
+        combined = events["packets"][0]["payload"] + events["packets"][1]["payload"]
+        self.assertIn(b"<seedlink><part1/>", combined)
+        self.assertIn(b"<part2/></seedlink>", combined)
+
+    def test_info_packets_carry_no_sequence_number(self):
+        # The 8-byte v3 header for INFO responses is "SLINFO" + a filler
+        # byte + the continuation flag -- there is no sequence number
+        # field at all (contrast the 6 hex digits a data packet carries).
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            cmd = reader.read_command()
+            self.assertEqual(cmd, "INFO ID", cmd)
+            record = mseed.build_ms2_info(b"<seedlink/>")
+            conn.sendall(mseed.frame_v3_info(record, terminated=True))
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--info",
+                "ID",
+                "--allstation",
+                "BHZ",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        # SL_UNSETSEQUENCE (UINT64_MAX): no sequence number was ever set.
+        self.assertEqual(events["packets"][0]["seq"], (2**64) - 1)
+
+
+class TestUnimplementedCommands(ProtocolTestCase):
+    """seiscomp docs list CAT and BYE among the client commands, but
+    libslink implements neither (grep over the whole tree turns up
+    nothing) -- both are telnet-session conveniences for a human typing
+    commands directly, not operations a programmatic client ever needs,
+    so this is a deliberate non-goal rather than a gap to close."""
+
+    def test_cat_and_bye_are_intentionally_not_implemented(self):
+        self.skipTest(
+            "CAT and BYE are real v3 commands (seiscomp seedlink docs) with no "
+            "libslink equivalent; intentionally not exercised -- see this class's "
+            "docstring."
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()

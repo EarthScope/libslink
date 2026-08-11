@@ -74,10 +74,11 @@ $(LIB_SO): $(MBEDTLS_LOBJS) $(LIB_LOBJS)
 	ln -s $(LIB_SO) $(LIB_SO_MAJOR)
 
 test check: static FORCE
-	@$(MAKE) -C test test
+	@$(MAKE) -C tests test
 
 clean:
 	@$(RM) $(LIB_OBJS) $(LIB_LOBJS) $(LIB_A) $(LIB_SO) $(LIB_SO_MAJOR) $(LIB_SO_BASE) $(MBEDTLS_OBJS) $(MBEDTLS_LOBJS)
+	@$(MAKE) -C tests clean
 	@echo "All clean."
 
 install: shared
