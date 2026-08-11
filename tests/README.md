@@ -145,17 +145,17 @@ passes in a plain build; run it under ASan to see the failure.
 
 ### Implementation-behavior findings (`fable-review.md`)
 
-`fable-review.md` lists 12 findings against this codebase. Finding 1 is
-fixed (`ChangeLog` `2026.222`) and is covered by a regression test
-(`TestKeepaliveAndInfoRegression` in `test_protocol.py`). Findings that
-are reachable and deterministic through this suite are written as
-ordinary tests asserting the **correct** behavior, so they show up as
-`not ok` / `FAIL` today and will flip to passing once each is fixed.
-This is the current baseline for this table:
+`fable-review.md` lists 12 findings against this codebase. Findings 1
+and 3 are fixed (`ChangeLog` `2026.222`) and are covered by regression
+tests (`TestKeepaliveAndInfoRegression` and `TestAuthValueNullRegression`
+in `test_protocol.py`). Findings that are reachable and deterministic
+through this suite are written as ordinary tests asserting the
+**correct** behavior, so they show up as `not ok` / `FAIL` today and
+will flip to passing once each is fixed. This is the current baseline
+for this table:
 
 | # | Finding | Test |
 |---|---|---|
-| 3 | `auth_value()` NULL return dereferenced (`network.c`) | `test_protocol.TestKnownBugAuthValueNull` — crashes the client |
 | 4 | CA env var name mismatch (docs say `LIBSLINK_TLS_CERT_FILE`, code reads `LIBSLINK_CA_CERT_FILE`) | `test_tls.TestTLS.test_documented_env_var_name_should_work` (needs `trustme`) |
 | 6 | `sl_set_serveraddress()` host off-by-one (`slutils.c`) | `test_slcd.test_serveraddress_host_boundary` — a 300-char host is stored unterminated |
 | 8 | B1000 record-length shift UB (`slutils.c`) | `test_internals.test_detect_ms2_b1000_reclen_overflow` |

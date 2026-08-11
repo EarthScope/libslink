@@ -1220,6 +1220,10 @@ sl_set_timewindow (SLCD *slconn, const char *start_time, const char *end_time)
  * JWT <token>
  * ```
  *
+ * If \a auth_value returns NULL or an empty string, no credentials are
+ * available and the connection attempt is aborted as an authentication
+ * failure; \a auth_finish, if set, is still called in that case.
+ *
  * The \a auth_finish callback, if not NULL, is executed when authentication
  * is complete. This can be used to free memory or perform other cleanup tasks.
  *

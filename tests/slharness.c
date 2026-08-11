@@ -63,7 +63,7 @@ harness_auth_value (const char *server, void *auth_data)
   (void)auth_data;
 
   if (g_auth_null)
-    return NULL; /* reproduces fable-review finding 3 */
+    return NULL; /* simulate a callback with no credentials available */
 
   return g_authvalue;
 }

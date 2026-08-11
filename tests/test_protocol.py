@@ -683,12 +683,12 @@ class TestKeepaliveAndInfoRegression(ProtocolTestCase):
         self.assertEqual(len(events["packets"]), 1, events)
 
 
-class TestKnownBugAuthValueNull(ProtocolTestCase):
-    """fable-review finding 3: sayhello_int() calls strlen(auth_value)
-    without checking for NULL, though the auth_value() callback contract
-    explicitly permits returning NULL. This crashes the client."""
+class TestAuthValueNullRegression(ProtocolTestCase):
+    """Regression coverage for fable-review finding 3: sayhello_int() must
+    treat a NULL auth_value() return as an authentication failure
+    (SLAUTHFAIL) instead of dereferencing it."""
 
-    def test_auth_value_returning_null_should_not_crash(self):
+    def test_auth_value_returning_null_yields_slauthfail(self):
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn)
             try:
@@ -709,18 +709,8 @@ class TestKnownBugAuthValueNull(ProtocolTestCase):
             subprocess_timeout=15,
         )
 
-        # Python reports a child killed by a signal as a negative returncode
-        # (the signal number negated). Which signal varies: a plain build
-        # segfaults directly (-11, SIGSEGV); under ASan the same NULL
-        # dereference is caught and reported before the process aborts
-        # (-6, SIGABRT). Either way, "killed by a signal" is the crash.
-        self.assertGreaterEqual(
-            events["returncode"],
-            0,
-            "known bug (finding 3): auth_value() returning NULL crashes the client (killed by "
-            "signal %d) instead of being handled as an error: %r"
-            % (-events["returncode"] if events["returncode"] < 0 else 0, events),
-        )
+        self.assertEqual(events["returncode"], 0, events)
+        self.assertEqual(events["result"], "-3", events)  # SLAUTHFAIL
 
 
 if __name__ == "__main__":

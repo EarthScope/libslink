@@ -2,6 +2,8 @@
 	- Reset the INFO query state on reconnect and on any completed INFO response.
 	- Fix an out-of-bounds read when scanning a server reply for an extended
 	reply message.
+	- Treat a NULL or empty authentication value from the auth_value()
+	callback as an authentication failure.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

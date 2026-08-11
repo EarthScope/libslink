@@ -1309,6 +1309,18 @@ sayhello_int (SLCD *slconn)
     /* Call user-supplied callback function that returns authentication value */
     const char *auth_value = slconn->auth_value (slconn->sladdr, slconn->auth_data);
 
+    /* NULL or empty value means no credentials are available */
+    if (auth_value == NULL || *auth_value == '\0')
+    {
+      sl_log_r (slconn, 2, 0, "[%s] no authentication value available\n",
+                slconn->sladdr);
+
+      if (slconn->auth_finish)
+        slconn->auth_finish (slconn->sladdr, slconn->auth_data);
+
+      return SLAUTHFAIL;
+    }
+
     if (strlen(auth_value) > sizeof (sendstr) - 10)
     {
       sl_log_r (slconn, 2, 0, "[%s] authentication value too large (%d bytes), maximum: %d bytes\n",
@@ -1317,7 +1329,7 @@ sayhello_int (SLCD *slconn)
       if (slconn->auth_finish)
         slconn->auth_finish (slconn->sladdr, slconn->auth_data);
 
-      return -1;
+      return SLAUTHFAIL;
     }
 
     /* Create full AUTH command */
