@@ -303,38 +303,33 @@ test_clientname (void)
 
   SLT_EQ_INT (sl_set_clientname (slconn, "onlyname", NULL), 0, "name without version accepted");
   SLT_EQ_STR (slconn->clientname, "onlyname", "client name updated again");
+  SLT_NULL (slconn->clientversion, "client version cleared when set without a version");
 
   SLT_EQ_INT (sl_set_clientname (NULL, "x", NULL), -1, "NULL connection rejected");
   SLT_EQ_INT (sl_set_clientname (slconn, NULL, NULL), -1, "NULL name rejected");
 
-  /* clientversion now dangles (see the dedicated test below); clear it by
-   * hand so this test's own cleanup does not double-free it. */
-  slconn->clientversion = NULL;
-
   sl_freeslcd (slconn);
 }
 
-/* --- Newly discovered while testing (not one of the fable-review findings):
- * sl_set_clientname() frees the existing clientversion string but, when
- * called again with a NULL version, never resets the pointer to NULL.
- * A subsequent sl_freeslcd() then frees that same (already-freed) pointer
- * a second time.  Deterministically aborts on this platform's allocator. --- */
+/* Regression: sl_set_clientname() must not leave clientversion dangling
+ * when re-called with a NULL version after a prior call set one; a
+ * subsequent sl_freeslcd() would otherwise free that pointer twice. */
 
 static void
 trigger_clientname_version_then_free (void)
 {
   SLCD *slconn = sl_initslcd ("t", "1.0"); /* sets a clientversion string */
 
-  sl_set_clientname (slconn, "onlyname", NULL); /* frees it, leaves it dangling */
-  sl_freeslcd (slconn); /* double-frees the dangling clientversion pointer */
+  sl_set_clientname (slconn, "onlyname", NULL); /* must clear clientversion, not dangle it */
+  sl_freeslcd (slconn);
 }
 
 static void
 test_clientname_version_dangling_pointer (void)
 {
   assert_survives ("clientname_dangling",
-                   "newly found bug: re-calling sl_set_clientname() without a version, "
-                   "then sl_freeslcd(), should not double-free clientversion");
+                   "re-calling sl_set_clientname() without a version, then sl_freeslcd(), "
+                   "does not double-free clientversion");
 }
 
 static void

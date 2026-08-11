@@ -170,12 +170,17 @@ for this table:
 | 9 | `config.c`'s `%199c` captures trailing whitespace | `test_streams.test_streamlist_file_trailing_whitespace` |
 | — | `libslink.def` export list is out of sync with `libslink.h` (typos, two missing entries, three static-inline names wrongly listed) | `test_exports.py`, both test methods |
 
-**Found while building this suite, not in `fable-review.md`:**
-`sl_set_clientname()` frees the existing `clientversion` string but, when
-called again with a `NULL` version, never resets the pointer to `NULL`.
-A later `sl_freeslcd()` then double-frees it — deterministically aborts
-on this platform's allocator. Covered by
-`test_slcd.test_clientname_version_dangling_pointer`.
+**Found while building this suite, not in `fable-review.md`:** `sl_set_clientname()`
+used to free the existing `clientversion` string but, when called again with a
+`NULL` version, never reset the pointer to `NULL`; a later `sl_freeslcd()` then
+double-freed it, deterministically aborting on this platform's allocator. Fixed
+by allocating both new strings before freeing either old one, and always
+assigning both members (so `clientversion` becomes `NULL` rather than dangling
+when no version is given). Covered by
+`test_slcd.test_clientname_version_dangling_pointer`. Not covered: the same fix
+also makes a failed call (allocation failure) leave the prior name/version
+untouched instead of destroying them, which would need allocator-failure
+injection this suite doesn't have.
 
 **Documented but not exercised as failing tests** (need instrumentation
 or infrastructure this suite doesn't build):

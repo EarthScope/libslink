@@ -1000,15 +1000,15 @@ sl_freeslcd (SLCD *slconn)
 int
 sl_set_clientname (SLCD *slconn, const char *name, const char *version)
 {
+  char *newname    = NULL;
+  char *newversion = NULL;
+
   if (!slconn || !name)
     return -1;
 
-  free (slconn->clientname);
-  free (slconn->clientversion);
+  newname = strdup (name);
 
-  slconn->clientname = strdup (name);
-
-  if (slconn->clientname == NULL)
+  if (newname == NULL)
   {
     sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
     return -1;
@@ -1016,14 +1016,21 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
 
   if (version)
   {
-    slconn->clientversion = strdup (version);
+    newversion = strdup (version);
 
-    if (slconn->clientversion == NULL)
+    if (newversion == NULL)
     {
       sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+      free (newname);
       return -1;
     }
   }
+
+  free (slconn->clientname);
+  free (slconn->clientversion);
+
+  slconn->clientname    = newname;
+  slconn->clientversion = newversion;
 
   return 0;
 } /* End of sl_set_clientname() */
