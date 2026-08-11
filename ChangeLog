@@ -13,6 +13,7 @@
 	- Reject an out-of-range miniSEED 2 B1000 record length exponent in detect().
 	- Terminate and trim the selectors parsed from a stream list file, and
 	fail when a stream cannot be added to the list.
+	- Reuse the star fast-forward byte when backtracking in the glob matcher.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0
