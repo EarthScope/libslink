@@ -4,8 +4,6 @@
 	reply message.
 	- Treat a NULL or empty authentication value from the auth_value()
 	callback as an authentication failure.
-	- Correct the CA certificate environment variable names in the TLS log
-	message and documentation to LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH.
 	- Free the authentication value allocated by sl_set_auth_envvars().
 	- Copy the parsed host and port without a fixed length limit in
 	sl_set_serveraddress().
@@ -21,7 +19,10 @@
 	tolerate a NULL command.
 	- Disconnect and return SLTERMINATE when a received station ID is too
 	large for the buffer.
-	- Treat a zero-length v4 payload as a complete payload.
+	- Treat a zero-length v4 payload as a complete payload, it will fail.
+	- Correct the CA certificate environment variable names in the TLS log
+	message and documentation to LIBSLINK_CA_CERT_FILE and LIBSLINK_CA_CERT_PATH.
+	- Wrap the v3 resumption sequence to the six hex digits of the wire format.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

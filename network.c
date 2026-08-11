@@ -1633,6 +1633,11 @@ negotiate_uni_v3 (SLCD *slconn)
   {
     char cmd[10];
 
+    /* The v3 wire sequence field is six hex digits, wrapping at FFFFFF */
+    uint32_t wireseq = (curstream->seqnum == SL_ALLDATASEQUENCE)
+                            ? 0
+                            : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
+
     if (slconn->dialup)
     {
       snprintf (cmd, sizeof (cmd), "FETCH");
@@ -1655,25 +1660,21 @@ negotiate_uni_v3 (SLCD *slconn)
         return -1;
       }
 
-      /* Increment sequence number by 1 */
-      snprintf (sendstr, sizeof (sendstr), "%s %0" PRIX64 " %.31s\r\n", cmd,
-                (curstream->seqnum + 1), timestr);
+      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd,
+                wireseq, timestr);
 
       sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
-                slconn->sladdr, (curstream->seqnum + 1),
-                (curstream->seqnum + 1), timestr);
+                "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ") at %.31s\n",
+                slconn->sladdr, wireseq, wireseq, timestr);
     }
     else
     {
-      /* Increment sequence number by 1 */
-      snprintf (sendstr, sizeof (sendstr), "%s %0" PRIX64 "\r\n", cmd,
-                (curstream->seqnum + 1));
+      snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd,
+                wireseq);
 
       sl_log_r (slconn, 1, 1,
-                "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ")\n",
-                slconn->sladdr, (curstream->seqnum + 1),
-                (curstream->seqnum + 1));
+                "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
+                slconn->sladdr, wireseq, wireseq);
     }
   }
   else
@@ -1916,6 +1917,11 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       char cmd[10];
 
+      /* The v3 wire sequence field is six hex digits, wrapping at FFFFFF */
+      uint32_t wireseq = (curstream->seqnum == SL_ALLDATASEQUENCE)
+                              ? 0
+                              : (uint32_t)((curstream->seqnum + 1) & 0xFFFFFF);
+
       if (slconn->dialup)
       {
         snprintf (cmd, sizeof (cmd), "FETCH");
@@ -1938,25 +1944,21 @@ negotiate_multi_v3 (SLCD *slconn)
           return -1;
         }
 
-        /* Increment sequence number by 1 */
-        snprintf (sendstr, sizeof (sendstr), "%s %0" PRIX64 " %.31s\r\n", cmd,
-                  (curstream->seqnum + 1), timestr);
+        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 " %.31s\r\n", cmd,
+                  wireseq, timestr);
 
         sl_log_r (slconn, 1, 1,
-                  "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ") at %.31s\n",
-                  slconn->sladdr, (curstream->seqnum + 1),
-                  (curstream->seqnum + 1), timestr);
+                  "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ") at %.31s\n",
+                  curstream->stationid, wireseq, wireseq, timestr);
       }
       else
-      { /* Increment sequence number by 1 */
-        snprintf (sendstr, sizeof (sendstr), "%s %0" PRIX64 "\r\n", cmd,
-                  (curstream->seqnum + 1));
+      {
+        snprintf (sendstr, sizeof (sendstr), "%s %06" PRIX32 "\r\n", cmd,
+                  wireseq);
 
         sl_log_r (slconn, 1, 1,
-                  "[%s] resuming data from %0" PRIX64 " (Dec %" PRIu64 ")\n",
-                  curstream->stationid,
-                  (curstream->seqnum + 1),
-                  (curstream->seqnum + 1));
+                  "[%s] resuming data from %06" PRIX32 " (Dec %" PRIu32 ")\n",
+                  curstream->stationid, wireseq, wireseq);
       }
     }
     else

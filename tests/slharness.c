@@ -44,6 +44,7 @@ static int      g_station_count = 0;
 static const char *g_allstation_selectors = NULL;
 static int          g_allstation_set       = 0;
 static int          g_allstation_seqall    = 0;
+static uint64_t     g_allstation_seq       = SL_UNSETSEQUENCE;
 
 static void
 harness_log (const char *msg)
@@ -248,6 +249,8 @@ main (int argc, char **argv)
     }
     else if (strcmp (a, "--seq-all") == 0)
       g_allstation_seqall = 1;
+    else if (strcmp (a, "--allstation-seq") == 0 && argi + 1 < argc)
+      g_allstation_seq = strtoull (argv[++argi], NULL, 10);
     else if (strcmp (a, "--time-start") == 0 && argi + 1 < argc)
       timewindow_start = argv[++argi];
     else if (strcmp (a, "--time-end") == 0 && argi + 1 < argc)
@@ -338,7 +341,7 @@ main (int argc, char **argv)
   {
     sl_set_allstation_params (slconn,
                               (g_allstation_selectors && *g_allstation_selectors) ? g_allstation_selectors : NULL,
-                              (g_allstation_seqall) ? SL_ALLDATASEQUENCE : SL_UNSETSEQUENCE, NULL);
+                              (g_allstation_seqall) ? SL_ALLDATASEQUENCE : g_allstation_seq, NULL);
   }
 
   if (timewindow_start || timewindow_end)

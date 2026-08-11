@@ -671,7 +671,7 @@ class TestStateFileAcrossRuns(ProtocolTestCase):
         # resumption text to inspect directly here, but the second run's DATA
         # command must have requested the next sequence after what was saved.
         self.assertEqual(received_data_commands[0], "DATA")
-        self.assertEqual(received_data_commands[1], "DATA 11")  # seq 0x10 + 1, hex
+        self.assertEqual(received_data_commands[1], "DATA 000011")  # seq 0x10 + 1, six hex digits
 
 
 class TestKeepaliveAndInfoRegression(ProtocolTestCase):

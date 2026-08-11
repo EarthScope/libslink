@@ -108,11 +108,17 @@ fixed.
 
 Found while writing `test_spec_v3.py`/`test_spec_v4.py` against the
 published specs (see each file's module docstring for the URL) rather
-than against the implementation's own behavior:
-
-| Spec section | Deviation | Test |
-|---|---|---|
-| v3 "SeedLink packet structure" (six-digit hex sequence field) | `negotiate_uni_v3()`/`negotiate_multi_v3()` (`network.c`) format a resumption sequence with `"%0" PRIX64` — the `0` flag has no effect without an explicit width, so a sequence one past the 24-bit boundary is sent as 7+ hex digits, not wrapped into six | `test_spec_v3.TestCommandSyntax.test_data_sequence_number_should_stay_within_six_hex_digits` |
+than against the implementation's own behavior. None currently open: the
+one deviation found here — v3 "SeedLink packet structure" (six-digit hex
+sequence field): `negotiate_uni_v3()`/`negotiate_multi_v3()` (`network.c`)
+formatted a resumption sequence with `"%0" PRIX64`, whose `0` flag has no
+effect without an explicit width, so a sequence one past the 24-bit
+boundary was sent as 7+ hex digits instead of wrapped into six — is
+fixed and covered by `test_spec_v3.TestCommandSyntax`'s
+`test_data_sequence_number_stays_within_six_hex_digits_multi`,
+`test_data_sequence_number_stays_within_six_hex_digits_uni`,
+`test_data_sequence_number_wraps_at_ffffff_boundary_uni`, and
+`test_alldata_sequence_requests_from_zero_multi`.
 
 **Also found while building this suite, sanitizer-only (like Finding 5
 below):** `sl_add_stream()` (`slutils.c:1622`) copies a station ID into a

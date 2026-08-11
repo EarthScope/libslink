@@ -155,18 +155,12 @@ class TestCommandSyntax(ProtocolTestCase):
                 self.assertEqual(captured["commands"][-1], expect_verb, captured["commands"])
                 self.assertEqual(len(events["packets"]), 1, (dialup, events))
 
-    def test_data_sequence_number_should_stay_within_six_hex_digits(self):
-        """Deviation from the spec (seiscomp docs, "SeedLink packet
-        structure": the wire sequence field is exactly six hex digits,
-        wrapping at FFFFFF/16,777,215). negotiate_uni_v3()/
-        negotiate_multi_v3() (network.c) format the resumption sequence
-        with `"%s %0" PRIX64` -- the "0" flag has no effect without an
-        explicit width, so a sequence number one past the 24-bit
-        boundary is sent as a 7-hex-digit argument ("1000001"), not
-        wrapped into six digits. A client resuming from a sequence
-        number in that range (e.g. persisted from a prior v4 session,
-        or simply because more than 16,777,215 packets have been sent)
-        asks for something the v3 wire format itself cannot represent."""
+    def test_data_sequence_number_stays_within_six_hex_digits_multi(self):
+        """seiscomp docs, "SeedLink packet structure": the wire sequence
+        field is exactly six hex digits, wrapping at FFFFFF/16,777,215.
+        A resumption sequence one past that boundary must wrap into six
+        digits ("000001"), not be sent as a 7-hex-digit argument
+        ("1000001") -- a value the v3 wire format cannot represent."""
         captured = {}
 
         def handler(conn, reader, server, idx):
@@ -194,12 +188,104 @@ class TestCommandSyntax(ProtocolTestCase):
         self.assertEqual(len(events["packets"]), 1, events)
         data_line = [line for line in events["log"] if "resuming data from" in line][0]
         hexseq = data_line.split("resuming data from ")[1].split(" ")[0]
-        self.assertEqual(
-            len(hexseq),
-            6,
-            "DATA sequence argument %r is %d hex digits, not the spec's fixed six: %r"
-            % (hexseq, len(hexseq), data_line),
+        self.assertEqual(hexseq, "000001", data_line)
+
+    def test_data_sequence_number_stays_within_six_hex_digits_uni(self):
+        """Same six-hex-digit wire constraint as above, exercised through
+        negotiate_uni_v3() (uni-station mode) instead of
+        negotiate_multi_v3()."""
+        captured = {}
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            captured["commands"] = serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--allstation-seq",
+                "16777216",  # one past the 6-hex-digit/24-bit boundary
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
         )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertEqual(captured["commands"][-1], "DATA 000001", captured["commands"])
+
+    def test_data_sequence_number_wraps_at_ffffff_boundary_uni(self):
+        """A resumption sequence exactly at FFFFFF wraps to 000000, the
+        same boundary the wire header itself wraps at (see
+        test_sequence_number_wraps_at_ffffff above)."""
+        captured = {}
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            captured["commands"] = serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(0, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--allstation-seq",
+                "16777215",  # FFFFFF, the last representable sequence
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        self.assertEqual(captured["commands"][-1], "DATA 000000", captured["commands"])
+
+    def test_alldata_sequence_requests_from_zero_multi(self):
+        """v3 has no "all data" verb; SL_ALLDATASEQUENCE is libslink's
+        own sentinel (not part of the wire protocol) and must still
+        format to a valid six-hex-digit sequence rather than the raw
+        sentinel value. Requesting from 000000 -- the oldest sequence a
+        server can hold -- is the closest v3 equivalent to "all data"."""
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_multi(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(0, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--station",
+                "XX_TEST:BHZ:ALL",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        data_line = [line for line in events["log"] if "resuming data from" in line][0]
+        hexseq = data_line.split("resuming data from ")[1].split(" ")[0]
+        self.assertEqual(hexseq, "000000", data_line)
 
 
 class TestHandshakeOrdering(ProtocolTestCase):
