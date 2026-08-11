@@ -1666,11 +1666,16 @@ sl_add_stream (SLCD *slconn, const char *stationid,
   }
 
   strncpy (newstream->stationid, stationid, sizeof (newstream->stationid) - 1);
+  newstream->stationid[sizeof (newstream->stationid) - 1] = '\0';
 
-  if (selectors)
-    newstream->selectors = strdup (selectors);
-  else
-    newstream->selectors = NULL;
+  newstream->selectors = NULL;
+
+  if (selectors && (newstream->selectors = strdup (selectors)) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
+    free (newstream);
+    return -1;
+  }
 
   newstream->seqnum = seqnum;
 
