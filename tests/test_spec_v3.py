@@ -458,20 +458,5 @@ class TestInfo(ProtocolTestCase):
         self.assertEqual(events["packets"][0]["seq"], (2**64) - 1)
 
 
-class TestUnimplementedCommands(ProtocolTestCase):
-    """seiscomp docs list CAT and BYE among the client commands, but
-    libslink implements neither (grep over the whole tree turns up
-    nothing) -- both are telnet-session conveniences for a human typing
-    commands directly, not operations a programmatic client ever needs,
-    so this is a deliberate non-goal rather than a gap to close."""
-
-    def test_cat_and_bye_are_intentionally_not_implemented(self):
-        self.skipTest(
-            "CAT and BYE are real v3 commands (seiscomp seedlink docs) with no "
-            "libslink equivalent; intentionally not exercised -- see this class's "
-            "docstring."
-        )
-
-
 if __name__ == "__main__":
     unittest.main()
