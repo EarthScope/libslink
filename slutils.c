@@ -1062,12 +1062,16 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
 int
 sl_set_serveraddress (SLCD *slconn, const char *server_address)
 {
-  char host[300] = {0};
-  char port[100] = {0};
+  const char *hostptr;
+  const char *portptr;
+  size_t hostlen;
   const char *separator;
   const char *search;
   const char *open;
   const char *close;
+  char *new_sladdr = NULL;
+  char *new_slhost = NULL;
+  char *new_slport = NULL;
 
   if (!slconn || !server_address)
     return -1;
@@ -1090,67 +1094,81 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   /* If address begins with the separator */
   if (server_address == separator)
   {
+    hostptr = SL_DEFAULT_HOST;
+    hostlen = strlen (SL_DEFAULT_HOST);
+
     if (server_address[1] == '\0') /* Only a separator */
     {
-      strncpy (host, SL_DEFAULT_HOST, sizeof (host) - 1);
-      strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+      portptr = SL_DEFAULT_PORT;
     }
     else /* Only a port */
     {
-      strncpy (host, SL_DEFAULT_HOST, sizeof (host) - 1);
-      strncpy (port, server_address + 1, sizeof (port) - 1);
+      portptr = server_address + 1;
     }
   }
   /* Otherwise if no separator, use default port */
   else if (separator == NULL)
   {
-    strncpy (host, server_address, sizeof (host) - 1);
-    strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+    hostptr = server_address;
+    hostlen = strlen (server_address);
+    portptr = SL_DEFAULT_PORT;
   }
   /* Otherwise separate host and port */
   else
   {
-    size_t minlen = (separator - server_address);
-
-    if (minlen > sizeof (host))
-      minlen = sizeof (host) - 1;
-
-    strncpy (host, server_address, minlen);
+    hostptr = server_address;
+    hostlen = (size_t) (separator - server_address);
 
     /* Handle case of separator present but nothing following */
     if (strlen (separator + 1) > 0)
-      strncpy (port, separator + 1, sizeof (port) - 1);
+      portptr = separator + 1;
     else
-      strncpy (port, SL_DEFAULT_PORT, sizeof (port) - 1);
+      portptr = SL_DEFAULT_PORT;
   }
 
   /* Remove brackets from host if present, i.e. for raw IPv6 addresses */
-  if (host[0] == '[' && host[strlen (host) - 1] == ']')
+  if (hostlen >= 2 && hostptr[0] == '[' && hostptr[hostlen - 1] == ']')
   {
-    memmove (host, host + 1, strlen (host) - 2);
-    host[strlen (host) - 2] = '\0';
+    hostptr += 1;
+    hostlen -= 2;
+  }
+
+  /* Copy host and port to newly allocated buffers before touching the
+   * SLCD, since hostptr/portptr may point into slconn->sladdr itself */
+  if ((new_slhost = (char *)malloc (hostlen + 1)) != NULL)
+  {
+    memcpy (new_slhost, hostptr, hostlen);
+    new_slhost[hostlen] = '\0';
+  }
+
+  new_slport = strdup (portptr);
+
+  if (server_address != slconn->sladdr)
+    new_sladdr = strdup (server_address);
+
+  if (new_slhost == NULL ||
+      new_slport == NULL ||
+      (server_address != slconn->sladdr && new_sladdr == NULL))
+  {
+    free (new_sladdr);
+    free (new_slhost);
+    free (new_slport);
+    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
   }
 
   /* Store the user-supplied address if not set directly */
   if (server_address != slconn->sladdr)
   {
     free (slconn->sladdr);
-    slconn->sladdr = strdup (server_address);
+    slconn->sladdr = new_sladdr;
   }
 
   free (slconn->slhost);
   free (slconn->slport);
 
-  slconn->slhost = strdup (host);
-  slconn->slport = strdup (port);
-
-  if (slconn->sladdr == NULL ||
-      slconn->slhost == NULL ||
-      slconn->slport == NULL)
-  {
-    sl_log_r (NULL, 2, 0, "%s(): error allocating memory\n", __func__);
-    return -1;
-  }
+  slconn->slhost = new_slhost;
+  slconn->slport = new_slport;
 
   /* Set TLS flag if port is the TLS default */
   if (strcmp(slconn->slport, SL_SECURE_PORT) == 0)

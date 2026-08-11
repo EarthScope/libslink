@@ -146,12 +146,13 @@ passes in a plain build; run it under ASan to see the failure.
 ### Implementation-behavior findings (`fable-review.md`)
 
 `fable-review.md` lists 12 findings against this codebase. Findings 1,
-3, 4, and 5 are fixed (`ChangeLog` `2026.222`) and are covered by regression
+3, 4, 5, and 6 are fixed (`ChangeLog` `2026.222`) and are covered by regression
 tests (`TestKeepaliveAndInfoRegression` and `TestAuthValueNullRegression`
 in `test_protocol.py`, `TestTLS.test_unsupported_tls_cert_env_var_name_is_not_honored`
-in `test_tls.py`, and `test_slcd.test_auth_envvars`, which asserts that
+in `test_tls.py`, `test_slcd.test_auth_envvars`, which asserts that
 `auth_data` is released both by a subsequent authentication call and by
-`sl_freeslcd()`; leak-freedom itself is only observable under a
+`sl_freeslcd()`, and `test_slcd.test_serveraddress_host_boundary`, which
+covers a 300-character host; leak-freedom itself is only observable under a
 leak-detecting tool such as `leaks` or `-fsanitize=address`). Findings that are reachable and deterministic
 through this suite are written as ordinary tests asserting the
 **correct** behavior, so they show up as `not ok` / `FAIL` today and
@@ -160,7 +161,6 @@ for this table:
 
 | # | Finding | Test |
 |---|---|---|
-| 6 | `sl_set_serveraddress()` host off-by-one (`slutils.c`) | `test_slcd.test_serveraddress_host_boundary` — a 300-char host is stored unterminated |
 | 8 | B1000 record-length shift UB (`slutils.c`) | `test_internals.test_detect_ms2_b1000_reclen_overflow` |
 | 9 | `config.c`'s `%199c` captures trailing whitespace | `test_streams.test_streamlist_file_trailing_whitespace` |
 | 12 | `sl_request_info()` missing NULL guards (`slutils.c`) | `test_slcd.test_request_info_null_guards` — crashes on `NULL` `slconn` or `NULL` infostr |
