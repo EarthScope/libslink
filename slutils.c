@@ -363,8 +363,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo,
             bytesconsumed += bytesread;
           }
 
-          /* Payload is complete */
-          if (slconn->stat->packetinfo.payloadlength > 0 &&
+          /* Payload is complete; the length is declared in the v4 header and detected for v3 */
+          if ((slconn->protocol & SLPROTO40 || slconn->stat->packetinfo.payloadlength > 0) &&
               slconn->stat->packetinfo.payloadcollected == slconn->stat->packetinfo.payloadlength)
           {
             /* Shift any remaining data in the buffer to the start */
@@ -659,15 +659,16 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
 
   packetinfo = &slconn->stat->packetinfo;
 
-  /* Return for more data if the minimum for detection is not available */
-  if (packetinfo->payloadlength == 0 && bytesavailable < SL_MIN_PAYLOAD)
+  /* Payload length is unknown for v3 until detected from the payload */
+  if (slconn->protocol & SLPROTO3X && packetinfo->payloadlength == 0)
   {
-    return 0;
-  }
+    /* Return for more data if the minimum for detection is not available */
+    if (bytesavailable < SL_MIN_PAYLOAD)
+    {
+      return 0;
+    }
 
-  /* If payload length is unknown, consume up to 128 bytes */
-  if (packetinfo->payloadlength == 0)
-  {
+    /* Consume up to 128 bytes for detection */
     bytestoconsume = (bytesavailable < 128) ? bytesavailable : 128;
   }
   /* If remaining payload is smaller than available, consume remaining */

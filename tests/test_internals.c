@@ -359,6 +359,67 @@ test_receive_header_insufficient_bytes (void)
   sl_freeslcd (slconn);
 }
 
+/***** receive_payload() *****/
+
+static void
+test_receive_payload_v4_zero_length (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t wire[128]  = {0};
+  char    plbuffer[128] = {0};
+  int64_t rv;
+
+  slconn->protocol = SLPROTO40;
+  slconn->stat->packetinfo.payloadlength    = 0;
+  slconn->stat->packetinfo.payloadcollected = 0;
+
+  rv = receive_payload (slconn, plbuffer, sizeof (plbuffer), wire, sizeof (wire));
+
+  SLT_EQ_INT ((int)rv, 0, "a v4 header declaring a 0-byte payload consumes nothing");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, 0,
+              "payloadcollected stays 0 for a declared 0-byte v4 payload");
+
+  sl_freeslcd (slconn);
+}
+
+static void
+test_receive_payload_v3_detects_length (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t wire[128]  = {0};
+  char    plbuffer[128] = {0};
+  MS2Fields f;
+  int64_t rv;
+
+  memset (&f, 0, sizeof (f));
+  f.network         = "XX";
+  f.station         = "TEST";
+  f.channel         = "BHZ";
+  f.year            = 2024;
+  f.day             = 216;
+  f.numblockettes   = 1;
+  f.blocketteoffset = MS2_FIXED_LENGTH;
+
+  fx_ms2_fixed (wire, sizeof (wire), &f, 0);
+  fx_ms2_b1000 (wire, sizeof (wire), MS2_FIXED_LENGTH, 11, 0, 9 /* 2^9 = 512 */, 0, 0);
+
+  slconn->protocol = SLPROTO3X;
+  slconn->stat->packetinfo.payloadlength    = 0;
+  slconn->stat->packetinfo.payloadcollected = 0;
+
+  rv = receive_payload (slconn, plbuffer, sizeof (plbuffer), wire, sizeof (wire));
+
+  SLT_EQ_INT ((int)rv, sizeof (wire), "an undetected v3 payload consumes up to 128 bytes for detection");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, sizeof (wire),
+              "payloadcollected tracks the bytes consumed for detection");
+  SLT_EQ_UINT (slconn->stat->packetinfo.payloadlength, 512,
+              "payloadlength is set from the record length detected in the B1000 blockette");
+  SLT_EQ_INT (slconn->stat->packetinfo.payloadformat, SLPAYLOAD_MSEED2,
+             "payloadformat is set once detected");
+
+  sl_freeslcd (slconn);
+}
+
 /***** update_stream() *****/
 
 static void
@@ -508,6 +569,9 @@ main (void)
   SLT_RUN (test_receive_header_v4);
   SLT_RUN (test_receive_header_v4_bad_signature);
   SLT_RUN (test_receive_header_insufficient_bytes);
+
+  SLT_RUN (test_receive_payload_v4_zero_length);
+  SLT_RUN (test_receive_payload_v3_detects_length);
 
   SLT_RUN (test_update_stream_multistation_match);
   SLT_RUN (test_update_stream_no_match);

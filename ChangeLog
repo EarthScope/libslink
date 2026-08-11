@@ -21,6 +21,7 @@
 	tolerate a NULL command.
 	- Disconnect and return SLTERMINATE when a received station ID is too
 	large for the buffer.
+	- Treat a zero-length v4 payload as a complete payload.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0

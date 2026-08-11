@@ -180,17 +180,11 @@ class TestPacketHeader(ProtocolTestCase):
         self.assertEqual(events["result"], "0")  # SLTERMINATE
 
     def test_zero_length_payload_should_not_wedge_the_stream(self):
-        """Deviation from the spec (protocol.html, "Data packet
-        structure": the payload-length field is a plain UINT32 with no
-        stated minimum). slutils.c's "payload is complete" check reads
-        `packetinfo.payloadlength > 0 && payloadcollected == payloadlength`
-        -- strictly greater than zero, so a header that legally declares
-        a 0-byte payload (an empty JSON error body, say) can never
-        satisfy that condition. The stream is never marked complete, no
-        further header is ever read from the still-open connection, and
-        every subsequent packet the server sends -- including entirely
-        unrelated, well-formed ones -- is silently withheld from the
-        caller forever."""
+        """protocol.html, "Data packet structure": the payload-length
+        field is a plain UINT32 with no stated minimum, so a 0-byte
+        payload (an empty JSON error body, say) is legal. It must be
+        delivered like any other packet, and must not withhold the
+        packet sent behind it."""
 
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn)
@@ -203,13 +197,22 @@ class TestPacketHeader(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(2, "XX_TEST", record))
 
-        # subprocess_timeout well under what the stall would need;
-        # run_scenario turns the subprocess.TimeoutExpired into self.fail().
-        self.run_scenario(
+        # subprocess_timeout well under what a stall would need;
+        # run_scenario turns the resulting subprocess.TimeoutExpired into
+        # self.fail().
+        events, _ = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "2", "--timeout-seconds", "5"],
             subprocess_timeout=8,
         )
+
+        self.assertEqual(len(events["packets"]), 2, events)
+        self.assertEqual(events["packets"][0]["seq"], 1)
+        self.assertEqual(events["packets"][0]["format"], "J")
+        self.assertEqual(events["packets"][0]["subformat"], "E")
+        self.assertEqual(events["packets"][0]["length"], 0)
+        self.assertEqual(events["packets"][1]["seq"], 2)
+        self.assertEqual(events["packets"][1]["format"], "3")
 
 
 class TestReservedFormats(ProtocolTestCase):
@@ -754,6 +757,41 @@ class TestInfo(ProtocolTestCase):
                 payload = pkt["payload"]
                 self.assertIn(b'"software"', payload)
                 self.assertIn(b'"organization"', payload)
+
+    def test_zero_length_info_response_is_delivered(self):
+        """A 0-byte 'J'/'I' response is as legal as a 0-byte 'J'/'E' one
+        (see TestPacketHeader.test_zero_length_payload_should_not_wedge_the_stream)
+        and must complete the pending INFO query rather than stall it."""
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn)
+            cmd = serve_precommands(reader, conn)
+            serve_v4(reader, conn, cmd)
+            cmd = reader.read_command()
+            self.assertEqual(cmd, "INFO ID", cmd)
+            conn.sendall(mseed.frame_v4_info(1, b""))
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v4",
+                "--info",
+                "ID",
+                "--station",
+                "XX_TEST:BHZ",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "5",
+            ],
+            subprocess_timeout=8,
+        )
+
+        self.assertEqual(len(events["packets"]), 1, events)
+        pkt = events["packets"][0]
+        self.assertEqual(pkt["format"], "J")
+        self.assertEqual(pkt["subformat"], "I")
+        self.assertEqual(pkt["length"], 0)
 
 
 if __name__ == "__main__":

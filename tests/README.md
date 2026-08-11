@@ -112,7 +112,6 @@ than against the implementation's own behavior:
 
 | Spec section | Deviation | Test |
 |---|---|---|
-| v4 "Data packet structure" (payload length is a plain `UINT32`) | The "payload complete" check in `slutils.c` requires `payloadlength > 0`, so a legally 0-byte payload can never complete — the stream, and every packet behind it, is withheld forever | `test_spec_v4.TestPacketHeader.test_zero_length_payload_should_not_wedge_the_stream` — hangs the client |
 | v4 "Differences ... version 3 and 4" (a v4 server "can also support SeedLink 3 protocol") | `sayhello_int()` (`network.c`) treats any `ERROR` response to `SLPROTO 4.0` as fatal to the whole connection attempt and never tries a v3 handshake on the same connection — a server that always rejects `SLPROTO` (while genuinely offering v3) can never be reached by this client | `test_spec_v4.TestErrorCodes.test_error_unsupported_to_slproto_should_fall_back_to_v3` — retries forever, never falls back |
 | v3 "SeedLink packet structure" (six-digit hex sequence field) | `negotiate_uni_v3()`/`negotiate_multi_v3()` (`network.c`) format a resumption sequence with `"%0" PRIX64` — the `0` flag has no effect without an explicit width, so a sequence one past the 24-bit boundary is sent as 7+ hex digits, not wrapped into six | `test_spec_v3.TestCommandSyntax.test_data_sequence_number_should_stay_within_six_hex_digits` |
 
