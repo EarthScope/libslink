@@ -836,7 +836,8 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes,
  * @param slconn The ::SLCD connection to receive data from
  * @param buffer The buffer to store the received data
  * @param maxbytes The maximum number of bytes to read
- * @param command A string to include in error messages indicating the command
+ * @param command A string to include in error messages indicating the command,
+ *                may be NULL
  * @param ident A string to include in error messages for identification
  *
  * @retval -1  on error/EOF
@@ -853,6 +854,8 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
   int recvret = 0;     /* return from sl_recvdata */
   int ackcnt  = 0;     /* counter for the read loop */
   int ackpoll = 50000; /* poll at 0.05 seconds for reading */
+
+  const char *cmdstr = (command) ? command : "";
 
   if (buffer == NULL)
   {
@@ -881,8 +884,8 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     {
       sl_log_r (slconn, 2, 0, "[%s] bad response to '%.*s'\n",
                 ident,
-                (int)strcspn (command, "\r\n"),
-                command);
+                (int)strcspn (cmdstr, "\r\n"),
+                cmdstr);
       return -1;
     }
 
@@ -899,8 +902,8 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes,
     {
       sl_log_r (slconn, 2, 0, "[%s] timeout waiting for response to '%.*s'\n",
                 ident,
-                (int)strcspn (command, "\r\n"),
-                command);
+                (int)strcspn (cmdstr, "\r\n"),
+                cmdstr);
       return -1;
     }
 
@@ -2304,7 +2307,7 @@ negotiate_v4 (SLCD *slconn)
   while (cmdptr)
   {
     bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf),
-                             NULL, cmdptr->nsid);
+                             cmdptr->cmd, cmdptr->nsid);
 
     if (bytesread < 0)
     {

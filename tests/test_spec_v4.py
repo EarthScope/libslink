@@ -289,14 +289,18 @@ class TestErrorCodes(ProtocolTestCase):
                     error_v4(conn, code, "rejected for testing")
                     raise ConnectionClosed()
 
-                events, _ = self.run_scenario(
+                # A rejected STATION is not fatal (only auth failures are),
+                # so sl_collect() retries negotiation forever -- observe a
+                # couple of cycles, then terminate; the process never gets
+                # to send a packet regardless of when we cut it off.
+                events, _ = self.run_scenario_bounded(
                     handler,
                     [
                         "--v4",
                         "--station",
                         "XX_TEST:BHZ",
                         "--reconnectdelay",
-                        "30",
+                        "1",
                         "--max-packets",
                         "1",
                         "--timeout-seconds",
@@ -304,6 +308,7 @@ class TestErrorCodes(ProtocolTestCase):
                     ],
                 )
 
+                self.assertNotCrashed(events["returncode"], (code, events))
                 self.assertEqual(events["packets"], [], (code, events))
                 self.assertTrue(
                     any(code in line and "not accepted" in line for line in events["log"]),
@@ -337,32 +342,28 @@ class TestErrorCodes(ProtocolTestCase):
             error_v4(conn, "LIMIT", "too many stations")
             raise ConnectionClosed()
 
-        events, _ = self.run_scenario(
+        # The rejected STATION is not fatal, so sl_collect() retries
+        # negotiation forever (by design) rather than exiting -- observe
+        # a couple of reconnect cycles for a crash, then terminate.
+        events, _ = self.run_scenario_bounded(
             handler,
             [
                 "--v4",
                 "--station",
                 "XX_TEST:BHZ",
                 "--reconnectdelay",
-                "30",
+                "1",
                 "--max-packets",
                 "1",
                 "--timeout-seconds",
                 "5",
             ],
-            subprocess_timeout=10,
         )
 
-        # A negative returncode is the process killed by a signal (11 =
-        # SIGSEGV in a plain build, 6 = SIGABRT when ASan catches the
-        # same NULL dereference first) -- either way, a crash.
-        self.assertGreaterEqual(
+        self.assertNotCrashed(
             events["returncode"],
-            0,
             "sl_recvresp() dereferenced a NULL `command` argument (network.c:848, "
-            "called from negotiate_v4() at network.c:2272) and crashed the client "
-            "(killed by signal %d): %r"
-            % (-events["returncode"] if events["returncode"] < 0 else 0, events),
+            "called from negotiate_v4() at network.c:2306): %r" % (events,),
         )
 
     def test_auth_error_response_yields_slauthfail(self):

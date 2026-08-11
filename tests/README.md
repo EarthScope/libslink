@@ -117,18 +117,6 @@ than against the implementation's own behavior:
 | v4 "Differences ... version 3 and 4" (a v4 server "can also support SeedLink 3 protocol") | `sayhello_int()` (`network.c`) treats any `ERROR` response to `SLPROTO 4.0` as fatal to the whole connection attempt and never tries a v3 handshake on the same connection — a server that always rejects `SLPROTO` (while genuinely offering v3) can never be reached by this client | `test_spec_v4.TestErrorCodes.test_error_unsupported_to_slproto_should_fall_back_to_v3` — retries forever, never falls back |
 | v3 "SeedLink packet structure" (six-digit hex sequence field) | `negotiate_uni_v3()`/`negotiate_multi_v3()` (`network.c`) format a resumption sequence with `"%0" PRIX64` — the `0` flag has no effect without an explicit width, so a sequence one past the 24-bit boundary is sent as 7+ hex digits, not wrapped into six | `test_spec_v3.TestCommandSyntax.test_data_sequence_number_should_stay_within_six_hex_digits` |
 
-**Found while building this suite, not derived from a specific spec
-clause:** `negotiate_v4()` (`network.c`) sends every `STATION`/`SELECT`/
-`DATA` command for a stream up front, then reads one response per
-command in a second pass, always passing `command=NULL` to
-`sl_recvresp()` for that second-pass read. `sl_recvresp()` unconditionally
-calls `strcspn(command, "\r\n")` in its own error-logging path when a
-read fails. If the server answers the first queued command and then
-closes the connection before answering the rest — a normal, spec-legal
-thing for a server to do — that second-pass read fails and dereferences
-the `NULL` `command` argument, segfaulting the client. Covered by
-`test_spec_v4.TestErrorCodes.test_connection_closed_after_partial_negotiation_response_should_not_crash`.
-
 **Also found while building this suite, sanitizer-only (like Finding 5
 below):** `sl_add_stream()` (`slutils.c:1622`) copies a station ID into a
 plain `malloc()`'d (not zeroed) `SLstream` with
@@ -145,17 +133,29 @@ passes in a plain build; run it under ASan to see the failure.
 
 ### Implementation-behavior findings (`fable-review.md`)
 
-`fable-review.md` lists 12 findings against this codebase. Findings 1,
-3, 4, 5, 6, and 7 are fixed (`ChangeLog` `2026.222`) and are covered by regression
-tests (`TestKeepaliveAndInfoRegression` and `TestAuthValueNullRegression`
+`fable-review.md` lists 12 findings against this codebase, plus an
+addendum finding (13) from protocol-spec conformance testing. Findings
+1, 3, 4, 5, 6, 7, and 13 are fixed (`ChangeLog` `2026.222`) and are
+covered by regression tests (`TestKeepaliveAndInfoRegression` and
+`TestAuthValueNullRegression`
 in `test_protocol.py`, `TestTLS.test_unsupported_tls_cert_env_var_name_is_not_honored`
 in `test_tls.py`, `test_slcd.test_auth_envvars`, which asserts that
 `auth_data` is released both by a subsequent authentication call and by
 `sl_freeslcd()`, `test_slcd.test_serveraddress_host_boundary`, which
-covers a 300-character host, and `test_netprims.test_senddata_partial_write`,
+covers a 300-character host, `test_netprims.test_senddata_partial_write`,
 which shrinks both ends' socket buffers and pushes a buffer larger than
-either to force a short `send()`; leak-freedom itself is only observable under a
-leak-detecting tool such as `leaks` or `-fsanitize=address`). Findings that are reachable and deterministic
+either to force a short `send()` (leak-freedom itself is only observable
+under a leak-detecting tool such as `leaks` or `-fsanitize=address`),
+and `test_spec_v4.TestErrorCodes.test_connection_closed_after_partial_negotiation_response_should_not_crash`,
+which covers finding 13: `negotiate_v4()` (`network.c`) sent every
+`STATION`/`SELECT`/`DATA` command for a stream up front, then read one
+response per command in a second pass, always passing `command=NULL` to
+`sl_recvresp()` for that second-pass read; `sl_recvresp()` unconditionally
+called `strcspn(command, "\r\n")` in its own error-logging path when a
+read failed, so a server that answered the first queued command and then
+closed the connection before answering the rest — a normal, spec-legal
+thing to do — dereferenced the `NULL` `command` argument and segfaulted
+the client). Findings that are reachable and deterministic
 through this suite are written as ordinary tests asserting the
 **correct** behavior, so they show up as `not ok` / `FAIL` today and
 will flip to passing once each is fixed. This is the current baseline

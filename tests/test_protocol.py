@@ -6,6 +6,7 @@ slmock mock server over loopback TCP, covering both SeedLink v3 and v4.
 import base64
 import os
 import re
+import signal
 import subprocess
 import sys
 import time
@@ -106,6 +107,51 @@ class ProtocolTestCase(unittest.TestCase):
         events["returncode"] = proc.returncode
         events["stderr"] = proc.stderr
         return events, server
+
+    def run_scenario_bounded(self, handler, args, observe_seconds=3, grace_seconds=2):
+        """Like run_scenario(), but for a scenario where sl_collect()
+        legitimately never returns on its own -- e.g. a server that
+        keeps rejecting negotiation, which libslink retries forever by
+        design. slharness has no way to bound such a run itself, so
+        observe its output for `observe_seconds`, then terminate it
+        (SIGTERM, falling back to SIGKILL) and return whatever it
+        printed. A negative `returncode` here reflects our own signal,
+        not necessarily a crash -- check `returncode` against the
+        specific signal sent, or use assertNotCrashed()."""
+        server = MockServer(handler).start()
+        self.addCleanup(server.stop)
+
+        full_args = [HARNESS, "--address", server.address()] + args
+        proc = subprocess.Popen(full_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        try:
+            stdout, stderr = proc.communicate(timeout=observe_seconds)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                stdout, stderr = proc.communicate(timeout=grace_seconds)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+
+        if server.errors:
+            self.fail("mock server handler raised: %r" % (server.errors,))
+
+        events = parse_output(stdout)
+        events["returncode"] = proc.returncode
+        events["stderr"] = stderr
+        return events, server
+
+    def assertNotCrashed(self, returncode, msg=""):
+        """Fail if `returncode` indicates the process was killed by a
+        signal associated with a memory-safety crash (as opposed to
+        SIGTERM/SIGKILL sent deliberately by run_scenario_bounded(), or
+        a normal non-negative exit)."""
+        crash_signals = (signal.SIGSEGV, signal.SIGABRT, signal.SIGILL, signal.SIGFPE, signal.SIGBUS)
+        if returncode < 0 and -returncode in crash_signals:
+            self.fail(
+                "process was killed by %s: %s" % (signal.Signals(-returncode).name, msg)
+            )
 
 
 class TestV3UniStation(ProtocolTestCase):
