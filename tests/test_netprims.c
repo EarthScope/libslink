@@ -8,17 +8,21 @@
 
 #include <arpa/inet.h>
 #include <netinet/in.h>
+#include <stdlib.h>
 #include <string.h>
 #include <sys/socket.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "libslink.h"
 #include "slt.h"
 
 /* Bind and listen on 127.0.0.1 with an OS-assigned port. Returns the
- * listening fd and, via *port, the port number chosen. */
+ * listening fd and, via *port, the port number chosen.  If rcvbuf is
+ * non-zero, SO_RCVBUF is set on the listening socket (and so inherited
+ * by the accepted socket) before listen(). */
 static int
-start_listener (int *port)
+start_listener_with_rcvbuf (int *port, int rcvbuf)
 {
   struct sockaddr_in addr;
   socklen_t addrlen = sizeof (addr);
@@ -26,6 +30,13 @@ start_listener (int *port)
 
   if (fd < 0)
     return -1;
+
+  if (rcvbuf > 0 &&
+      setsockopt (fd, SOL_SOCKET, SO_RCVBUF, &rcvbuf, sizeof (rcvbuf)) < 0)
+  {
+    close (fd);
+    return -1;
+  }
 
   memset (&addr, 0, sizeof (addr));
   addr.sin_family      = AF_INET;
@@ -53,6 +64,12 @@ start_listener (int *port)
   *port = ntohs (addr.sin_port);
 
   return fd;
+}
+
+static int
+start_listener (int *port)
+{
+  return start_listener_with_rcvbuf (port, 0);
 }
 
 static SLCD *
@@ -124,6 +141,93 @@ test_senddata (void)
   close (serverfd);
   close (listenfd);
   sl_disconnect (slconn);
+  sl_freeslcd (slconn);
+}
+
+/* Force sl_senddata() to face a short send()/mbedtls_ssl_write() by
+ * shrinking both sides' kernel socket buffers, then pushing a buffer
+ * far larger than either buffer holds.  A single, unlooped write call
+ * only transfers what fits and would leave the rest of the buffer
+ * unsent; sl_senddata() must loop until every byte is written. */
+static void
+test_senddata_partial_write (void)
+{
+  static const size_t len = 1024 * 1024;
+  int port, listenfd, serverfd = -1;
+  int smallbuf = 4096;
+  int pipefd[2];
+  pid_t child;
+  SLCD *slconn;
+  char *sendbuf;
+
+  SLT_ASSERT (pipe (pipefd) == 0, "pipe created for the child's byte count");
+
+  listenfd = start_listener_with_rcvbuf (&port, smallbuf);
+  SLT_ASSERT (listenfd >= 0, "listener created with a small SO_RCVBUF");
+
+  slconn = connect_to (listenfd, port, &serverfd);
+  SLT_NOT_NULL (slconn, "connected for the partial-write regression test");
+
+  SLT_ASSERT (setsockopt (slconn->link, SOL_SOCKET, SO_SNDBUF, &smallbuf,
+                          sizeof (smallbuf)) == 0,
+             "client socket SO_SNDBUF shrunk");
+
+  sendbuf = malloc (len + 1);
+  SLT_NOT_NULL (sendbuf, "send buffer allocated");
+  memset (sendbuf, 'x', len);
+  sendbuf[len] = '\0';
+
+  child = fork ();
+  SLT_ASSERT (child >= 0, "fork() for the draining reader succeeded");
+
+  if (child == 0)
+  {
+    /* Child: drain the server side to EOF, report the total count. */
+    size_t total = 0;
+    char rdbuf[65536];
+    ssize_t n;
+
+    close (pipefd[0]);
+    close (listenfd);
+    sl_disconnect (slconn);
+
+    /* Let the client's sends fill both socket buffers before draining. */
+    usleep (200000);
+
+    while ((n = recv (serverfd, rdbuf, sizeof (rdbuf), 0)) > 0)
+    {
+      total += (size_t)n;
+    }
+
+    close (serverfd);
+    write (pipefd[1], &total, sizeof (total));
+    close (pipefd[1]);
+    _exit (0);
+  }
+
+  /* Parent: send the full buffer, then close so the child's recv() sees EOF. */
+  close (pipefd[1]);
+  close (serverfd);
+
+  SLT_EQ_INT (sl_senddata (slconn, sendbuf, len, "id", NULL, 0), 0,
+             "sl_senddata() reports success sending a buffer larger than both socket buffers");
+
+  sl_disconnect (slconn);
+  close (listenfd);
+
+  {
+    size_t childtotal = 0;
+    ssize_t n = read (pipefd[0], &childtotal, sizeof (childtotal));
+
+    close (pipefd[0]);
+    waitpid (child, NULL, 0);
+
+    SLT_EQ_INT ((int)n, (int)sizeof (childtotal), "read the child's reported byte count");
+    SLT_ASSERT (childtotal == len,
+               "the peer received every byte sl_senddata() claimed to send");
+  }
+
+  free (sendbuf);
   sl_freeslcd (slconn);
 }
 
@@ -275,6 +379,7 @@ main (void)
 {
   SLT_RUN (test_connect_and_disconnect);
   SLT_RUN (test_senddata);
+  SLT_RUN (test_senddata_partial_write);
   SLT_RUN (test_recvdata);
   SLT_RUN (test_recvdata_on_closed_connection);
   SLT_RUN (test_recvresp);

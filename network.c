@@ -637,34 +637,69 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen,
              const char *ident, void *resp, int resplen)
 {
   int bytesread = 0; /* bytes read into resp */
+  size_t sentbytes = 0; /* total bytes sent */
   int64_t byteswritten;
+  int stallcnt = 0; /* counter for the no-progress trapdoor */
 
-  if (slconn->tlsctx != NULL)
+  while (sentbytes < buflen)
   {
-    TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
-
-    while ((byteswritten = mbedtls_ssl_write (&tlsctx->ssl, buffer, buflen)) <= 0)
+    if (slconn->tlsctx != NULL)
     {
-      if (byteswritten != MBEDTLS_ERR_SSL_WANT_READ &&
+      TLSCTX *tlsctx = (TLSCTX *)slconn->tlsctx;
+
+      byteswritten = mbedtls_ssl_write (&tlsctx->ssl, (unsigned char *)buffer + sentbytes,
+                                         buflen - sentbytes);
+
+      if (byteswritten < 0 &&
+          byteswritten != MBEDTLS_ERR_SSL_WANT_READ &&
           byteswritten != MBEDTLS_ERR_SSL_WANT_WRITE &&
           byteswritten != MBEDTLS_ERR_SSL_CRYPTO_IN_PROGRESS)
       {
         break;
       }
-
-      /* Wait for socket write availability for 1 second */
-      sl_poll (slconn, 0, 1, 1000);
     }
-  }
-  else
-  {
-    byteswritten = send (slconn->link, buffer, buflen, 0);
+    else
+    {
+      byteswritten = send (slconn->link, (char *)buffer + sentbytes,
+                            buflen - sentbytes, 0);
+
+      if (byteswritten < 0 && !IS_EWOULDBLOCK () && !IS_EINTR (byteswritten))
+      {
+        break;
+      }
+    }
+
+    if (byteswritten > 0)
+    {
+      sentbytes += byteswritten;
+      stallcnt = 0;
+      continue;
+    }
+
+    /* Trap door if 30 seconds has elapsed without progress, (1000ms x 30) */
+    if (stallcnt++ > 30)
+    {
+      sl_log_r (slconn, 2, 0, "[%s] timeout sending '%.*s'\n",
+                (ident) ? ident : "",
+                (int)strcspn ((char *)buffer, "\r\n"),
+                (char *)buffer);
+      return -1;
+    }
+
+    /* Trap door for termination */
+    if (slconn->terminate)
+    {
+      return -1;
+    }
+
+    /* Wait for socket write availability for 1 second */
+    sl_poll (slconn, 0, 1, 1000);
   }
 
-  if (byteswritten < 0)
+  if (sentbytes < buflen)
   {
     sl_log_r (slconn, 2, 0, "[%s] error sending '%.*s'\n",
-              ident,
+              (ident) ? ident : "",
               (int)strcspn ((char *)buffer, "\r\n"),
               (char *)buffer);
     return -1;

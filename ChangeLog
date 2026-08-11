@@ -9,6 +9,7 @@
 	- Free the authentication value allocated by sl_set_auth_envvars().
 	- Copy the parsed host and port without a fixed length limit in
 	sl_set_serveraddress().
+	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
 	- Add a test suite for the public API, wire protocol, and TLS handshake.
 
 2025.340: v4.2.0
