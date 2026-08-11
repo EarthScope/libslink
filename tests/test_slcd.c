@@ -14,12 +14,14 @@
 #include "slt.h"
 
 /* Crash probes are dispatched by name through argv (see main()) and run
- * in a freshly exec'd copy of this binary, not a bare forked child. A
- * bare fork() of a process crashing on purpose works fine normally, but
- * deadlocks under a sanitizer runtime: the child inherits the parent's
- * allocator locks without the threads that would ever release them.
- * fork()+exec() avoids that entirely, since exec() starts a clean
- * process image. */
+ * in a freshly exec'd copy of this binary, not a bare forked child, so
+ * that a regression here reports a clean TAP failure for one test
+ * instead of crashing this whole binary. exec() replaces the child's
+ * process image before any of its own instrumented code runs, so
+ * nothing the parent's allocator (sanitizer-instrumented or not) was
+ * doing is ever inherited into it -- confirmed fork()+exec() from
+ * within a running ASan/UBSan build works fine here, unlike a bare
+ * fork() of a process that has already done real allocator work. */
 static const char *g_argv0;
 
 static void trigger_host_boundary (void);
@@ -40,20 +42,8 @@ static const Probe PROBES[] = {
     {"request_info_null_infostr", trigger_request_info_null_infostr},
 };
 
-/* Compile-time AddressSanitizer detection */
-#if defined(__has_feature)
-#  if __has_feature(address_sanitizer)
-#    define SLTEST_ASAN_BUILD 1
-#  endif
-#elif defined(__SANITIZE_ADDRESS__)
-#  define SLTEST_ASAN_BUILD 1
-#endif
-
-#ifndef SLTEST_ASAN_BUILD
 /* Run the named probe in a fork+exec'd copy of this binary and report
- * whether it exited cleanly (code 0) instead of crashing.  Used for the
- * known-bug tests below where the correct behavior is "returns an error
- * code", not "crashes". */
+ * whether it exited cleanly (code 0) instead of crashing. */
 static int
 survives (const char *probe_name)
 {
@@ -77,23 +67,11 @@ survives (const char *probe_name)
 
   return 0; /* fork() failed; treat as a failure to avoid a false pass */
 }
-#endif /* !SLTEST_ASAN_BUILD */
 
-/* Assert that the named probe survives, except under ASan: forking a
- * process that has already done real allocator work deadlocks inside
- * fork() itself on this platform's ASan runtime (a well-known
- * fork()/sanitizer interaction, unrelated to the exec() that follows).
- * Verify these individually instead with e.g.
- * `./test_slcd --probe host_boundary` under a sanitizer build. */
 static void
 assert_survives (const char *probe_name, const char *desc)
 {
-#ifdef SLTEST_ASAN_BUILD
-  (void)probe_name;
-  SLT_SKIP (desc, "fork() deadlocks under ASan here; run `./test_slcd --probe NAME` directly");
-#else
   SLT_ASSERT (survives (probe_name), desc);
-#endif
 }
 
 /* If invoked as "<self> --probe NAME", run just that probe and exit;
@@ -201,15 +179,12 @@ test_serveraddress (void)
   sl_freeslcd (slconn);
 }
 
-/* fable-review finding 6: sl_set_serveraddress() uses `minlen > sizeof(host)`
- * instead of `>=` when copying the host portion into a fixed 300-byte
- * stack buffer.  A host of exactly 300 characters copies the full 300
- * bytes with strncpy(), leaving no room for a null terminator within the
- * buffer: strdup() then reads past it.  In a plain build that just reads
- * adjacent (usually zeroed) stack bytes and silently produces a wrong
- * length; under -fsanitize=address it is a stack-buffer-overflow abort.
- * Run in a forked child, like the other known-crash tests below, so an
- * ASan build still reports the rest of this binary's tests. */
+/* Regression coverage: sl_set_serveraddress() once used
+ * `minlen > sizeof(host)` instead of `>=` when copying the host portion
+ * into a fixed-size stack buffer, so a host of exactly 300 characters
+ * copied all 300 bytes with strncpy() and left no room for a null
+ * terminator -- a stack-buffer-overflow under -fsanitize=address.
+ * sl_set_serveraddress() no longer copies into a fixed buffer at all. */
 static void
 trigger_host_boundary (void)
 {
@@ -234,8 +209,8 @@ static void
 test_serveraddress_host_boundary (void)
 {
   assert_survives ("host_boundary",
-                   "known bug (finding 6): a 300-character host should be stored intact and "
-                   "null-terminated, not overrun (a stack-buffer-overflow under ASan)");
+                   "a 300-character host is stored intact and null-terminated, "
+                   "not overrun (a stack-buffer-overflow under ASan)");
 }
 
 static void
@@ -383,18 +358,35 @@ test_hascapability (void)
   sl_freeslcd (slconn);
 }
 
+static char printslcd_capture[2048];
+
+static void
+printslcd_capture_line (const char *msg)
+{
+  strncat (printslcd_capture, msg, sizeof (printslcd_capture) - strlen (printslcd_capture) - 1);
+}
+
 static void
 test_printslcd (void)
 {
   SLCD *slconn = sl_initslcd ("t", "1.0");
 
-  /* sl_printslcd() has no return value to inspect; just confirm it runs
-   * to completion for a populated connection without crashing. */
+  /* sl_printslcd() has no return value; route its log_r() output through
+   * a per-connection callback and check it actually named the fields it
+   * was given, instead of only confirming the call didn't crash. */
+  printslcd_capture[0] = '\0';
+  sl_loginit_r (slconn, 0, printslcd_capture_line, NULL, NULL, NULL);
+
   sl_set_serveraddress (slconn, "example.org:18000");
   sl_add_stream (slconn, "XX_TEST", "BHZ", SL_UNSETSEQUENCE, NULL);
   sl_printslcd (slconn);
 
-  SLT_PASS ("sl_printslcd() runs without crashing on a populated connection");
+  SLT_ASSERT (strstr (printslcd_capture, "example.org") != NULL,
+             "sl_printslcd() output names the configured server address");
+  SLT_ASSERT (strstr (printslcd_capture, "XX_TEST") != NULL,
+             "sl_printslcd() output lists the added stream's station ID");
+  SLT_ASSERT (strstr (printslcd_capture, "1.0") != NULL,
+             "sl_printslcd() output names the client version");
 
   sl_freeslcd (slconn);
 }

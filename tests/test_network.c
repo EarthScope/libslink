@@ -91,22 +91,40 @@ test_extreply_full_buffer_no_second_cr (void)
   SLT_NULL (extreply_int (buf, sizeof (buf)), "full buffer with no 2nd '\\r' yields no extended reply");
 }
 
+static char negotiate_v4_diag[256];
+
+static void
+negotiate_v4_diag_capture (const char *msg)
+{
+  strncat (negotiate_v4_diag, msg, sizeof (negotiate_v4_diag) - strlen (negotiate_v4_diag) - 1);
+}
+
 static void
 test_negotiate_v4_start_time_too_long (void)
 {
   /* negotiate_v4() converts slconn->start_time/end_time into fixed-size
    * stack buffers before ever touching the socket, so an over-long time
-   * window string must be rejected before any network activity. */
+   * window string must be rejected before any network activity. slconn
+   * has no connection at all here (link == -1), so a -1 return alone
+   * doesn't prove the length guard fired -- it could equally mean
+   * execution fell through to the send/receive loop and failed there
+   * for lack of a socket. Capture the diagnostic log to tell the two
+   * apart. */
   SLCD *slconn = sl_initslcd ("t", NULL);
   char longtime[40];
 
   memset (longtime, '1', sizeof (longtime) - 1);
   longtime[sizeof (longtime) - 1] = '\0';
 
+  negotiate_v4_diag[0] = '\0';
+  sl_loginit_r (slconn, 0, NULL, NULL, negotiate_v4_diag_capture, NULL);
+
   SLT_EQ_INT (sl_set_timewindow (slconn, longtime, NULL), 0,
              "sl_set_timewindow() itself does not bound the string length");
   SLT_EQ_INT (negotiate_v4 (slconn), -1,
              "an over-long start time is rejected before any socket use");
+  SLT_ASSERT (strstr (negotiate_v4_diag, "too long") != NULL,
+             "rejected specifically by the start-time length guard, not a later, unrelated socket failure");
 
   sl_freeslcd (slconn);
 }

@@ -9,6 +9,9 @@ docs/xml/
 *.obj
 *.elf
 
+# Auto-generated compiler dependency files (-MMD -MP)
+*.d
+
 # Libraries
 *.lib
 *.a

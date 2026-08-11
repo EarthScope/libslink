@@ -69,7 +69,7 @@ test_ms2_samplerate_signs (void)
   uint8_t buf[64];
   MS2Fields f;
   SLpacketinfo pi;
-  double samplerate;
+  double samplerate = -1.0; /* sentinel: sl_payload_info() must overwrite this on success */
 
   memset (&f, 0, sizeof (f));
   f.network       = "XX";
@@ -83,21 +83,26 @@ test_ms2_samplerate_signs (void)
   f.samprate_mult = 1;
   fx_ms2_fixed (buf, sizeof (buf), &f, 0);
   pi = mkinfo (SLPAYLOAD_MSEED2, 0, MS2_FIXED_LENGTH);
-  sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL);
+  SLT_EQ_INT (sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL),
+             0, "sl_payload_info() succeeds: negative factor, positive multiplier");
   SLT_EQ_DBL (samplerate, 0.01, 0.0001, "sample rate: negative factor, positive multiplier");
 
   /* Positive factor, negative multiplier: rate = fact * (-1 * (rate/mult)) */
+  samplerate = -1.0;
   f.samprate_fact = 100;
   f.samprate_mult = -2;
   fx_ms2_fixed (buf, sizeof (buf), &f, 0);
-  sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL);
+  SLT_EQ_INT (sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL),
+             0, "sl_payload_info() succeeds: positive factor, negative multiplier");
   SLT_EQ_DBL (samplerate, 50.0, 0.0001, "sample rate: positive factor, negative multiplier");
 
   /* Negative factor, negative multiplier */
+  samplerate = -1.0;
   f.samprate_fact = -100;
   f.samprate_mult = -2;
   fx_ms2_fixed (buf, sizeof (buf), &f, 0);
-  sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL);
+  SLT_EQ_INT (sl_payload_info (NULL, &pi, (char *)buf, sizeof (buf), NULL, 0, NULL, 0, &samplerate, NULL),
+             0, "sl_payload_info() succeeds: negative factor, negative multiplier");
   SLT_EQ_DBL (samplerate, 0.005, 0.0001, "sample rate: negative factor, negative multiplier");
 }
 

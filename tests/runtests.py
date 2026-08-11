@@ -12,6 +12,7 @@ forwarded as unittest's own -k to each Python module.
 
 import argparse
 import os
+import re
 import subprocess
 import sys
 
@@ -41,13 +42,21 @@ PYTHON_MODULES = [
     "test_exports",
 ]
 
+# Binaries containing a test written to assert *correct* behavior for a
+# still-open bug (see tests/README.md, "Known-issue baseline"); such a
+# test fails on purpose until the bug is fixed. Granularity here is
+# whole-binary, since that's what this runner tracks -- a name in this
+# set failing is expected; any *other* name failing is a regression.
+KNOWN_ISSUE_BASELINE = {"test_internals"}
+
 
 def run_c_binary(name, verbose):
+    """Returns "PASS", "FAIL", or "SKIP" (binary not built)."""
     path = os.path.join(HERE, name)
 
     if not os.path.exists(path):
         print("SKIP %s (not built -- run `make` in tests/)" % name)
-        return None
+        return "SKIP"
 
     # A C test binary's stderr can legitimately contain raw bytes (e.g. a
     # test deliberately feeding non-ASCII/binary data through the
@@ -56,28 +65,50 @@ def run_c_binary(name, verbose):
     proc = subprocess.run([path], capture_output=True, cwd=HERE)
     proc_stdout = proc.stdout.decode("utf-8", "replace")
     proc_stderr = proc.stderr.decode("utf-8", "replace")
-    ok = proc.returncode == 0
+    status = "PASS" if proc.returncode == 0 else "FAIL"
 
-    print("%s %s" % ("PASS" if ok else "FAIL", name))
-    if verbose or not ok:
+    print("%s %s" % (status, name))
+    if verbose or status == "FAIL":
         sys.stdout.write(proc_stdout)
         sys.stderr.write(proc_stderr)
 
-    return ok
+    return status
 
 
 def run_python_module(name, verbose, pattern):
+    """Returns "PASS", "FAIL", or "SKIP" (every test in the module was
+    skipped, e.g. test_tls.py without `trustme` installed). unittest
+    itself exits 0 for a fully-skipped module -- a skip is not a
+    failure -- so that alone can't tell "ran and passed" apart from
+    "never actually ran"; the summary line's skipped= count can."""
     cmd = [sys.executable, "-m", "unittest", name]
     if verbose:
         cmd.append("-v")
     if pattern:
         cmd += ["-k", pattern]
 
-    proc = subprocess.run(cmd, cwd=HERE)
-    ok = proc.returncode == 0
+    # Captured (rather than inherited) so the skipped= count can be
+    # parsed out of it; still echoed below so behavior otherwise matches
+    # letting the child write directly to the terminal.
+    proc = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True)
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
 
-    print("%s %s" % ("PASS" if ok else "FAIL", name))
-    return ok
+    ok = proc.returncode == 0
+    ran_m = re.search(r"Ran (\d+) tests?", proc.stderr)
+    skipped_m = re.search(r"skipped=(\d+)", proc.stderr)
+    ran = int(ran_m.group(1)) if ran_m else 0
+    skipped = int(skipped_m.group(1)) if skipped_m else 0
+
+    if ok and ran > 0 and skipped == ran:
+        status = "SKIP"
+    elif ok:
+        status = "PASS"
+    else:
+        status = "FAIL"
+
+    print("%s %s" % (status, name))
+    return status
 
 
 def main():
@@ -91,23 +122,29 @@ def main():
     for name in C_BINARIES:
         if args.pattern and args.pattern.lower() not in name.lower():
             continue
-        r = run_c_binary(name, args.verbose)
-        if r is not None:
-            results[name] = r
+        results[name] = run_c_binary(name, args.verbose)
 
     for name in PYTHON_MODULES:
         results[name] = run_python_module(name, args.verbose, args.pattern)
 
-    print()
-    passed = sum(1 for ok in results.values() if ok)
-    print("%d/%d test groups passed" % (passed, len(results)))
+    passed = sorted(n for n, s in results.items() if s == "PASS")
+    failed = sorted(n for n, s in results.items() if s == "FAIL")
+    skipped = sorted(n for n, s in results.items() if s == "SKIP")
 
-    failed = sorted(n for n, ok in results.items() if not ok)
+    print()
+    print("%d/%d test groups passed" % (len(passed), len(results)))
+    if skipped:
+        print("%d skipped: %s" % (len(skipped), ", ".join(skipped)))
     if failed:
         print("FAILED: %s" % ", ".join(failed))
-        print()
-        print("See tests/README.md for the current baseline of expected")
-        print("known-issue failures before treating this as a regression.")
+        unexpected = sorted(set(failed) - KNOWN_ISSUE_BASELINE)
+        if unexpected:
+            print(
+                "%s beyond the known-issue baseline in tests/README.md -- likely a regression"
+                % ", ".join(unexpected)
+            )
+        else:
+            print("(matches the known-issue baseline in tests/README.md -- not a regression)")
 
     return 1 if failed else 0
 

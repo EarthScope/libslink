@@ -229,6 +229,39 @@ test_detect_ms3 (void)
   SLT_EQ_INT ((int)reclen, (int)hdrlen, "detect() computes the miniSEED3 record length from the header fields");
 }
 
+static void
+test_detect_ms3_datalength_over_16_bits (void)
+{
+  /* detect()'s miniSEED3 branch reads the header's 32-bit data-length
+   * field but passes it through HO2u(), which takes a uint16_t --
+   * truncating any value above 65535 before the byte-swap logic even
+   * runs. A record announcing more than 64KiB of data payload should
+   * still get its full, correct record length. */
+  uint8_t buf[128] = {0};
+  MS3Fields f;
+  char payloadformat;
+  int64_t reclen;
+  size_t hdrlen;
+
+  memset (&f, 0, sizeof (f));
+  f.sid        = "FDSN:XX_TEST";
+  f.year       = 2024;
+  f.day        = 216;
+  f.hour       = 1;
+  f.min        = 2;
+  f.sec        = 3;
+  f.samplerate = 20.0;
+  f.datalength = 70000; /* one past the 16-bit truncation boundary */
+
+  hdrlen = fx_ms3_fixed (buf, sizeof (buf), &f, 0);
+
+  reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
+
+  SLT_EQ_INT (payloadformat, SLPAYLOAD_MSEED3, "detect() identifies a miniSEED3 record");
+  SLT_EQ_INT ((int)reclen, (int)(hdrlen + f.datalength),
+             "detect() computes the full miniSEED3 record length for a datalength above 65535");
+}
+
 /***** receive_header() *****/
 
 static void
@@ -561,6 +594,7 @@ main (void)
   SLT_RUN (test_detect_ms2_b1000_reclen_max_valid);
   SLT_RUN (test_detect_too_short);
   SLT_RUN (test_detect_ms3);
+  SLT_RUN (test_detect_ms3_datalength_over_16_bits);
 
   SLT_RUN (test_receive_header_v3_data);
   SLT_RUN (test_receive_header_v3_data_bad_hex);

@@ -411,7 +411,7 @@ extern int sl_add_streamlist_file (SLCD *slconn, const char *streamfile,
 #define sl_parse_streamlist sl_add_streamlist /**< For backwards compatibility */
 extern int sl_add_streamlist (SLCD *slconn, const char *streamlist,
                               const char *defselect);
-extern int sl_configlink (SLCD *slconn);
+extern SOCKET sl_configlink (SLCD *slconn);
 extern int sl_send_info (SLCD *slconn, const char *info_level,
                          int verbose);
 extern SOCKET sl_connect (SLCD *slconn, int sayhello);

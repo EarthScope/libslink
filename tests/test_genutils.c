@@ -10,8 +10,17 @@
 static void
 test_littleendianhost (void)
 {
-  uint8_t result = sl_littleendianhost ();
-  SLT_ASSERT (result == 0 || result == 1, "sl_littleendianhost() returns a boolean value");
+  union
+  {
+    uint16_t u;
+    uint8_t b[2];
+  } probe;
+  uint8_t expected;
+
+  probe.u  = 1;
+  expected = probe.b[0]; /* 1 on little-endian, 0 on big-endian */
+
+  SLT_EQ_UINT (sl_littleendianhost (), expected, "sl_littleendianhost() matches this host's actual byte order");
 }
 
 static void

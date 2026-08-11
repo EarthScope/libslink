@@ -74,6 +74,14 @@ class TestTLS(unittest.TestCase):
             proc = subprocess.run(full_args, capture_output=True, text=True, timeout=timeout)
         except subprocess.TimeoutExpired as e:
             if expect_timeout:
+                # subprocess.run() has already killed the child on this
+                # path, so its socket is closed and the handler thread's
+                # next read/write should unblock -- join it before
+                # trusting server.errors (see test_protocol.py's
+                # run_scenario() for the same reasoning).
+                server.stop()
+                if server.errors:
+                    self.fail("mock server handler raised: %r" % (server.errors,))
                 stdout = e.stdout or ""
                 if isinstance(stdout, bytes):
                     stdout = stdout.decode("utf-8", "replace")
@@ -82,6 +90,8 @@ class TestTLS(unittest.TestCase):
 
         if expect_timeout:
             self.fail("expected slharness to hang retrying, but it exited with %r" % (proc.returncode,))
+
+        server.stop()
 
         if server.errors:
             self.fail("mock server handler raised: %r" % (server.errors,))

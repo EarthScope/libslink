@@ -100,12 +100,35 @@ class ProtocolTestCase(unittest.TestCase):
                 % (e.timeout, e.stdout)
             )
 
+        # The client has already exited, so its socket is closed and the
+        # handler thread's next read/write should unblock almost
+        # immediately -- but it may not have gotten there yet. stop()
+        # joins that thread before we look at server.errors, so an
+        # assertion failure (or any other exception) raised late in the
+        # handler is never missed by checking errors before the thread
+        # that fills it in has actually finished.
+        server.stop()
+
         if server.errors:
             self.fail("mock server handler raised: %r" % (server.errors,))
 
         events = parse_output(proc.stdout)
         events["returncode"] = proc.returncode
         events["stderr"] = proc.stderr
+
+        # slharness's normal exit path always returns 0 -- SLcollect()'s
+        # actual result is only ever reported via the printed "RESULT"
+        # line, never through the exit status -- so anything else here
+        # means it crashed (a negative value is the killing signal) or
+        # died some other abnormal way, after already having printed and
+        # flushed whatever packets/log lines this scenario asserts on.
+        self.assertEqual(
+            proc.returncode,
+            0,
+            "slharness exited abnormally (code %r); stderr:\n%s"
+            % (proc.returncode, proc.stderr),
+        )
+
         return events, server
 
     def run_scenario_bounded(self, handler, args, observe_seconds=3, grace_seconds=2):
@@ -133,6 +156,10 @@ class ProtocolTestCase(unittest.TestCase):
             except subprocess.TimeoutExpired:
                 proc.kill()
                 stdout, stderr = proc.communicate()
+
+        # See the matching comment in run_scenario(): join the handler
+        # thread before trusting server.errors to be complete.
+        server.stop()
 
         if server.errors:
             self.fail("mock server handler raised: %r" % (server.errors,))
