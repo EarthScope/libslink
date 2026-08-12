@@ -28,6 +28,18 @@
 
 #include "libslink.h"
 
+#if defined(SLP_WIN)
+static int
+harness_setenv (const char *name, const char *value, int overwrite)
+{
+  if (!overwrite && getenv (name) != NULL)
+    return 0;
+  return _putenv_s (name, value) == 0 ? 0 : -1;
+}
+#else
+#define harness_setenv setenv
+#endif
+
 #define MAX_STATIONS 16
 
 static char g_authvalue[256] = {0};
@@ -276,9 +288,9 @@ main (int argc, char **argv)
       }
     }
     else if (strcmp (a, "--ca-file") == 0 && argi + 1 < argc)
-      setenv ("LIBSLINK_CA_CERT_FILE", argv[++argi], 1);
+      harness_setenv ("LIBSLINK_CA_CERT_FILE", argv[++argi], 1);
     else if (strcmp (a, "--ca-path") == 0 && argi + 1 < argc)
-      setenv ("LIBSLINK_CA_CERT_PATH", argv[++argi], 1);
+      harness_setenv ("LIBSLINK_CA_CERT_PATH", argv[++argi], 1);
     else if (strcmp (a, "--tls") == 0)
       g_force_tls = 1;
     else if (strcmp (a, "--cap") == 0 && argi + 1 < argc)
