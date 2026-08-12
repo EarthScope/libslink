@@ -575,6 +575,181 @@ class TestErrorAndEnd(ProtocolTestCase):
         self.assertEqual(events["result"], "0")  # SLTERMINATE
 
 
+class TestConfigurationErrorsAreFatal(ProtocolTestCase):
+    """Negotiation failures caused by the caller's own configuration (an
+    unparsable/oversized time string, an oversized selector) reproduce
+    identically on every retry, since none of them depend on server state;
+    sl_collect() must report SLTERMINATE and stop instead of reconnecting
+    forever at netdly intervals."""
+
+    def test_v3_uni_unparsable_start_time_is_fatal(self):
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            # negotiate_uni_v3() fails on the bad time string before
+            # sending anything past HELLO -- nothing else to serve.
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--time-start",
+                "not-a-time",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(attempts), 1, "expected no reconnect after a local configuration error")
+        self.assertEqual(len(events["packets"]), 0, events)
+        self.assertEqual(events["result"], "0")  # SLTERMINATE
+
+    def test_v4_unparsable_start_time_is_fatal(self):
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn)
+            # negotiate_v4() fails on the bad time string before sending
+            # STATION/SELECT/DATA; serve_precommands() blocks on the next
+            # command, which never arrives, until the client closes --
+            # ConnectionClosed is expected and swallowed by MockServer.
+            serve_precommands(reader, conn)
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v4",
+                "--station",
+                "XX_TEST:BHZ",
+                "--time-start",
+                "not-a-time",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(attempts), 1, "expected no reconnect after a local configuration error")
+        self.assertEqual(len(events["packets"]), 0, events)
+        self.assertEqual(events["result"], "0")  # SLTERMINATE
+
+    def test_v4_oversized_selector_is_fatal(self):
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn)
+            serve_precommands(reader, conn)
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v4",
+                "--station",
+                "XX_TEST:" + "A" * 40,
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertEqual(len(attempts), 1, "expected no reconnect after a local configuration error")
+        self.assertEqual(len(events["packets"]), 0, events)
+        self.assertEqual(events["result"], "0")  # SLTERMINATE
+
+    def test_server_rejection_is_not_treated_as_a_configuration_error(self):
+        """A server-driven rejection (unlike the client-local failures
+        above) leaves config_error unset and remains retryable -- confirms
+        the two failure classes are not conflated. sl_collect() blocks
+        internally across its whole reconnect loop and only returns control
+        to the harness on a packet (or a fatal outcome), so the rejection
+        has to resolve itself eventually or --timeout-seconds never gets a
+        chance to fire; accept on the second attempt, same as the ERROR
+        case in TestErrorAndEnd above."""
+        attempts = []
+
+        def handler(conn, reader, server, idx):
+            attempts.append(idx)
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd, accept_selectors=(idx != 1))
+
+            if idx != 1:
+                conn.sendall(
+                    mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+                )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "10",
+            ],
+        )
+
+        self.assertGreaterEqual(len(attempts), 2, "expected the client to reconnect after rejection")
+        self.assertEqual(len(events["packets"]), 1, events)
+
+
+class TestEndOnlyTimeWindow(ProtocolTestCase):
+    def test_end_time_without_start_time_is_warned_and_ignored(self):
+        """An end-only time window is not expressible by either protocol's
+        DATA/TIME command; it must not silently vanish, but the connection
+        must otherwise proceed normally (falling back to "next available
+        data")."""
+
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
+            cmd = serve_precommands(reader, conn)
+            serve_v3_uni(reader, conn, cmd)
+            conn.sendall(
+                mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+            )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--time-end",
+                "2030-01-01T00:00:00",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "8",
+            ],
+        )
+
+        self.assertTrue(
+            any("end time" in line and "without a start time" in line for line in events["log"]),
+            events["log"],
+        )
+        self.assertEqual(len(events["packets"]), 1, events)
+
+
 class TestOversizedAndBadSignature(ProtocolTestCase):
     def test_oversized_payload_reports_sltoolarge(self):
         def handler(conn, reader, server, idx):

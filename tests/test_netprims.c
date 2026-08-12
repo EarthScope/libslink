@@ -374,9 +374,176 @@ test_connect_refused (void)
   sl_freeslcd (slconn);
 }
 
-int
-main (void)
+/* Every failed sl_ping() call must release the socket it opened; before
+ * the fix this leaked slconn->link (and any TLS context) on both
+ * response-read failure paths inside sl_ping(). A forked peer accepts
+ * the connection and closes it immediately, without ever responding to
+ * HELLO, so both of sl_ping()'s sl_recvresp() calls fail promptly. */
+static void
+test_ping_disconnects_after_failed_hello_response (void)
 {
+  int port, listenfd;
+  pid_t child;
+  SLCD *slconn;
+  char address[64];
+  int rv;
+
+  listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for the ping-leak test");
+
+  child = fork ();
+  SLT_ASSERT (child >= 0, "fork() for the accept-then-close peer succeeded");
+
+  if (child == 0)
+  {
+    int fd = accept (listenfd, NULL, NULL);
+
+    if (fd >= 0)
+      close (fd);
+
+    close (listenfd);
+    _exit (0);
+  }
+
+  slconn = sl_initslcd ("t", NULL);
+  snprintf (address, sizeof (address), "127.0.0.1:%d", port);
+  sl_set_serveraddress (slconn, address);
+
+  rv = sl_ping (slconn, NULL, NULL);
+
+  SLT_EQ_INT (rv, -1, "sl_ping() reports failure when the peer closes before responding to HELLO");
+  SLT_EQ_INT (slconn->link, -1, "the socket sl_ping() opened was released, not leaked");
+
+  waitpid (child, NULL, 0);
+  close (listenfd);
+  sl_freeslcd (slconn);
+}
+
+/* NULL-guard crash probes, dispatched by name through argv and run in a
+ * fresh fork+exec'd copy of this binary (see test_slcd.c for why exec(),
+ * not a bare fork(), is used here), so a regression reports a clean TAP
+ * failure for one test instead of crashing this whole binary. */
+static const char *g_argv0;
+
+static void trigger_disconnect_null (void);
+static void trigger_configlink_null (void);
+static void trigger_senddata_null (void);
+static void trigger_recvdata_null (void);
+static void trigger_recvresp_null (void);
+
+typedef struct
+{
+  const char *name;
+  void (*fn) (void);
+} Probe;
+
+static const Probe PROBES[] = {
+    {"disconnect_null", trigger_disconnect_null},
+    {"configlink_null", trigger_configlink_null},
+    {"senddata_null", trigger_senddata_null},
+    {"recvdata_null", trigger_recvdata_null},
+    {"recvresp_null", trigger_recvresp_null},
+};
+
+static int
+survives (const char *probe_name)
+{
+  pid_t pid = fork ();
+
+  if (pid == 0)
+  {
+    close (STDERR_FILENO);
+    execl (g_argv0, g_argv0, "--probe", probe_name, (char *)NULL);
+    _exit (127); /* only reached if execl() itself failed */
+  }
+
+  if (pid > 0)
+  {
+    int status;
+    waitpid (pid, &status, 0);
+    return WIFEXITED (status) && WEXITSTATUS (status) == 0;
+  }
+
+  return 0; /* fork() failed; treat as a failure to avoid a false pass */
+}
+
+static void
+assert_survives (const char *probe_name, const char *desc)
+{
+  SLT_ASSERT (survives (probe_name), desc);
+}
+
+static int
+run_probe_if_requested (int argc, char **argv)
+{
+  int i;
+
+  if (argc < 3 || strcmp (argv[1], "--probe") != 0)
+    return 0;
+
+  for (i = 0; i < (int)(sizeof (PROBES) / sizeof (PROBES[0])); i++)
+  {
+    if (strcmp (argv[2], PROBES[i].name) == 0)
+    {
+      PROBES[i].fn ();
+      exit (0);
+    }
+  }
+
+  fprintf (stderr, "unknown probe: %s\n", argv[2]);
+  exit (127);
+}
+
+static void
+trigger_disconnect_null (void)
+{
+  sl_disconnect (NULL);
+}
+
+static void
+trigger_configlink_null (void)
+{
+  sl_configlink (NULL);
+}
+
+static void
+trigger_senddata_null (void)
+{
+  sl_senddata (NULL, (void *)"x", 1, "id", NULL, 0);
+}
+
+static void
+trigger_recvdata_null (void)
+{
+  char buf[4];
+  sl_recvdata (NULL, buf, sizeof (buf), "id");
+}
+
+static void
+trigger_recvresp_null (void)
+{
+  char buf[4];
+  sl_recvresp (NULL, buf, sizeof (buf), "CMD\r\n", "id");
+}
+
+static void
+test_null_guards_do_not_crash (void)
+{
+  assert_survives ("disconnect_null", "sl_disconnect(NULL) does not crash");
+  assert_survives ("configlink_null", "sl_configlink(NULL) does not crash");
+  assert_survives ("senddata_null", "sl_senddata(NULL, ...) does not crash");
+  assert_survives ("recvdata_null", "sl_recvdata(NULL, ...) does not crash");
+  assert_survives ("recvresp_null", "sl_recvresp(NULL, ...) does not crash");
+}
+
+int
+main (int argc, char **argv)
+{
+  g_argv0 = argv[0];
+
+  if (run_probe_if_requested (argc, argv))
+    return 0;
+
   SLT_RUN (test_connect_and_disconnect);
   SLT_RUN (test_senddata);
   SLT_RUN (test_senddata_partial_write);
@@ -386,6 +553,8 @@ main (void)
   SLT_RUN (test_recvresp_split_across_reads);
   SLT_RUN (test_poll_timeout);
   SLT_RUN (test_connect_refused);
+  SLT_RUN (test_ping_disconnects_after_failed_hello_response);
+  SLT_RUN (test_null_guards_do_not_crash);
 
   return SLT_REPORT ();
 }

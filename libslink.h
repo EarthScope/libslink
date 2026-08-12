@@ -372,6 +372,7 @@ typedef struct SLCD
   uint8_t     recvbuffer[SL_RECV_BUFFER_SIZE]; // Network receive buffer
   uint32_t    recvdatalen;      // Length of data in receive buffer
   uint8_t     protocol_forced;  //Caller fixed the protocol with sl_set_protocol()
+  uint8_t     config_error;     //Negotiation failed due to caller configuration, not the server
   /// @endcond
 } SLCD;
 

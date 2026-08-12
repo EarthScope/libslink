@@ -453,7 +453,15 @@ sl_connect (SLCD *slconn, int sayhello)
 SOCKET
 sl_configlink (SLCD *slconn)
 {
-  SOCKET ret = slconn->link;
+  SOCKET ret;
+
+  if (!slconn)
+    return -1;
+
+  /* Negotiation outcome is fresh for this attempt */
+  slconn->config_error = 0;
+
+  ret = slconn->link;
 
   if (slconn->protocol & SLPROTO40)
   {
@@ -469,6 +477,12 @@ sl_configlink (SLCD *slconn)
     {
       ret = negotiate_uni_v3 (slconn);
     }
+  }
+  else
+  {
+    sl_log_r (slconn, 2, 0, "[%s] %s(): no protocol negotiated for connection\n", slconn->sladdr,
+              __func__);
+    ret = -1;
   }
 
   return ret;
@@ -523,6 +537,9 @@ sl_send_info (SLCD *slconn, const char *infostr, int verbose)
 int
 sl_disconnect (SLCD *slconn)
 {
+  if (!slconn)
+    return -1;
+
   if (slconn->link != -1)
   {
 #if defined(SLP_WIN)
@@ -599,12 +616,14 @@ sl_ping (SLCD *slconn, char *serverid, char *site)
   if (sl_recvresp (slconn, (void *)servstr, (size_t)sizeof (servstr) - 1, sendstr, slconn->sladdr) <
       0)
   {
+    sl_disconnect (slconn);
     return -1;
   }
 
   if (sl_recvresp (slconn, (void *)sitestr, (size_t)sizeof (sitestr) - 1, sendstr, slconn->sladdr) <
       0)
   {
+    sl_disconnect (slconn);
     return -1;
   }
 
@@ -653,6 +672,9 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen, const char *ident, void 
   size_t sentbytes = 0; /* total bytes sent */
   int64_t byteswritten;
   int stallcnt = 0; /* counter for the no-progress trapdoor */
+
+  if (!slconn || !buffer)
+    return -1;
 
   while (sentbytes < buflen)
   {
@@ -748,7 +770,7 @@ sl_recvdata (SLCD *slconn, void *buffer, size_t maxbytes, const char *ident)
 {
   int64_t bytesread = 0;
 
-  if (buffer == NULL)
+  if (slconn == NULL || buffer == NULL)
   {
     return -1;
   }
@@ -861,7 +883,7 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes, const char *command, c
 
   const char *cmdstr = (command) ? command : "";
 
-  if (buffer == NULL)
+  if (slconn == NULL || buffer == NULL)
   {
     return -1;
   }
@@ -1526,6 +1548,7 @@ negotiate_uni_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -1533,6 +1556,7 @@ negotiate_uni_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
   }
@@ -1542,6 +1566,7 @@ negotiate_uni_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -1549,11 +1574,27 @@ negotiate_uni_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
   }
 
+  /* An end time without a start time is not expressible by either DATA/TIME
+   * command form below; the end time is silently unused in that case. */
+  if (end_time[0] && !start_time[0])
+  {
+    sl_log_r (slconn, 1, 1,
+              "[%s] end time specified without a start time is not supported, ignoring\n",
+              slconn->sladdr);
+  }
+
   curstream = slconn->streams;
+
+  if (!curstream)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] %s(): no stream configured\n", slconn->sladdr, __func__);
+    return -1;
+  }
 
   /* Send the selector(s) and check the response(s) */
   if (curstream->selectors)
@@ -1671,6 +1712,7 @@ negotiate_uni_v3 (SLCD *slconn)
       {
         sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n", __func__,
                   curstream->timestamp);
+        slconn->config_error = 1;
         return -1;
       }
 
@@ -1749,6 +1791,7 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -1756,6 +1799,7 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be parsed '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
   }
@@ -1765,6 +1809,7 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -1772,8 +1817,18 @@ negotiate_multi_v3 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be parsed '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
+  }
+
+  /* An end time without a start time is not expressible by either DATA/TIME
+   * command form below; the end time is silently unused in that case. */
+  if (end_time[0] && !start_time[0])
+  {
+    sl_log_r (slconn, 1, 1,
+              "[%s] end time specified without a start time is not supported, ignoring\n",
+              slconn->sladdr);
   }
 
   curstream = slconn->streams;
@@ -1956,6 +2011,7 @@ negotiate_multi_v3 (SLCD *slconn)
         {
           sl_log_r (slconn, 2, 0, "%s(): Stream time string cannot be parsed '%s'\n", __func__,
                     curstream->timestamp);
+          slconn->config_error = 1;
           return -1;
         }
 
@@ -2104,6 +2160,7 @@ negotiate_v4 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string is too long: '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -2111,6 +2168,7 @@ negotiate_v4 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): Start time string cannot be converted '%s'\n", __func__,
                 slconn->start_time);
+      slconn->config_error = 1;
       return -1;
     }
   }
@@ -2120,6 +2178,7 @@ negotiate_v4 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string is too long: '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
 
@@ -2127,8 +2186,18 @@ negotiate_v4 (SLCD *slconn)
     {
       sl_log_r (slconn, 2, 0, "%s(): End time string cannot be converted '%s'\n", __func__,
                 slconn->end_time);
+      slconn->config_error = 1;
       return -1;
     }
+  }
+
+  /* An end time without a start time is not expressible by the DATA command
+   * form below; the end time is silently unused in that case. */
+  if (end_time[0] && !start_time[0])
+  {
+    sl_log_r (slconn, 1, 1,
+              "[%s] end time specified without a start time is not supported, ignoring\n",
+              slconn->sladdr);
   }
 
   curstream = slconn->streams;
@@ -2185,6 +2254,8 @@ negotiate_v4 (SLCD *slconn)
         if (sellen >= sizeof (selector))
         {
           sl_log_r (slconn, 2, 0, "%s() Selector too long: %s\n", __func__, selptr);
+
+          slconn->config_error = 1;
 
           while (cmdlist)
           {

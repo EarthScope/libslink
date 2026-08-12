@@ -54,8 +54,11 @@ SLCD *global_termination_SLCD = NULL;
  * This function will automatically reconnect on connection errors,
  * and other recoverable failures.  Fatal, non-recoverable errors
  * include: invalid arguments, authentication failures, the end of the
- * stream in dial-up mode, internal errors, and protocol values that
- * cannot be represented, such as an oversized station ID.
+ * stream in dial-up mode, internal errors, protocol values that
+ * cannot be represented, such as an oversized station ID, and
+ * negotiation failures caused by the caller's own configuration
+ * (an unparsable or oversized time string or selector) rather than
+ * the server, since retrying an unchanged request cannot succeed.
  *
  * The returned \a packetinfo contains the details including: sequence
  * number, payload length, payload type, and how much of the payload
@@ -159,6 +162,20 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
         {
           if (sl_configlink (slconn) == -1)
           {
+            /* A negotiation failure caused by the caller's own configuration
+             * (an unparsable or oversized time string or selector) reproduces
+             * identically on every retry; treat it as fatal rather than
+             * reconnecting forever. Server-driven rejections leave
+             * config_error unset and remain retryable. */
+            if (slconn->config_error)
+            {
+              sl_log_r (slconn, 2, 0, "[%s] %s(): negotiation failed due to invalid configuration\n",
+                        slconn->sladdr, __func__);
+              sl_disconnect (slconn);
+              *packetinfo = NULL;
+              return SLTERMINATE;
+            }
+
             sl_log_r (slconn, 2, 0, "[%s] %s(): negotiation with server failed\n", slconn->sladdr,
                       __func__);
             break;
@@ -908,6 +925,7 @@ sl_initslcd (const char *clientname, const char *clientversion)
   slconn->link = -1;
   slconn->protocol = UNSET_PROTO;
   slconn->protocol_forced = 0;
+  slconn->config_error = 0;
   slconn->server_protocols = 0;
   slconn->capabilities = NULL;
   slconn->caparray = NULL;
