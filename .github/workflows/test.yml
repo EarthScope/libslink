@@ -1,0 +1,65 @@
+name: Test
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    name: Test (${{ matrix.os }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install trustme
+
+      - name: Build and run test suite
+        run: make test
+
+  sanitize:
+    name: Test (sanitizers)
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Install Python test dependencies
+        run: python3 -m pip install trustme
+
+      - name: Build and run test suite under ASan/UBSan
+        run: |
+          make clean
+          CFLAGS="-fsanitize=address,undefined -g -O1" make
+          cd tests && make clean && CFLAGS="-fsanitize=address,undefined -g -O1" make test
+
+  windows-build:
+    name: Build (windows-latest)
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build with nmake
+        run: nmake -f Makefile.win
