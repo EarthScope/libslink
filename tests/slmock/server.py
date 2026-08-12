@@ -39,7 +39,14 @@ class CommandReader:
 
     def _fill(self):
         self.sock.settimeout(self.timeout)
-        chunk = self.sock.recv(4096)
+        # A peer that has already gone away can surface as a clean EOF
+        # (empty recv) or, just as legitimately, as a reset/aborted
+        # connection -- both mean the same thing to a handler expecting
+        # to read another command.
+        try:
+            chunk = self.sock.recv(4096)
+        except ConnectionError:
+            raise ConnectionClosed()
         if not chunk:
             raise ConnectionClosed()
         self.buf += chunk
@@ -150,7 +157,12 @@ class MockServer:
 
             try:
                 self.handler(conn, reader, self, conn_index)
-            except ConnectionClosed:
+            except (ConnectionClosed, ConnectionError):
+                # A client that has already disconnected (deliberately,
+                # or via SIGTERM/SIGKILL in a bounded scenario) can make
+                # a handler's own sendall() see a reset/aborted peer, not
+                # just CommandReader's reads -- same non-event as reading
+                # past EOF.
                 pass
             except Exception as e:  # noqa: BLE001
                 self.errors.append(e)
