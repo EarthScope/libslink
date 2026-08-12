@@ -169,7 +169,8 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
              * config_error unset and remain retryable. */
             if (slconn->config_error)
             {
-              sl_log_r (slconn, 2, 0, "[%s] %s(): negotiation failed due to invalid configuration\n",
+              sl_log_r (slconn, 2, 0,
+                        "[%s] %s(): negotiation failed due to invalid configuration\n",
                         slconn->sladdr, __func__);
               sl_disconnect (slconn);
               *packetinfo = NULL;
@@ -733,12 +734,13 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *b
     bytestoconsume = bytesavailable;
   }
 
+  /* Clamp to what the caller's buffer can still hold this call, rather than
+   * fail outright: once payloadlength exceeds plbuffersize, the caller's own
+   * buffer-size check (ahead of the next call to this function) reports
+   * SLTOOLARGE without any payload bytes having been lost. */
   if (bytestoconsume > plbuffersize - packetinfo->payloadcollected)
   {
-    sl_log_r (slconn, 2, 0,
-              "[%s] %s(): provided buffer size (%u) is insufficient for payload (%u)\n",
-              slconn->sladdr, __func__, plbuffersize, packetinfo->payloadlength);
-    return -1;
+    bytestoconsume = plbuffersize - packetinfo->payloadcollected;
   }
 
   /* Copy payload data from internal buffer to payload buffer */
@@ -2181,6 +2183,14 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
              + *pMS3FSDH_SIDLENGTH (buffer) /* Length of source identifier */
              + extralength                  /* Length of extra headers */
              + datalength;                  /* Length of data payload */
+
+    /* Reject a record length that cannot survive the narrowing assignment
+     * to payloadlength's uint32_t below, e.g. one that would wrap to 0. */
+    if (reclen <= 0 || reclen > UINT32_MAX)
+    {
+      sl_log (2, 0, "Invalid miniSEED3 record length (%" PRId64 ")\n", reclen);
+      return -1;
+    }
   }
   else if (MS2_ISVALIDHEADER (buffer))
   {

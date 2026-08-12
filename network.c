@@ -191,8 +191,8 @@ tls_configure (SLCD *slconn, const char *nodename)
    * cannot spin the loop forever. */
   {
     int timeout_secs = (slconn->iotimeout != 0)
-                            ? ((slconn->iotimeout > 0) ? slconn->iotimeout : -slconn->iotimeout)
-                            : 60;
+                           ? ((slconn->iotimeout > 0) ? slconn->iotimeout : -slconn->iotimeout)
+                           : 60;
     int64_t handshake_deadline = sl_nstime () + SL_EPOCH2SLTIME (timeout_secs);
 
     while ((ret = mbedtls_ssl_handshake (&tlsctx->ssl)) != 0)
@@ -876,6 +876,7 @@ int
 sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes, const char *command, const char *ident)
 {
   size_t bytesread = 0; /* total bytes read */
+  size_t recvbytes;     /* bytes available to receive, reserving one for a terminator */
 
   int recvret = 0;     /* return from sl_recvdata */
   int ackcnt = 0;      /* counter for the read loop */
@@ -891,8 +892,12 @@ sl_recvresp (SLCD *slconn, void *buffer, size_t maxbytes, const char *command, c
   /* Clear the receiving buffer */
   memset (buffer, 0, maxbytes);
 
+  /* Reserve the last byte so the buffer is always NUL-terminated, even if
+   * the response never contains "\r\n" within maxbytes - 1 bytes. */
+  recvbytes = (maxbytes > 0) ? maxbytes - 1 : 0;
+
   /* Recv a byte at a time and wait up to 30 seconds for a response */
-  while (bytesread < maxbytes)
+  while (bytesread < recvbytes)
   {
     recvret = sl_recvdata (slconn, (char *)buffer + bytesread, 1, ident);
 

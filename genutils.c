@@ -273,7 +273,7 @@ sl_isodatetime (char *isodatetime, const char *datetime)
   for (idx = 0, delims = 0; datetime[idx] != '\0'; idx++)
   {
     /* Pass through digits */
-    if (isdigit (datetime[idx]))
+    if (isdigit ((unsigned char)datetime[idx]))
     {
       newchar = 0;
     }
@@ -376,7 +376,7 @@ sl_commadatetime (char *commadatetime, const char *datetime)
   for (idx = 0, delims = 0; datetime[idx] != '\0'; idx++)
   {
     /* Pass through digits */
-    if (isdigit (datetime[idx]))
+    if (isdigit ((unsigned char)datetime[idx]))
     {
       newchar = 0;
     }
@@ -485,7 +485,7 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   /* Check for valid v4 stream ID characters */
   for (size_t idx = 0; idx < streamidlength; idx++)
   {
-    if (isalnum ((int)selector[idx]) == 0 && selector[idx] != '?' && selector[idx] != '*')
+    if (isalnum ((unsigned char)selector[idx]) == 0 && selector[idx] != '?' && selector[idx] != '*')
     {
       return NULL;
     }

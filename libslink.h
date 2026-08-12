@@ -214,7 +214,12 @@ typedef struct SLlog
 
 #define SL_MAX_PAYLOAD SL_RECV_BUFFER_SIZE //!< Deprecated, use SL_RECV_BUFFER_SIZE
 
-/** Protocols recognized by the library */
+/** Protocols recognized by the library.
+ *
+ * Non-zero values are bit flags, combined with bitwise OR to record the set
+ * of protocols a server offers. Any future addition must be the next unused
+ * power of two (4, 8, 16, ...), never the next sequential integer, or it
+ * will collide with a combination of the existing flags. */
 typedef enum
 {
   UNSET_PROTO = 0, //!< Unset value

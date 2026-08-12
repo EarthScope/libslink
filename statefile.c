@@ -203,7 +203,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     /* Store pointers to space-separated fields & convert spaces to terminators */
     for (idx = 0, fields = 0; line[idx] && fields < 5; idx++)
     {
-      if (!isspace (line[idx]))
+      if (!isspace ((unsigned char)line[idx]))
       {
         if (idx == 0 || line[idx - 1] == '\0')
         {
@@ -259,6 +259,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     {
       sl_log_r (slconn, 2, 0, "could not parse line %d of state file: %s\n", count, line);
       retval = -1;
+      count++;
       continue;
     }
 
@@ -271,6 +272,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
         sl_log_r (slconn, 1, 0, "timestamp on line %d of statefile is too long: '%s'\n", count,
                   timestr);
         retval = -1;
+        count++;
         continue;
       }
 
@@ -283,6 +285,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
         sl_log_r (slconn, 1, 0, "could not convert timestamp on line %d of statefile: '%s'\n",
                   count, timestr);
         retval = -1;
+        count++;
         continue;
       }
     }
@@ -301,6 +304,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
                   "could not parse sequence number from line %d of state file: '%s'\n", count,
                   sequencestr);
         retval = -1;
+        count++;
         continue;
       }
     }

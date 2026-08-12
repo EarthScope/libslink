@@ -345,7 +345,7 @@ sl_log_rl (const SLlog *log, int level, int verb, const char *format, ...)
 int
 sl_log_main (const SLlog *logp, int level, int verb, const char *format, va_list *varlist)
 {
-  static char message[MAX_LOG_MSG_LENGTH];
+  char message[MAX_LOG_MSG_LENGTH];
   int retvalue = 0;
   int presize;
 
