@@ -7,7 +7,7 @@
 #   cd .. && make clean && CFLAGS="-fsanitize=address,undefined -g -O1" make
 #   cd tests && make clean && CFLAGS="-fsanitize=address,undefined -g -O1" make test
 
-CFLAGS += -I.. -I../mbedtls/include -Wall -Wextra -g
+CFLAGS += -I.. -I../mbedtls/include -Wall -Wextra -Wno-sign-compare -g
 LDFLAGS += -L..
 LDLIBS = -lslink
 

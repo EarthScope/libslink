@@ -200,7 +200,8 @@ test_senddata_partial_write (void)
     }
 
     close (serverfd);
-    write (pipefd[1], &total, sizeof (total));
+    ssize_t written = write (pipefd[1], &total, sizeof (total));
+    (void)written;
     close (pipefd[1]);
     _exit (0);
   }
