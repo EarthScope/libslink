@@ -27,6 +27,16 @@ from slmock.server import (
 )
 
 HARNESS = os.path.join(os.path.dirname(__file__), "slharness")
+if sys.platform == "win32":
+    HARNESS += ".exe"
+
+# Built from names rather than a literal tuple since signal.SIGBUS doesn't
+# exist on Windows.
+CRASH_SIGNALS = tuple(
+    getattr(signal, name)
+    for name in ("SIGSEGV", "SIGABRT", "SIGILL", "SIGFPE", "SIGBUS")
+    if hasattr(signal, name)
+)
 
 PACKET_RE = re.compile(
     # station=(\S*), not \S+: v4 INFO/JSON packets (and all v3 packets,
@@ -174,8 +184,7 @@ class ProtocolTestCase(unittest.TestCase):
         signal associated with a memory-safety crash (as opposed to
         SIGTERM/SIGKILL sent deliberately by run_scenario_bounded(), or
         a normal non-negative exit)."""
-        crash_signals = (signal.SIGSEGV, signal.SIGABRT, signal.SIGILL, signal.SIGFPE, signal.SIGBUS)
-        if returncode < 0 and -returncode in crash_signals:
+        if returncode < 0 and -returncode in CRASH_SIGNALS:
             self.fail(
                 "process was killed by %s: %s" % (signal.Signals(-returncode).name, msg)
             )

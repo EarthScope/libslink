@@ -124,7 +124,6 @@ class TestExportConsistency(unittest.TestCase):
     def setUp(self):
         self.public = public_function_names()
         self.defs = def_entries()
-        self.real_symbols = built_library_symbols()
 
     def test_every_public_function_is_in_the_def_file(self):
         missing = sorted(set(self.public) - set(self.defs))
@@ -136,7 +135,8 @@ class TestExportConsistency(unittest.TestCase):
         )
 
     def test_every_def_entry_is_a_real_exported_symbol(self):
-        bogus = sorted(name for name in self.defs if name not in self.real_symbols)
+        real_symbols = built_library_symbols()
+        bogus = sorted(name for name in self.defs if name not in real_symbols)
         self.assertEqual(
             bogus,
             [],

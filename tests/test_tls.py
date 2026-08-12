@@ -29,7 +29,7 @@ except ImportError:
 
 from slmock import mseed
 from slmock.server import MockServer, serve_hello, serve_precommands, serve_v4
-from test_protocol import HARNESS, parse_output
+from test_protocol import CRASH_SIGNALS, HARNESS, parse_output
 
 
 class TLSMockServer(MockServer):
@@ -279,8 +279,7 @@ class TestTLS(unittest.TestCase):
         if server.errors:
             self.fail("mock server handler raised: %r" % (server.errors,))
 
-        crash_signals = (signal.SIGSEGV, signal.SIGABRT, signal.SIGILL, signal.SIGFPE, signal.SIGBUS)
-        if proc.returncode is not None and proc.returncode < 0 and -proc.returncode in crash_signals:
+        if proc.returncode is not None and proc.returncode < 0 and -proc.returncode in CRASH_SIGNALS:
             self.fail(
                 "process was killed by %s; stderr:\n%s"
                 % (signal.Signals(-proc.returncode).name, stderr)
