@@ -145,6 +145,16 @@ class MockServer:
 
             try:
                 conn = self._wrap(conn)
+            except (ConnectionClosed, ConnectionError):
+                # A peer that abandons the connection mid-handshake (e.g.
+                # a TLS client rejecting the server's certificate) is
+                # refusing it, not erroring -- same non-event as a client
+                # disconnecting mid-session.
+                try:
+                    conn.close()
+                except OSError:
+                    pass
+                continue
             except Exception as e:  # noqa: BLE001
                 self.errors.append(e)
                 try:

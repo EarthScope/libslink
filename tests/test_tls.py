@@ -28,7 +28,7 @@ except ImportError:
     HAVE_TRUSTME = False
 
 from slmock import mseed
-from slmock.server import MockServer, serve_hello, serve_precommands, serve_v4
+from slmock.server import ConnectionClosed, MockServer, serve_hello, serve_precommands, serve_v4
 from test_protocol import CRASH_SIGNALS, HARNESS, parse_output
 
 
@@ -53,7 +53,13 @@ class TLSMockServer(MockServer):
             self.port = port
 
     def _wrap(self, conn):
-        return self._ssl_ctx.wrap_socket(conn, server_side=True)
+        try:
+            return self._ssl_ctx.wrap_socket(conn, server_side=True)
+        except ssl.SSLError:
+            # A client that rejects our certificate answers the
+            # handshake with a fatal alert rather than a bare socket
+            # close -- refusal, not a server error.
+            raise ConnectionClosed()
 
 
 @unittest.skipUnless(HAVE_TRUSTME, "trustme not installed (pip install trustme); TLS tests skipped")
