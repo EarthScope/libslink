@@ -287,8 +287,23 @@ class TestErrorCodes(ProtocolTestCase):
                 def handler(conn, reader, server, idx, code=code):
                     serve_hello(reader, conn)
                     cmd = serve_precommands(reader, conn)
-                    error_v4(conn, code, "rejected for testing")
-                    raise ConnectionClosed()
+                    # negotiate_v4() pipelines STATION/SELECT/DATA for a
+                    # stream before reading any response, so more than one
+                    # command can already be sitting in the kernel receive
+                    # buffer here. Drain the whole batch and answer each
+                    # one before returning -- otherwise MockServer's close
+                    # on a socket with unread received data can turn into
+                    # a Windows RST, which can silently discard the ERROR
+                    # response below before the client reads it.
+                    commands = [cmd]
+                    while True:
+                        more = reader.try_read_command(0.3)
+                        if more is None:
+                            break
+                        commands.append(more)
+
+                    for _ in commands:
+                        error_v4(conn, code, "rejected for testing")
 
                 # A rejected STATION is not fatal (only auth failures are),
                 # so sl_collect() retries negotiation forever -- observe a
@@ -341,6 +356,17 @@ class TestErrorCodes(ProtocolTestCase):
             # stream also queued can be read.
             self.assertTrue(cmd.startswith("STATION"), cmd)
             error_v4(conn, "LIMIT", "too many stations")
+
+            # Drain (without answering) the pipelined SELECT/DATA commands
+            # this stream also queued, so the kernel receive buffer is
+            # empty before close -- otherwise Windows can send RST instead
+            # of FIN, which can also discard the ERROR response above
+            # before the client reads it. The point under test is the
+            # client's second-pass read timing out on an unanswered
+            # command, not losing the first response to a reset.
+            while reader.try_read_command(0.3) is not None:
+                pass
+
             raise ConnectionClosed()
 
         # The rejected STATION is not fatal, so sl_collect() retries
@@ -415,6 +441,14 @@ class TestErrorCodes(ProtocolTestCase):
             cmd = reader.read_command()
             self.assertEqual(cmd, "SLPROTO 4.0")
             error_v4(conn, "UNSUPPORTED", "SLPROTO not available")
+
+            # SLPROTO is a single request/response with nothing pipelined
+            # after it, so the receive buffer should already be empty --
+            # drain defensively anyway before close, same reasoning as the
+            # other error_v4()-then-close handlers in this file.
+            while reader.try_read_command(0.3) is not None:
+                pass
+
             raise ConnectionClosed()
 
         # The rejection is not fatal to sl_collect() itself, so it retries
