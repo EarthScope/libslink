@@ -93,16 +93,3 @@ make test ARGS='-k tls'
   `self.fail()` from the resulting `subprocess.TimeoutExpired`, which is
   exactly the failure such a test wants to demonstrate.
 
-## Known-issue baseline
-
-A *new* failure beyond this one test means a regression, not a
-pre-existing known issue.
-
-- `test_internals.test_detect_ms3_datalength_over_16_bits` —
-  `detect()`'s miniSEED3 branch (`slutils.c`) reads the header's 32-bit
-  data-length field but passes it through `HO2u()`, which takes a
-  `uint16_t`, truncating any value above 65535 before the byte-swap
-  logic even runs. A record announcing more than 64KiB of payload gets
-  a silently wrong (truncated) record length. Fails today; will flip to
-  passing once `detect()` widens that computation to match the field's
-  real size.

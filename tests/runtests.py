@@ -42,14 +42,6 @@ PYTHON_MODULES = [
     "test_exports",
 ]
 
-# Binaries containing a test written to assert *correct* behavior for a
-# still-open bug (see tests/README.md, "Known-issue baseline"); such a
-# test fails on purpose until the bug is fixed. Granularity here is
-# whole-binary, since that's what this runner tracks -- a name in this
-# set failing is expected; any *other* name failing is a regression.
-KNOWN_ISSUE_BASELINE = {"test_internals"}
-
-
 def run_c_binary(name, verbose):
     """Returns "PASS", "FAIL", or "SKIP" (binary not built)."""
     path = os.path.join(HERE, name)
@@ -137,14 +129,6 @@ def main():
         print("%d skipped: %s" % (len(skipped), ", ".join(skipped)))
     if failed:
         print("FAILED: %s" % ", ".join(failed))
-        unexpected = sorted(set(failed) - KNOWN_ISSUE_BASELINE)
-        if unexpected:
-            print(
-                "%s beyond the known-issue baseline in tests/README.md -- likely a regression"
-                % ", ".join(unexpected)
-            )
-        else:
-            print("(matches the known-issue baseline in tests/README.md -- not a regression)")
 
     return 1 if failed else 0
 

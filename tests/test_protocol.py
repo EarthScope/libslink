@@ -1085,5 +1085,111 @@ class TestAuthValueNullRegression(ProtocolTestCase):
         self.assertEqual(events["result"], "-3", events)  # SLAUTHFAIL
 
 
+class TestUnterminatedResponseRegression(ProtocolTestCase):
+    """Regression coverage for core-review-pass3 finding 1: sl_recvresp()
+    must never leave its buffer completely unterminated. A response that
+    fills the buffer with no '\\r' anywhere used to leave network.c's
+    subsequent strchr()/strcspn() scans with no guaranteed stopping
+    point -- an out-of-bounds read in sayhello_int(), and an
+    out-of-bounds *write* in negotiate_v4() (strchr() finding a stray
+    '\\r' past the buffer, then writing a NUL through it). Both are only
+    reliably observable under a memory sanitizer; on a plain build the
+    assertion here is just "the client didn't crash or hang"."""
+
+    def test_hello_response_with_no_terminator_does_not_crash(self):
+        def handler(conn, reader, server, idx):
+            if idx == 1:
+                cmd = reader.read_command()
+                if cmd != "HELLO":
+                    raise AssertionError("expected HELLO, got %r" % cmd)
+
+                # servstr/sitestr are each 200 bytes; sl_recvresp() now
+                # always reserves the last byte for a forced NUL, so
+                # exactly 199 bytes with no '\r' fills each read
+                # completely without blocking for more (nothing is left
+                # over in the stream for the next read to trip over).
+                conn.sendall(b"X" * 199)
+                conn.sendall(b"Y" * 199)
+
+                try:
+                    serve_precommands(reader, conn)
+                except ConnectionClosed:
+                    pass
+            else:
+                # A malformed first connection must not wedge the client;
+                # confirm it still reconnects and streams normally.
+                serve_hello(reader, conn)
+                cmd = serve_precommands(reader, conn)
+                serve_v3_uni(reader, conn, cmd)
+                conn.sendall(
+                    mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
+                )
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v3",
+                "--allstation",
+                "BHZ",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "10",
+            ],
+            subprocess_timeout=20,
+        )
+
+        self.assertEqual(events["returncode"], 0, events)
+        self.assertEqual(len(events["packets"]), 1, events)
+
+    def test_v4_negotiation_response_with_no_terminator_does_not_crash(self):
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn)
+            cmd = serve_precommands(reader, conn)
+
+            if idx == 1:
+                # Drain the client's pipelined STATION/SELECT/DATA batch
+                # and answer every one of them with a response that
+                # completely fills negotiate_v4()'s own 200-byte readbuf
+                # with no '\r' anywhere -- the exact trigger for the
+                # out-of-bounds write this is regression coverage for.
+                commands = [cmd]
+                while True:
+                    more = reader.try_read_command(0.3)
+                    if more is None:
+                        break
+                    commands.append(more)
+
+                for _ in commands:
+                    conn.sendall(b"Z" * 199)
+            else:
+                # A malformed first connection must not wedge the client;
+                # confirm it still reconnects and streams normally.
+                serve_v4(reader, conn, cmd)
+                record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0, numsamples=50)
+                conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
+
+        events, _ = self.run_scenario(
+            handler,
+            [
+                "--v4",
+                "--station",
+                "XX_TEST:BHZ",
+                "--reconnectdelay",
+                "1",
+                "--max-packets",
+                "1",
+                "--timeout-seconds",
+                "10",
+            ],
+            subprocess_timeout=20,
+        )
+
+        self.assertEqual(events["returncode"], 0, events)
+        self.assertEqual(len(events["packets"]), 1, events)
+
+
 if __name__ == "__main__":
     unittest.main()

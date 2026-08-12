@@ -720,7 +720,8 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *b
       packetinfo->payloadformat = payloadformat;
     }
 
-    packetinfo->payloadlength = detectedlength;
+    /* Fits uint32_t: detect() already rejected any length that would not. */
+    packetinfo->payloadlength = (uint32_t)detectedlength;
   }
 
   /* If remaining payload is smaller than available, consume remaining */
@@ -734,11 +735,14 @@ receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize, uint8_t *b
     bytestoconsume = bytesavailable;
   }
 
-  /* Clamp to what the caller's buffer can still hold this call, rather than
-   * fail outright: once payloadlength exceeds plbuffersize, the caller's own
-   * buffer-size check (ahead of the next call to this function) reports
-   * SLTOOLARGE without any payload bytes having been lost. */
-  if (bytestoconsume > plbuffersize - packetinfo->payloadcollected)
+  /* Cap at remaining caller-buffer space; the caller reports SLTOOLARGE when
+   * payloadlength exceeds plbuffersize. Guard collected >= size so the
+   * uint32_t subtraction cannot underflow. */
+  if (packetinfo->payloadcollected >= plbuffersize)
+  {
+    bytestoconsume = 0;
+  }
+  else if (bytestoconsume > plbuffersize - packetinfo->payloadcollected)
   {
     bytestoconsume = plbuffersize - packetinfo->payloadcollected;
   }

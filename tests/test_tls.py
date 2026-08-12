@@ -10,10 +10,12 @@ stdlib-only machine.
 """
 
 import os
+import signal
 import ssl
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -225,6 +227,70 @@ class TestTLS(unittest.TestCase):
             events["log"],
         )
         self.assertEqual(events["packets"], [])
+
+    def test_handshake_silent_peer_does_not_hang_or_crash(self):
+        """Regression coverage for core-review-pass3 finding 10: the TLS
+        handshake loop must be bounded by a deadline and honor
+        termination, rather than spin forever (previously at 100% CPU,
+        polling for writability on a socket that's essentially always
+        writable) against a peer that completes the TCP connection and
+        then never sends a byte. Uses a plain (non-TLS-wrapping)
+        MockServer directly -- the point is that the *server* never
+        engages in a TLS handshake at all, so trustme's certificates are
+        irrelevant here. Every reconnect attempt hits the same silent
+        peer, so (like a rejected-forever negotiation) sl_collect()
+        never returns on its own by design -- observe slharness for a
+        few seconds, past several handshake-timeout-and-retry cycles,
+        then terminate it and check it wasn't a real crash rather than
+        our own signal."""
+
+        def handler(conn, reader, server, idx):
+            time.sleep(10)
+
+        server = MockServer(handler).start()
+        self.addCleanup(server.stop)
+
+        full_args = [
+            HARNESS,
+            "--address",
+            server.address(),
+            "--tls",
+            "--iotimeout",
+            "2",
+            "--reconnectdelay",
+            "1",
+            "--v4",
+            "--station",
+            "XX_TEST:BHZ",
+        ]
+        proc = subprocess.Popen(full_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+
+        try:
+            stdout, stderr = proc.communicate(timeout=8)
+        except subprocess.TimeoutExpired:
+            proc.terminate()
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+
+        server.stop()
+        if server.errors:
+            self.fail("mock server handler raised: %r" % (server.errors,))
+
+        crash_signals = (signal.SIGSEGV, signal.SIGABRT, signal.SIGILL, signal.SIGFPE, signal.SIGBUS)
+        if proc.returncode is not None and proc.returncode < 0 and -proc.returncode in crash_signals:
+            self.fail(
+                "process was killed by %s; stderr:\n%s"
+                % (signal.Signals(-proc.returncode).name, stderr)
+            )
+
+        self.assertIn(
+            "TLS handshake timed out",
+            stdout,
+            "handshake deadline never fired; stdout:\n%s" % stdout,
+        )
 
 
 if __name__ == "__main__":

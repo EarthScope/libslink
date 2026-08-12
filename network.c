@@ -676,6 +676,9 @@ sl_senddata (SLCD *slconn, void *buffer, size_t buflen, const char *ident, void 
   if (!slconn || !buffer)
     return -1;
 
+  if (resp != NULL && resplen < 0)
+    return -1;
+
   while (sentbytes < buflen)
   {
     if (slconn->tlsctx != NULL)

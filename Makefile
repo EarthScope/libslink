@@ -32,6 +32,7 @@ LIB_NAME = libslink
 LIB_A = $(LIB_NAME).a
 
 CFLAGS += -Imbedtls/include
+CFLAGS += -Wall -Wextra
 
 # Auto-generated per-object header dependencies (see the -include below),
 # so a change to a header actually triggers recompilation of every .c

@@ -280,7 +280,7 @@ typedef enum
 
 /** @def sl_dtime
     @brief Macro to return current time as double epoch, replace legacy function */
-#define sl_dtime(X) SL_SLTIME2EPOCH((double)sl_nstime())
+#define sl_dtime() SL_SLTIME2EPOCH((double)sl_nstime())
 
 /** @brief SeedLink packet information */
 typedef struct SLpacketinfo
