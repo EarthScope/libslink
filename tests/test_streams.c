@@ -9,21 +9,6 @@
 #include "fixtures.h"
 #include "slt.h"
 
-static SLstream *
-find_stream (SLCD *slconn, const char *stationid)
-{
-  SLstream *cur = slconn->streams;
-
-  while (cur)
-  {
-    if (strcmp (cur->stationid, stationid) == 0)
-      return cur;
-    cur = cur->next;
-  }
-
-  return NULL;
-}
-
 static void
 test_add_stream_basic (void)
 {
@@ -45,20 +30,12 @@ test_add_stream_basic (void)
              0, "a second stream with no selectors/timestamp is accepted");
 
   {
-    SLstream *cur = slconn->streams;
-    SLstream *wlf = NULL;
+    SLstream *s = fx_find_stream (slconn, "XX_TST2");
 
-    while (cur)
-    {
-      if (strcmp (cur->stationid, "XX_TST2") == 0)
-        wlf = cur;
-      cur = cur->next;
-    }
-
-    SLT_NOT_NULL (wlf, "XX_TST2 was added to the list");
-    SLT_NULL (wlf->selectors, "NULL selectors are stored as NULL, not an empty string");
-    SLT_EQ_UINT (wlf->seqnum, SL_UNSETSEQUENCE, "unset sequence number stored as SL_UNSETSEQUENCE");
-    SLT_EQ_STR (wlf->timestamp, "", "no timestamp leaves an empty string");
+    SLT_NOT_NULL (s, "XX_TST2 was added to the list");
+    SLT_NULL (s->selectors, "NULL selectors are stored as NULL, not an empty string");
+    SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE, "unset sequence number stored as SL_UNSETSEQUENCE");
+    SLT_EQ_STR (s->timestamp, "", "no timestamp leaves an empty string");
   }
 
   SLT_EQ_INT (sl_add_stream (NULL, "XX_TEST", NULL, SL_UNSETSEQUENCE, NULL),
@@ -124,21 +101,26 @@ test_add_stream_timestamp_bounds (void)
    * matched back out, fully NUL-terminated. */
   SLT_EQ_INT (sl_add_stream (slconn, "XX_TWENTYONECHARLONGX", NULL, SL_UNSETSEQUENCE, NULL),
              0, "a station id of exactly SL_MAX_STATIONID - 1 chars is accepted");
-  SLT_NOT_NULL (find_stream (slconn, "XX_TWENTYONECHARLONGX"),
+  SLT_NOT_NULL (fx_find_stream (slconn, "XX_TWENTYONECHARLONGX"),
                "it can be found again by its full id");
 
   /* A comma-delimited legacy timestamp that fits still converts. */
   SLT_EQ_INT (sl_add_stream (slconn, "XX_TST4", NULL, SL_UNSETSEQUENCE, "2024,01,02,03,04,05"),
              0, "a legacy comma-delimited timestamp within bounds is accepted");
-  SLT_EQ_STR (find_stream (slconn, "XX_TST4")->timestamp, "2024-01-02T03:04:05Z",
-             "the legacy timestamp is converted to ISO-8601");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TST4");
+
+    SLT_NOT_NULL (s, "XX_TST4 was added");
+    SLT_EQ_STR (s->timestamp, "2024-01-02T03:04:05Z",
+               "the legacy timestamp is converted to ISO-8601");
+  }
 
   memset (longts, '1', sizeof (longts) - 1);
   longts[sizeof (longts) - 1] = '\0';
 
   SLT_EQ_INT (sl_add_stream (slconn, "XX_TST5", NULL, SL_UNSETSEQUENCE, longts),
              -1, "a timestamp too long for the conversion buffer is rejected");
-  SLT_NULL (find_stream (slconn, "XX_TST5"), "the rejected stream was not added to the list");
+  SLT_NULL (fx_find_stream (slconn, "XX_TST5"), "the rejected stream was not added to the list");
 
   SLT_EQ_INT (sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, longts),
              -1, "an over-long timestamp is also rejected for all-station mode");
@@ -193,15 +175,15 @@ test_add_streamlist_string (void)
   SLT_EQ_INT (sl_add_streamlist (slconn, "XX_TEST:B_H_E B_H_N,XX_TST2,XX_TST3:H_H_?", NULL),
              3, "sl_add_streamlist() returns the number of streams parsed");
 
-  s = find_stream (slconn, "XX_TEST");
+  s = fx_find_stream (slconn, "XX_TEST");
   SLT_NOT_NULL (s, "XX_TEST was added");
   SLT_EQ_STR (s->selectors, "B_H_E B_H_N", "XX_TEST selectors parsed up to the comma");
 
-  s = find_stream (slconn, "XX_TST2");
+  s = fx_find_stream (slconn, "XX_TST2");
   SLT_NOT_NULL (s, "XX_TST2 was added");
   SLT_NULL (s->selectors, "XX_TST2 has no selectors and no default was given");
 
-  s = find_stream (slconn, "XX_TST3");
+  s = fx_find_stream (slconn, "XX_TST3");
   SLT_NOT_NULL (s, "XX_TST3 was added");
   SLT_EQ_STR (s->selectors, "H_H_?", "XX_TST3 selectors parsed to the end of the string");
 
@@ -217,13 +199,16 @@ test_add_streamlist_defaults_and_malformed (void)
   SLT_EQ_INT (sl_add_streamlist (slconn, "XX_TEST,XX_TST2:BHZ,,XX_TST3", "BHE"),
              3, "malformed (empty) entries between commas are skipped and not counted");
 
-  s = find_stream (slconn, "XX_TEST");
+  s = fx_find_stream (slconn, "XX_TEST");
+  SLT_NOT_NULL (s, "XX_TEST was added");
   SLT_EQ_STR (s->selectors, "BHE", "a default selector is applied when none is specified");
 
-  s = find_stream (slconn, "XX_TST2");
+  s = fx_find_stream (slconn, "XX_TST2");
+  SLT_NOT_NULL (s, "XX_TST2 was added");
   SLT_EQ_STR (s->selectors, "BHZ", "an explicit selector overrides the default");
 
-  s = find_stream (slconn, "XX_TST3");
+  s = fx_find_stream (slconn, "XX_TST3");
+  SLT_NOT_NULL (s, "XX_TST3 was added");
   SLT_EQ_STR (s->selectors, "BHE", "the default is applied to a later entry too");
 
   SLT_EQ_INT (sl_add_streamlist (NULL, "XX_TEST", NULL), -1, "NULL connection rejected");
@@ -246,15 +231,15 @@ test_add_streamlist_file (void)
   SLT_EQ_INT (sl_add_streamlist_file (slconn, path, "LLZ"), 3,
              "sl_add_streamlist_file() returns the number of streams read");
 
-  s = find_stream (slconn, "XX_TST5");
+  s = fx_find_stream (slconn, "XX_TST5");
   SLT_NOT_NULL (s, "XX_TST5 was read from the file");
   SLT_EQ_STR (s->selectors, "BH?", "XX_TST5 selectors read from the file");
 
-  s = find_stream (slconn, "XX_TST6");
+  s = fx_find_stream (slconn, "XX_TST6");
   SLT_NOT_NULL (s, "XX_TST6 was read from the file");
   SLT_EQ_STR (s->selectors, "LLZ", "a bare station id gets the default selector");
 
-  s = find_stream (slconn, "XX_TST3");
+  s = fx_find_stream (slconn, "XX_TST3");
   SLT_NOT_NULL (s, "XX_TST3 was read from the file");
   SLT_EQ_STR (s->selectors, "BH? HH? LH?", "multiple space-separated selectors are read as one string");
 
@@ -278,10 +263,9 @@ test_add_streamlist_file_errors (void)
   sl_freeslcd (slconn);
 }
 
-/* --- fable-review finding 9: sl_add_streamlist_file() parses each line
- * with sscanf(line, "%63s %199c", stationid, selectors).  Unlike %s, the
- * %c conversion does not stop at whitespace, so trailing spaces before the
- * newline are captured verbatim into the selectors string. --- */
+/* sl_add_streamlist_file() parses each line with
+ * sscanf(line, "%63s %199[^\n]", stationid, selectors), then explicitly
+ * trims trailing whitespace from the selectors field before storing it. */
 static void
 test_streamlist_file_trailing_whitespace (void)
 {
@@ -291,10 +275,10 @@ test_streamlist_file_trailing_whitespace (void)
 
   sl_add_streamlist_file (slconn, path, NULL);
 
-  s = find_stream (slconn, "XX_TST5");
+  s = fx_find_stream (slconn, "XX_TST5");
   SLT_NOT_NULL (s, "XX_TST5 was read from the file");
   SLT_EQ_STR (s->selectors, "BH?",
-             "known bug (finding 9): trailing whitespace after a selector should be stripped, not stored");
+             "trailing whitespace after a selector is stripped, not stored");
 
   fx_unlink (path);
   sl_freeslcd (slconn);

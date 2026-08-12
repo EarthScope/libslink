@@ -18,6 +18,10 @@ import sys
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
+# A hung binary or module should be reported as a timeout for its own
+# named group, not left to hang the whole runner indefinitely.
+SUBPROCESS_TIMEOUT = 120
+
 # Kept as an explicit list rather than discovered by globbing so that a
 # test_*.c source with no corresponding built binary (e.g. a fresh clone
 # before `make`) is reported as "not built" instead of silently skipped.
@@ -54,7 +58,12 @@ def run_c_binary(name, verbose):
     # test deliberately feeding non-ASCII/binary data through the
     # library's own %s-based error logging); decode leniently rather
     # than let a runner-level UnicodeDecodeError mask the actual result.
-    proc = subprocess.run([path], capture_output=True, cwd=HERE)
+    try:
+        proc = subprocess.run([path], capture_output=True, cwd=HERE, timeout=SUBPROCESS_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print("FAIL %s (timed out after %ds)" % (name, SUBPROCESS_TIMEOUT))
+        return "FAIL"
+
     proc_stdout = proc.stdout.decode("utf-8", "replace")
     proc_stderr = proc.stderr.decode("utf-8", "replace")
     status = "PASS" if proc.returncode == 0 else "FAIL"
@@ -82,7 +91,12 @@ def run_python_module(name, verbose, pattern):
     # Captured (rather than inherited) so the skipped= count can be
     # parsed out of it; still echoed below so behavior otherwise matches
     # letting the child write directly to the terminal.
-    proc = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True)
+    try:
+        proc = subprocess.run(cmd, cwd=HERE, capture_output=True, text=True, timeout=SUBPROCESS_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        print("FAIL %s (timed out after %ds)" % (name, SUBPROCESS_TIMEOUT))
+        return "FAIL"
+
     sys.stdout.write(proc.stdout)
     sys.stderr.write(proc.stderr)
 
@@ -92,7 +106,13 @@ def run_python_module(name, verbose, pattern):
     ran = int(ran_m.group(1)) if ran_m else 0
     skipped = int(skipped_m.group(1)) if skipped_m else 0
 
-    if ok and ran > 0 and skipped == ran:
+    # unittest exits 5 ("NO TESTS RAN") when -k matches nothing in this
+    # module; that is not a failure of any test, so it's a SKIP regardless
+    # of the exit code. A module that ran tests but skipped all of them
+    # (e.g. test_tls.py without `trustme` installed) is also a SKIP.
+    if ran == 0:
+        status = "SKIP"
+    elif ok and skipped == ran:
         status = "SKIP"
     elif ok:
         status = "PASS"
@@ -129,6 +149,10 @@ def main():
         print("%d skipped: %s" % (len(skipped), ", ".join(skipped)))
     if failed:
         print("FAILED: %s" % ", ".join(failed))
+
+    if not passed and not failed:
+        print("no test groups actually ran")
+        return 1
 
     return 1 if failed else 0
 

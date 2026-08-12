@@ -14,6 +14,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "libslink.h"
+
 #define MS2_FIXED_LENGTH 48
 #define MS2_B1000_LENGTH 8
 #define MS3_FIXED_LENGTH 40
@@ -77,5 +79,34 @@ char *fx_write_tempfile (const char *content);
 
 /* Remove a file created by fx_write_tempfile() and free the path. */
 void fx_unlink (char *path);
+
+/* Find a stream by station id in slconn->streams, or NULL if not present. */
+SLstream *fx_find_stream (SLCD *slconn, const char *stationid);
+
+/* A named crash probe, run in a fork+exec'd copy of the calling binary
+ * (see fx_probe_survives()) so a regression reports a clean TAP failure
+ * for one test instead of crashing the whole binary. */
+typedef void (*FxProbeFn) (void);
+
+typedef struct
+{
+  const char *name;
+  FxProbeFn   fn;
+} FxProbe;
+
+/* Run the named probe in a fork+exec'd copy of argv0 -- a fresh process
+ * image, so nothing the parent's allocator (sanitizer-instrumented or
+ * not) was doing is ever inherited into it, unlike a bare fork() of a
+ * process that has already done real allocator work.
+ *
+ * Returns 1 if the probe exited cleanly (code 0), 0 if it crashed, exited
+ * non-zero, or fork() itself failed. */
+int fx_probe_survives (const char *argv0, const char *probe_name);
+
+/* If invoked as "<self> --probe NAME", run the matching entry of probes[]
+ * and exit -- this call does not return in that case. Otherwise returns
+ * normally so main() can continue with its regular test run. Call this
+ * first thing in main(), before parsing any other arguments. */
+void fx_dispatch_probe (int argc, char **argv, const FxProbe *probes, size_t nprobes);
 
 #endif /* SLTEST_FIXTURES_H */

@@ -13,6 +13,7 @@ see README.md's "Spec-conformance deviations" table for the running list.
 
 import os
 import sys
+import tempfile
 import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
@@ -23,9 +24,10 @@ from slmock.server import (
     error_v4,
     serve_hello,
     serve_precommands,
+    serve_v3_uni,
     serve_v4,
 )
-from test_protocol import HARNESS, ProtocolTestCase
+from test_protocol import ProtocolTestCase
 
 
 class TestPacketHeader(ProtocolTestCase):
@@ -40,7 +42,7 @@ class TestPacketHeader(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0, numsamples=5)
             conn.sendall(mseed.frame_v4_data(424242, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -64,7 +66,7 @@ class TestPacketHeader(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(big_seq, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -72,8 +74,6 @@ class TestPacketHeader(ProtocolTestCase):
         self.assertEqual(events["packets"][0]["seq"], big_seq)
 
     def test_large_sequence_number_round_trips_through_statefile(self):
-        import tempfile
-
         big_seq = (2**63) + 12345
 
         def handler(conn, reader, server, idx):
@@ -85,7 +85,7 @@ class TestPacketHeader(ProtocolTestCase):
 
         with tempfile.TemporaryDirectory() as tmp:
             statefile = os.path.join(tmp, "state")
-            events, _ = self.run_scenario(
+            events = self.run_scenario(
                 handler,
                 [
                     "--v4",
@@ -110,23 +110,10 @@ class TestPacketHeader(ProtocolTestCase):
         # hold is 21 bytes. The spec places no length restriction on
         # station identifiers at all; this pins down the boundary of what
         # currently works.
-        # update_stream() (slutils.c) disconnects entirely -- returning
-        # SLTERMINATE -- if a packet's station ID matches none of the
-        # configured streams, so the packet's station ID must be one the
-        # client actually asked for.
-        #
-        # This passes reliably in a plain build but not under
-        # -fsanitize=address: sl_add_stream() (slutils.c:1622) does
-        # `strncpy(newstream->stationid, stationid, sizeof(...) - 1)` into
-        # a plain malloc()'d (not zeroed) SLstream, and for a station ID
-        # of exactly 21 bytes strncpy's source has no NUL within the
-        # copied range, so the last byte of the 22-byte buffer is never
-        # written -- it's whatever the allocator happened to leave there.
-        # A plain build's first allocation of a given size is usually
-        # zeroed fresh memory from the OS, masking this; ASan's redzones
-        # and allocator reuse pattern break that coincidence, and the
-        # station ID intermittently fails to match anything. See
-        # README.md's known-issue baseline.
+        # update_stream() (slutils.c) logs and drops a packet whose station
+        # ID matches none of the configured streams, rather than
+        # disconnecting, so the packet's station ID must still be one the
+        # client actually asked for to be delivered here.
         stationid = "X" * 21
 
         def handler(conn, reader, server, idx):
@@ -137,7 +124,7 @@ class TestPacketHeader(ProtocolTestCase):
             record = mseed.build_ms3(sid=sid, samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, stationid, record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -171,7 +158,7 @@ class TestPacketHeader(ProtocolTestCase):
 
         # subprocess_timeout well under what a hang would need; run_scenario
         # turns the resulting subprocess.TimeoutExpired into self.fail().
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "5"],
             subprocess_timeout=8,
@@ -200,7 +187,7 @@ class TestPacketHeader(ProtocolTestCase):
         # subprocess_timeout well under what a stall would need;
         # run_scenario turns the resulting subprocess.TimeoutExpired into
         # self.fail().
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "2", "--timeout-seconds", "5"],
             subprocess_timeout=8,
@@ -234,7 +221,7 @@ class TestReservedFormats(ProtocolTestCase):
                     serve_v4(reader, conn, cmd)
                     conn.sendall(mseed.frame_v4(fmt, sub, 1, payload, stationid="XX_TEST"))
 
-                events, _ = self.run_scenario(
+                events = self.run_scenario(
                     handler,
                     [
                         "--v4",
@@ -265,7 +252,7 @@ class TestReservedFormats(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(2, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "2", "--timeout-seconds", "8"],
         )
@@ -295,21 +282,21 @@ class TestErrorCodes(ProtocolTestCase):
                     # on a socket with unread received data can turn into
                     # a Windows RST, which can silently discard the ERROR
                     # response below before the client reads it.
-                    commands = [cmd]
-                    while True:
-                        more = reader.try_read_command(0.3)
-                        if more is None:
-                            break
-                        commands.append(more)
+                    # XX_TEST:BHZ is a single station with one selector, so
+                    # exactly two more commands (SELECT, DATA) follow the
+                    # STATION `cmd` already read -- deterministic, no
+                    # quiet-period guess needed.
+                    commands = [cmd, reader.read_command(), reader.read_command()]
 
                     for _ in commands:
                         error_v4(conn, code, "rejected for testing")
 
                 # A rejected STATION is not fatal (only auth failures are),
-                # so sl_collect() retries negotiation forever -- observe a
-                # couple of cycles, then terminate; the process never gets
+                # so sl_collect() retries negotiation forever -- terminate
+                # as soon as the rejection is logged (or after a few
+                # retries if it somehow never is); the process never gets
                 # to send a packet regardless of when we cut it off.
-                events, _ = self.run_scenario_bounded(
+                events = self.run_scenario_bounded(
                     handler,
                     [
                         "--v4",
@@ -322,6 +309,7 @@ class TestErrorCodes(ProtocolTestCase):
                         "--timeout-seconds",
                         "5",
                     ],
+                    until=lambda line: code in line and "not accepted" in line,
                 )
 
                 self.assertNotCrashed(events["returncode"], (code, events))
@@ -364,15 +352,18 @@ class TestErrorCodes(ProtocolTestCase):
             # before the client reads it. The point under test is the
             # client's second-pass read timing out on an unanswered
             # command, not losing the first response to a reset.
-            while reader.try_read_command(0.3) is not None:
-                pass
+            # XX_TEST:BHZ is a single station with one selector, so exactly
+            # two more commands (SELECT, DATA) follow the STATION `cmd`
+            # already read -- deterministic, no quiet-period guess needed.
+            reader.read_command()
+            reader.read_command()
 
             raise ConnectionClosed()
 
         # The rejected STATION is not fatal, so sl_collect() retries
         # negotiation forever (by design) rather than exiting -- observe
         # a couple of reconnect cycles for a crash, then terminate.
-        events, _ = self.run_scenario_bounded(
+        events = self.run_scenario_bounded(
             handler,
             [
                 "--v4",
@@ -398,7 +389,7 @@ class TestErrorCodes(ProtocolTestCase):
             serve_hello(reader, conn)
             serve_precommands(reader, conn, auth_mode="reject")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -443,21 +434,19 @@ class TestErrorCodes(ProtocolTestCase):
             error_v4(conn, "UNSUPPORTED", "SLPROTO not available")
 
             # SLPROTO is a single request/response with nothing pipelined
-            # after it, so the receive buffer should already be empty --
-            # drain defensively anyway before close, same reasoning as the
-            # other error_v4()-then-close handlers in this file.
-            while reader.try_read_command(0.3) is not None:
-                pass
-
+            # after it -- the client stops here on the rejection rather
+            # than sending STATION/SELECT/DATA on this connection, so the
+            # receive buffer is already empty; nothing to drain before close.
             raise ConnectionClosed()
 
         # The rejection is not fatal to sl_collect() itself, so it retries
-        # negotiation forever (by design) rather than exiting -- observe a
-        # couple of reconnect cycles, then terminate.
+        # negotiation forever (by design) rather than exiting -- terminate
+        # as soon as the rejection is logged (or after a few retries if it
+        # somehow never is).
         # --verbose: the SLPROTO rejection is logged at verbosity 2
         # (network.c:1215), unlike the always-logged command-level
         # rejections used elsewhere in this file.
-        events, _ = self.run_scenario_bounded(
+        events = self.run_scenario_bounded(
             handler,
             [
                 "--allstation",
@@ -470,6 +459,7 @@ class TestErrorCodes(ProtocolTestCase):
                 "5",
                 "--verbose",
             ],
+            until=lambda line: "SLPROTO 4.0" in line and "not accepted" in line,
         )
 
         self.assertNotCrashed(events["returncode"], events)
@@ -486,27 +476,27 @@ class TestCommandSyntax(ProtocolTestCase):
     ordering, and line framing."""
 
     def test_every_command_is_legal_v4_syntax(self):
-        seen = []
-
         def handler(conn, reader, server, idx):
-            reader.strict_protocol = 4  # validated as each command is read
+            # Setting strict_protocol makes CommandReader validate each
+            # command against spec.check_command() as it's read (raising
+            # immediately on a v3-only verb -- CAPABILITIES/BATCH/FETCH/
+            # TIME/CAT -- or other illegal syntax), so there's nothing
+            # further to check once the scenario completes -- reaching the
+            # packet count assertion below already proves every command
+            # was legal v4 syntax.
+            reader.strict_protocol = 4
             serve_hello(reader, conn)
             cmd = serve_precommands(reader, conn)
-            commands, end_cmd = serve_v4(reader, conn, cmd)
-            seen.extend(commands + [end_cmd])
+            serve_v4(reader, conn, cmd)
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
 
         self.assertEqual(len(events["packets"]), 1, events)
-        # No v3-only verb (CAPABILITIES/BATCH/FETCH/TIME/CAT) appears.
-        for cmd in seen:
-            verb = cmd.split(" ", 1)[0]
-            self.assertIn(verb, spec.V4_VERBS, seen)
 
     def test_data_sequence_number_is_decimal_not_hex(self):
         def handler(conn, reader, server, idx):
@@ -522,7 +512,7 @@ class TestCommandSyntax(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -547,7 +537,7 @@ class TestCommandSyntax(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -579,7 +569,7 @@ class TestCommandSyntax(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -595,6 +585,8 @@ class TestCommandSyntax(ProtocolTestCase):
         # --allstation forces multi-station (sl_set_allstation_params()
         # goes through the same v4 negotiator as --station).
         self.assertEqual(len(events["packets"]), 1, events)
+        data_cmd = [c for c in captured["commands"] if c.startswith("DATA")][0]
+        self.assertEqual(data_cmd, "DATA ALL", captured["commands"])
 
     def test_endfetch_in_dialup_mode(self):
         def handler(conn, reader, server, idx):
@@ -606,7 +598,7 @@ class TestCommandSyntax(ProtocolTestCase):
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
             conn.sendall(b"END")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -633,7 +625,7 @@ class TestCommandSyntax(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -653,11 +645,14 @@ class TestAsyncHandshaking(ProtocolTestCase):
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn)
             cmd = serve_precommands(reader, conn)
-            serve_v4(reader, conn, cmd, defer_responses=True)
+            # XX_TEST:BHZ is a single station with one selector, so exactly
+            # two more commands (SELECT, DATA) follow the STATION `cmd`
+            # already read -- deterministic, no quiet-period guess needed.
+            serve_v4(reader, conn, cmd, defer_responses=True, expected_commands=2)
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -680,7 +675,7 @@ class TestCapabilities(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -724,8 +719,6 @@ class TestCapabilities(ProtocolTestCase):
         # pins that answer down as the expected, spec-reasonable
         # behavior (never request a version the server never offered).
         def handler(conn, reader, server, idx):
-            from slmock.server import serve_v3_uni
-
             serve_hello(reader, conn, server_id="SeedLink v5.0 (test) :: SLPROTO:5.0")
             cmd = serve_precommands(reader, conn)
             serve_v3_uni(reader, conn, cmd)
@@ -733,7 +726,7 @@ class TestCapabilities(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -753,7 +746,7 @@ class TestCapabilities(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -780,7 +773,7 @@ class TestInfo(ProtocolTestCase):
                             '"item": "%s"}' % item).encode()
                     conn.sendall(mseed.frame_v4_info(1, text))
 
-                events, _ = self.run_scenario(
+                events = self.run_scenario(
                     handler,
                     [
                         "--v4",
@@ -816,7 +809,7 @@ class TestInfo(ProtocolTestCase):
             self.assertEqual(cmd, "INFO ID", cmd)
             conn.sendall(mseed.frame_v4_info(1, b""))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",

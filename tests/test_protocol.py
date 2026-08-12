@@ -5,10 +5,14 @@ slmock mock server over loopback TCP, covering both SeedLink v3 and v4.
 
 import base64
 import os
+import queue
 import re
 import signal
+import struct
 import subprocess
 import sys
+import tempfile
+import threading
 import time
 import unittest
 
@@ -18,7 +22,6 @@ from slmock import mseed
 from slmock.server import (
     ConnectionClosed,
     MockServer,
-    respond,
     serve_hello,
     serve_precommands,
     serve_v3_multi,
@@ -56,20 +59,23 @@ def parse_output(stdout):
             events["log"].append(line[len("LOG ") :])
         elif line.startswith("PACKET "):
             m = PACKET_RE.match(line)
-            if m:
-                events["packets"].append(
-                    {
-                        "seq": int(m.group(1)),
-                        "format": m.group(2),
-                        "subformat": m.group(3),
-                        "station": m.group(4),
-                        "length": int(m.group(5)),
-                        "summary": m.group(6),
-                    }
-                )
+            if not m:
+                raise AssertionError("PACKET line did not match PACKET_RE: %r" % line)
+            events["packets"].append(
+                {
+                    "seq": int(m.group(1)),
+                    "format": m.group(2),
+                    "subformat": m.group(3),
+                    "station": m.group(4),
+                    "length": int(m.group(5)),
+                    "summary": m.group(6),
+                }
+            )
         elif line.startswith("PAYLOAD "):
             m = PAYLOAD_RE.match(line)
-            if m and events["packets"]:
+            if not m:
+                raise AssertionError("PAYLOAD line did not match PAYLOAD_RE: %r" % line)
+            if events["packets"]:
                 # Raw payload bytes for whichever packet was just parsed
                 # above (slharness emits PAYLOAD immediately after its
                 # PACKET line, same seq) -- lets a test inspect
@@ -139,33 +145,109 @@ class ProtocolTestCase(unittest.TestCase):
             % (proc.returncode, proc.stderr),
         )
 
-        return events, server
+        return events
 
-    def run_scenario_bounded(self, handler, args, observe_seconds=3, grace_seconds=2):
+    def run_scenario_bounded(self, handler, args, observe_seconds=3, grace_seconds=2, until=None):
         """Like run_scenario(), but for a scenario where sl_collect()
         legitimately never returns on its own -- e.g. a server that
         keeps rejecting negotiation, which libslink retries forever by
         design. slharness has no way to bound such a run itself, so
-        observe its output for `observe_seconds`, then terminate it
-        (SIGTERM, falling back to SIGKILL) and return whatever it
-        printed. A negative `returncode` here reflects our own signal,
-        not necessarily a crash -- check `returncode` against the
-        specific signal sent, or use assertNotCrashed()."""
+        observe its output, then terminate it (SIGTERM, falling back to
+        SIGKILL) and return whatever it printed. A negative `returncode`
+        here reflects our own signal, not necessarily a crash -- check
+        `returncode` against the specific signal sent, or use
+        assertNotCrashed().
+
+        Without `until`, observes for a fixed `observe_seconds` before
+        terminating -- appropriate when the assertions that follow only
+        check the *absence* of something (no packets, no crash).
+
+        With `until` (a callable taking one stdout line, including its
+        trailing newline, and returning bool), terminates as soon as a
+        line satisfies it, bounded by `observe_seconds` if it never does.
+        Use this when asserting a specific line *must* appear -- a fixed
+        sleep-then-check either wastes time waiting past when the line
+        actually showed up, or (on a slow/loaded machine) can cut off
+        before it arrives at all, since one reconnect cycle's duration
+        isn't otherwise bounded here."""
         server = MockServer(handler).start()
         self.addCleanup(server.stop)
 
         full_args = [HARNESS, "--address", server.address()] + args
         proc = subprocess.Popen(full_args, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
 
-        try:
-            stdout, stderr = proc.communicate(timeout=observe_seconds)
-        except subprocess.TimeoutExpired:
+        if until is None:
+            try:
+                stdout, stderr = proc.communicate(timeout=observe_seconds)
+            except subprocess.TimeoutExpired:
+                proc.terminate()
+                try:
+                    stdout, stderr = proc.communicate(timeout=grace_seconds)
+                except subprocess.TimeoutExpired:
+                    proc.kill()
+                    stdout, stderr = proc.communicate()
+        else:
+            # Two reader threads relay lines from the child's stdout/stderr
+            # pipes into a queue as they arrive (readline() blocks in its
+            # own thread rather than the main one, so this works the same
+            # on Windows as on POSIX -- unlike select() on a pipe object,
+            # which Windows doesn't support). The main thread just watches
+            # the queue for either a match or the deadline.
+            stdout_lines, stderr_lines = [], []
+            line_q = queue.Queue()
+
+            def pump(stream, tag):
+                for line in iter(stream.readline, ""):
+                    line_q.put((tag, line))
+                line_q.put((tag, None))  # EOF marker
+
+            threads = [
+                threading.Thread(target=pump, args=(proc.stdout, "out"), daemon=True),
+                threading.Thread(target=pump, args=(proc.stderr, "err"), daemon=True),
+            ]
+            for t in threads:
+                t.start()
+
+            deadline = time.monotonic() + observe_seconds
+            eof_count = 0
+            while eof_count < len(threads):
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                try:
+                    tag, line = line_q.get(timeout=remaining)
+                except queue.Empty:
+                    break
+                if line is None:
+                    eof_count += 1
+                    continue
+                (stdout_lines if tag == "out" else stderr_lines).append(line)
+                if tag == "out" and until(line):
+                    break
+
             proc.terminate()
             try:
-                stdout, stderr = proc.communicate(timeout=grace_seconds)
+                proc.wait(timeout=grace_seconds)
             except subprocess.TimeoutExpired:
                 proc.kill()
-                stdout, stderr = proc.communicate()
+                proc.wait()
+
+            # The process is gone, so each pump thread's readline() loop
+            # hits EOF on its own; join them, then collect whatever they
+            # queued in the meantime (including after the match/deadline
+            # above, which only stopped the main thread from reading further).
+            for t in threads:
+                t.join(timeout=grace_seconds)
+            while not line_q.empty():
+                tag, line = line_q.get_nowait()
+                if line is not None:
+                    (stdout_lines if tag == "out" else stderr_lines).append(line)
+
+            proc.stdout.close()
+            proc.stderr.close()
+
+            stdout = "".join(stdout_lines)
+            stderr = "".join(stderr_lines)
 
         # See the matching comment in run_scenario(): join the handler
         # thread before trusting server.errors to be complete.
@@ -177,7 +259,7 @@ class ProtocolTestCase(unittest.TestCase):
         events = parse_output(stdout)
         events["returncode"] = proc.returncode
         events["stderr"] = stderr
-        return events, server
+        return events
 
     def assertNotCrashed(self, returncode, msg=""):
         """Fail if `returncode` indicates the process was killed by a
@@ -204,7 +286,7 @@ class TestV3UniStation(ProtocolTestCase):
                     )
                 )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             # sl_add_stream()/--station always enables multistation mode; a
             # true uni-station connection (no STATION command at all) comes
@@ -235,7 +317,7 @@ class TestV3MultiStation(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TST1", channel="BHN"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -278,7 +360,7 @@ class TestV3MultiStation(ProtocolTestCase):
                 mseed.frame_v3_data(2, mseed.build_ms2(network="XX", station="TST1", channel="BHN"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -309,7 +391,7 @@ class TestV4(ProtocolTestCase):
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
             conn.sendall(mseed.frame_v4_data(2, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "2", "--timeout-seconds", "8"],
         )
@@ -338,7 +420,7 @@ class TestProtocolSelection(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -358,7 +440,7 @@ class TestProtocolSelection(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             # no --v3/--v4: default behavior should auto-promote to v4
             ["--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
@@ -399,7 +481,7 @@ class TestProtocolSelection(ProtocolTestCase):
 
             histories[idx] = [c for c, _ in reader.history]
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--station",
@@ -434,7 +516,7 @@ class TestCapabilities(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -459,7 +541,7 @@ class TestPing(ProtocolTestCase):
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn, server_id="SeedLink v3.1 (mock)", site="Mock Site")
 
-        events, _ = self.run_scenario(handler, ["--ping"], timeout=8)
+        events = self.run_scenario(handler, ["--ping"], timeout=8)
 
         self.assertIn('serverid="SeedLink v3.1 (mock)"', events["ping"])
         self.assertIn('site="Mock Site"', events["ping"])
@@ -481,7 +563,7 @@ class TestPing(ProtocolTestCase):
             self.assertEqual(cmd, "HELLO")
             conn.sendall(b"NotASeedLinkServer\r\nSomewhere\r\n")
 
-        events, _ = self.run_scenario(handler, ["--ping"], timeout=8)
+        events = self.run_scenario(handler, ["--ping"], timeout=8)
 
         self.assertIn("status=0", events["ping"])
 
@@ -503,7 +585,7 @@ class TestErrorAndEnd(ProtocolTestCase):
                     mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
                 )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -520,6 +602,12 @@ class TestErrorAndEnd(ProtocolTestCase):
 
         self.assertGreaterEqual(len(attempts), 2, "expected the client to reconnect after ERROR")
         self.assertEqual(len(events["packets"]), 1, events)
+        # Distinguishes actually exercising the ERROR-handling branch from a
+        # plain disconnect, which alone would also make the client reconnect
+        # and satisfy the two assertions above.
+        self.assertTrue(
+            any("Server reported an error" in line for line in events["log"]), events["log"]
+        )
 
     def test_server_end_in_dialup_mode_terminates(self):
         def handler(conn, reader, server, idx):
@@ -531,7 +619,7 @@ class TestErrorAndEnd(ProtocolTestCase):
             )
             conn.sendall(b"END")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -564,7 +652,7 @@ class TestErrorAndEnd(ProtocolTestCase):
             )
             conn.sendall(b"END")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -600,7 +688,7 @@ class TestConfigurationErrorsAreFatal(ProtocolTestCase):
             # negotiate_uni_v3() fails on the bad time string before
             # sending anything past HELLO -- nothing else to serve.
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -633,7 +721,7 @@ class TestConfigurationErrorsAreFatal(ProtocolTestCase):
             # ConnectionClosed is expected and swallowed by MockServer.
             serve_precommands(reader, conn)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -662,7 +750,7 @@ class TestConfigurationErrorsAreFatal(ProtocolTestCase):
             serve_hello(reader, conn)
             serve_precommands(reader, conn)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -703,7 +791,7 @@ class TestConfigurationErrorsAreFatal(ProtocolTestCase):
                     mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
                 )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -737,7 +825,7 @@ class TestEndOnlyTimeWindow(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -769,8 +857,6 @@ class TestOversizedAndBadSignature(ProtocolTestCase):
             # Claim a payload far larger than SL_RECV_BUFFER_SIZE (16384).
             # frame_v4() sizes the length field from the actual payload, so
             # build the header by hand instead to lie about the length.
-            import struct
-
             header = bytearray(mseed.SLHEADSIZE_V4)
             header[0:2] = mseed.SIGNATURE_V4
             header[2] = mseed.SLPAYLOAD_MSEED3
@@ -780,7 +866,7 @@ class TestOversizedAndBadSignature(ProtocolTestCase):
             header[16] = len("XX_TEST")
             conn.sendall(bytes(header) + b"XX_TEST")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v4", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -800,7 +886,7 @@ class TestOversizedAndBadSignature(ProtocolTestCase):
                     mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
                 )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -837,7 +923,7 @@ class TestChunkedDelivery(ProtocolTestCase):
                 conn.sendall(packet[i : i + 7])
                 time.sleep(0.005)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -854,7 +940,7 @@ class TestNonBlocking(ProtocolTestCase):
             serve_v3_uni(reader, conn, cmd)
             time.sleep(3)  # never sends data
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -872,6 +958,8 @@ class TestNonBlocking(ProtocolTestCase):
 
 class TestBatchMode(ProtocolTestCase):
     def test_batch_mode_suppresses_intermediate_acks(self):
+        histories = []
+
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn)
             cmd = serve_precommands(reader, conn, accept_batch=True)
@@ -879,8 +967,9 @@ class TestBatchMode(ProtocolTestCase):
             conn.sendall(
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
+            histories.extend(c for c, _ in reader.history)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -895,6 +984,11 @@ class TestBatchMode(ProtocolTestCase):
         )
 
         self.assertEqual(len(events["packets"]), 1, events)
+        # Confirms BATCH was actually negotiated, not just that one packet
+        # arrived -- which alone wouldn't catch a regression that stopped
+        # sending BATCH while still (correctly, coincidentally) not waiting
+        # for acks.
+        self.assertIn("BATCH", histories, histories)
 
 
 class TestAuthentication(ProtocolTestCase):
@@ -906,7 +1000,7 @@ class TestAuthentication(ProtocolTestCase):
             record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0)
             conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -928,7 +1022,7 @@ class TestAuthentication(ProtocolTestCase):
             serve_hello(reader, conn)
             serve_precommands(reader, conn, auth_mode="reject")
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -946,29 +1040,24 @@ class TestAuthentication(ProtocolTestCase):
 
 class TestStateFileAcrossRuns(ProtocolTestCase):
     def test_second_run_resumes_at_saved_sequence(self):
-        import tempfile
-
         received_data_commands = []
 
-        def make_handler(next_seq_expected_holder):
-            def handler(conn, reader, server, idx):
-                serve_hello(reader, conn)
-                cmd = serve_precommands(reader, conn)
-                commands = serve_v3_uni(reader, conn, cmd)
-                received_data_commands.append(commands[-1])
-                conn.sendall(
-                    mseed.frame_v3_data(
-                        0x10, mseed.build_ms2(network="XX", station="TEST", channel="BHZ")
-                    )
+        def handler(conn, reader, server, idx):
+            serve_hello(reader, conn)
+            cmd = serve_precommands(reader, conn)
+            commands = serve_v3_uni(reader, conn, cmd)
+            received_data_commands.append(commands[-1])
+            conn.sendall(
+                mseed.frame_v3_data(
+                    0x10, mseed.build_ms2(network="XX", station="TEST", channel="BHZ")
                 )
-
-            return handler
+            )
 
         with tempfile.TemporaryDirectory() as tmp:
             statefile = os.path.join(tmp, "state")
 
-            events1, _ = self.run_scenario(
-                make_handler(None),
+            events1 = self.run_scenario(
+                handler,
                 [
                     "--v3",
                     "--allstation",
@@ -985,8 +1074,8 @@ class TestStateFileAcrossRuns(ProtocolTestCase):
             self.assertEqual(len(events1["packets"]), 1, events1)
             self.assertTrue(os.path.exists(statefile))
 
-            events2, _ = self.run_scenario(
-                make_handler(None),
+            events2 = self.run_scenario(
+                handler,
                 [
                     "--v3",
                     "--allstation",
@@ -1028,7 +1117,8 @@ class TestKeepaliveAndInfoRegression(ProtocolTestCase):
                 # An INFO request arrives (either the client's own request or
                 # the library's automatic keepalive); drop the connection
                 # without responding, leaving query_state mid-query.
-                reader.read_command()  # "INFO ..."
+                cmd = reader.read_command()
+                self.assertTrue(cmd.startswith("INFO"), cmd)
                 raise ConnectionClosed()
 
             # Second connection: answer the keepalive INFO request that
@@ -1042,7 +1132,7 @@ class TestKeepaliveAndInfoRegression(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -1062,6 +1152,11 @@ class TestKeepaliveAndInfoRegression(ProtocolTestCase):
 
         self.assertGreaterEqual(len(connections), 2, "client must reconnect after the dropped INFO")
         self.assertEqual(len(events["packets"]), 1, events)
+        # Confirms the delivered packet is the real data packet, not the
+        # keepalive/INFO response itself -- INFO packets carry
+        # SL_UNSETSEQUENCE, so a regression that stopped swallowing them
+        # would still satisfy the count-only assertion above.
+        self.assertEqual(events["packets"][0]["seq"], 1)
 
 
 class TestAuthValueNullRegression(ProtocolTestCase):
@@ -1077,7 +1172,7 @@ class TestAuthValueNullRegression(ProtocolTestCase):
             except ConnectionClosed:
                 pass
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",
@@ -1134,7 +1229,7 @@ class TestUnterminatedResponseRegression(ProtocolTestCase):
                     mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
                 )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -1180,7 +1275,7 @@ class TestUnterminatedResponseRegression(ProtocolTestCase):
                 record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0, numsamples=50)
                 conn.sendall(mseed.frame_v4_data(1, "XX_TEST", record))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v4",

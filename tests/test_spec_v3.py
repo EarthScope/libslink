@@ -18,7 +18,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(__file__))
 
-from slmock import mseed, spec
+from slmock import mseed
 from slmock.server import serve_hello, serve_precommands, serve_v3_multi, serve_v3_uni
 from test_protocol import ProtocolTestCase
 
@@ -36,7 +36,7 @@ class TestPacketFraming(ProtocolTestCase):
                 mseed.frame_v3_data(0xABCDEF, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -59,7 +59,7 @@ class TestPacketFraming(ProtocolTestCase):
                 mseed.frame_v3_data(0x000000, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "2", "--timeout-seconds", "8"],
         )
@@ -73,27 +73,26 @@ class TestCommandSyntax(ProtocolTestCase):
     framing."""
 
     def test_every_command_is_legal_v3_syntax(self):
-        seen = []
-
         def handler(conn, reader, server, idx):
-            reader.strict_protocol = 3  # validated as each command is read
+            # Setting strict_protocol makes CommandReader validate each
+            # command against spec.check_command() as it's read (raising
+            # immediately on an illegal one), so there's nothing further to
+            # check once the scenario completes -- reaching the packet
+            # count assertion below already proves every command was legal.
+            reader.strict_protocol = 3
             serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
             cmd = serve_precommands(reader, conn)
-            commands = serve_v3_uni(reader, conn, cmd)
-            seen.extend(commands)
+            serve_v3_uni(reader, conn, cmd)
             conn.sendall(
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
 
         self.assertEqual(len(events["packets"]), 1, events)
-        for cmd in seen:
-            verb = cmd.split(" ", 1)[0]
-            self.assertIn(verb, spec.V3_VERBS, seen)
 
     def test_time_command_uses_comma_delimited_format(self):
         captured = {}
@@ -107,7 +106,7 @@ class TestCommandSyntax(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -150,7 +149,7 @@ class TestCommandSyntax(ProtocolTestCase):
                 if dialup:
                     args.append("--dialup")
 
-                events, _ = self.run_scenario(handler, args)
+                events = self.run_scenario(handler, args)
 
                 self.assertEqual(captured["commands"][-1], expect_verb, captured["commands"])
                 self.assertEqual(len(events["packets"]), 1, (dialup, events))
@@ -161,18 +160,18 @@ class TestCommandSyntax(ProtocolTestCase):
         A resumption sequence one past that boundary must wrap into six
         digits ("000001"), not be sent as a 7-hex-digit argument
         ("1000001") -- a value the v3 wire format cannot represent."""
-        captured = {}
+        history = []
 
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
             cmd = serve_precommands(reader, conn)
-            stations = serve_v3_multi(reader, conn, cmd)
-            captured["stations"] = stations
+            serve_v3_multi(reader, conn, cmd)
             conn.sendall(
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
+            history.extend(c for c, _ in reader.history)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -186,9 +185,8 @@ class TestCommandSyntax(ProtocolTestCase):
         )
 
         self.assertEqual(len(events["packets"]), 1, events)
-        data_line = [line for line in events["log"] if "resuming data from" in line][0]
-        hexseq = data_line.split("resuming data from ")[1].split(" ")[0]
-        self.assertEqual(hexseq, "000001", data_line)
+        data_cmd = [c for c in history if c.startswith("DATA")][0]
+        self.assertEqual(data_cmd, "DATA 000001", history)
 
     def test_data_sequence_number_stays_within_six_hex_digits_uni(self):
         """Same six-hex-digit wire constraint as above, exercised through
@@ -204,7 +202,7 @@ class TestCommandSyntax(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -236,7 +234,7 @@ class TestCommandSyntax(ProtocolTestCase):
                 mseed.frame_v3_data(0, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -261,6 +259,8 @@ class TestCommandSyntax(ProtocolTestCase):
         sentinel value. Requesting from 000000 -- the oldest sequence a
         server can hold -- is the closest v3 equivalent to "all data"."""
 
+        history = []
+
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
             cmd = serve_precommands(reader, conn)
@@ -268,8 +268,9 @@ class TestCommandSyntax(ProtocolTestCase):
             conn.sendall(
                 mseed.frame_v3_data(0, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
+            history.extend(c for c, _ in reader.history)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -283,9 +284,8 @@ class TestCommandSyntax(ProtocolTestCase):
         )
 
         self.assertEqual(len(events["packets"]), 1, events)
-        data_line = [line for line in events["log"] if "resuming data from" in line][0]
-        hexseq = data_line.split("resuming data from ")[1].split(" ")[0]
-        self.assertEqual(hexseq, "000000", data_line)
+        data_cmd = [c for c in history if c.startswith("DATA")][0]
+        self.assertEqual(data_cmd, "DATA 000000", history)
 
 
 class TestHandshakeOrdering(ProtocolTestCase):
@@ -305,7 +305,7 @@ class TestHandshakeOrdering(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -325,7 +325,7 @@ class TestHandshakeOrdering(ProtocolTestCase):
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--station", "XX_TEST:BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
@@ -338,6 +338,8 @@ class TestHandshakeOrdering(ProtocolTestCase):
         # only ever writes a response for SELECT lines, so a client that
         # incorrectly waited for one after DATA would simply hang here
         # until the scenario's own timeout.
+        history = []
+
         def handler(conn, reader, server, idx):
             serve_hello(reader, conn, server_id="SeedLink v3.1 (test)")
             cmd = serve_precommands(reader, conn)
@@ -345,12 +347,20 @@ class TestHandshakeOrdering(ProtocolTestCase):
             conn.sendall(
                 mseed.frame_v3_data(1, mseed.build_ms2(network="XX", station="TEST", channel="BHZ"))
             )
+            history.extend(c for c, _ in reader.history)
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             ["--v3", "--allstation", "BHZ", "--max-packets", "1", "--timeout-seconds", "8"],
         )
         self.assertEqual(len(events["packets"]), 1, events)
+        # One OK response was written for SELECT (see serve_v3_uni()); DATA
+        # is the very next command sent with no response awaited in between,
+        # which the client blocking on one would show up as a hang above
+        # rather than here, but this pins the exact ack/no-ack shape down
+        # explicitly instead of relying on that timeout as the only signal.
+        self.assertIn("SELECT", [c.split(" ", 1)[0] for c in history])
+        self.assertIn("DATA", [c.split(" ", 1)[0] for c in history])
 
 
 class TestInfo(ProtocolTestCase):
@@ -372,7 +382,7 @@ class TestInfo(ProtocolTestCase):
                     record = mseed.build_ms2_info(("<%s/>" % level).encode())
                     conn.sendall(mseed.frame_v3_info(record, terminated=True))
 
-                events, _ = self.run_scenario(
+                events = self.run_scenario(
                     handler,
                     [
                         "--v3",
@@ -405,7 +415,7 @@ class TestInfo(ProtocolTestCase):
             conn.sendall(mseed.frame_v3_info(part1, terminated=False))
             conn.sendall(mseed.frame_v3_info(part2, terminated=True))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",
@@ -438,7 +448,7 @@ class TestInfo(ProtocolTestCase):
             record = mseed.build_ms2_info(b"<seedlink/>")
             conn.sendall(mseed.frame_v3_info(record, terminated=True))
 
-        events, _ = self.run_scenario(
+        events = self.run_scenario(
             handler,
             [
                 "--v3",

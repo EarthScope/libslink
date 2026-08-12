@@ -11,7 +11,6 @@
 #include "fuzzcommon.h"
 
 #include <inttypes.h>
-#include <time.h>
 
 #define MAX_LEN 256
 
@@ -21,38 +20,22 @@
  * fast path instead of the backtracking/class-parsing logic. */
 static const char METACHARS[] = "*?[]!^-\\abc123";
 
-static void
-generate (char *buf, size_t maxlen)
-{
-  size_t len = fz_rand_below (maxlen);
-  size_t i;
-
-  for (i = 0; i < len; i++)
-    buf[i] = METACHARS[fz_rand_below (sizeof (METACHARS) - 1)];
-  buf[len] = '\0';
-}
-
 int
 main (int argc, char **argv)
 {
   long iterations = 20000000;
-  uint64_t seed = 0;
   char pattern[MAX_LEN];
   char string[MAX_LEN];
   long i;
-
-  fz_parse_args (argc, argv, &iterations, &seed);
-  if (seed == 0)
-    seed = (uint64_t)time (NULL);
-  fz_seed (seed);
+  uint64_t seed = fz_setup (argc, argv, &iterations);
 
   printf ("fuzz_globmatch: seed=%" PRIu64 " iterations=%ld\n", seed, iterations);
   fflush (stdout);
 
   for (i = 0; i < iterations; i++)
   {
-    generate (pattern, sizeof (pattern) - 1);
-    generate (string, sizeof (string) - 1);
+    fz_random_from_alphabet (pattern, sizeof (pattern) - 1, METACHARS, sizeof (METACHARS) - 1);
+    fz_random_from_alphabet (string, sizeof (string) - 1, METACHARS, sizeof (METACHARS) - 1);
     sl_globmatch (string, pattern);
   }
 

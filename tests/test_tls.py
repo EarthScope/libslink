@@ -36,21 +36,10 @@ class TLSMockServer(MockServer):
     """A MockServer whose accepted sockets are wrapped in a server-side
     TLS context signed by the given trustme leaf certificate."""
 
-    def __init__(self, handler, leaf_cert, host="127.0.0.1", port=0):
+    def __init__(self, handler, leaf_cert, host="127.0.0.1"):
         self._ssl_ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
         leaf_cert.configure_cert(self._ssl_ctx)
         super().__init__(handler, host=host)
-        if port:
-            # Rebind to a caller-specified port (used only for the
-            # port-18500-implies-TLS test).
-            self._listener.close()
-            import socket
-
-            self._listener = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._listener.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            self._listener.bind((host, port))
-            self._listener.listen(5)
-            self.port = port
 
     def _wrap(self, conn):
         try:
@@ -93,7 +82,17 @@ class TestTLS(unittest.TestCase):
                 stdout = e.stdout or ""
                 if isinstance(stdout, bytes):
                     stdout = stdout.decode("utf-8", "replace")
-                return parse_output(stdout), server
+                stderr = e.stderr or ""
+                if isinstance(stderr, bytes):
+                    stderr = stderr.decode("utf-8", "replace")
+                events = parse_output(stdout)
+                # subprocess.run() doesn't expose the killed process's real
+                # exit status through TimeoutExpired; None (rather than a
+                # missing key) lets a future assertion on events["returncode"]
+                # fail cleanly instead of raising KeyError.
+                events["returncode"] = None
+                events["stderr"] = stderr
+                return events, server
             self.fail("slharness did not exit within %s seconds; stdout so far:\n%s" % (e.timeout, e.stdout))
 
         if expect_timeout:
@@ -106,6 +105,7 @@ class TestTLS(unittest.TestCase):
 
         events = parse_output(proc.stdout)
         events["returncode"] = proc.returncode
+        events["stderr"] = proc.stderr
         return events, server
 
     def test_v4_negotiation_over_tls(self):
@@ -210,6 +210,7 @@ class TestTLS(unittest.TestCase):
 
         env_backup = dict(os.environ)
         os.environ.pop("LIBSLINK_CA_CERT_FILE", None)
+        os.environ.pop("LIBSLINK_CA_CERT_PATH", None)
         os.environ["LIBSLINK_TLS_CERT_FILE"] = self.ca_file
         self.addCleanup(lambda: os.environ.clear() or os.environ.update(env_backup))
 

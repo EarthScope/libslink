@@ -73,6 +73,7 @@ test_protocol_details (void)
 
   SLT_EQ_STR (sl_protocol_details (UNSET_PROTO, &major, &minor), "Unknown", "unset protocol string");
   SLT_EQ_INT (major, 0, "unset major version");
+  SLT_EQ_INT (minor, 0, "unset minor version");
 
   /* Optional out-params must be tolerated as NULL */
   SLT_EQ_STR (sl_protocol_details (SLPROTO40, NULL, NULL), "4.0", "NULL major/minor pointers are tolerated");

@@ -15,6 +15,7 @@
 #include <unistd.h>
 
 #include "libslink.h"
+#include "fixtures.h"
 #include "slt.h"
 
 /* Bind and listen on 127.0.0.1 with an OS-assigned port. Returns the
@@ -128,6 +129,7 @@ test_senddata (void)
   ssize_t n;
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for sl_senddata() test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for sl_senddata() test");
 
@@ -160,10 +162,22 @@ test_senddata_partial_write (void)
   SLCD *slconn;
   char *sendbuf;
 
-  SLT_ASSERT (pipe (pipefd) == 0, "pipe created for the child's byte count");
+  if (pipe (pipefd) != 0)
+  {
+    SLT_FAIL ("pipe created for the child's byte count", "pipe() failed");
+    return;
+  }
+  SLT_PASS ("pipe created for the child's byte count");
 
   listenfd = start_listener_with_rcvbuf (&port, smallbuf);
-  SLT_ASSERT (listenfd >= 0, "listener created with a small SO_RCVBUF");
+  if (listenfd < 0)
+  {
+    SLT_FAIL ("listener created with a small SO_RCVBUF", "start_listener_with_rcvbuf() failed");
+    close (pipefd[0]);
+    close (pipefd[1]);
+    return;
+  }
+  SLT_PASS ("listener created with a small SO_RCVBUF");
 
   slconn = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for the partial-write regression test");
@@ -178,7 +192,18 @@ test_senddata_partial_write (void)
   sendbuf[len] = '\0';
 
   child = fork ();
-  SLT_ASSERT (child >= 0, "fork() for the draining reader succeeded");
+  if (child < 0)
+  {
+    SLT_FAIL ("fork() for the draining reader succeeded", "fork() failed");
+    close (pipefd[0]);
+    close (pipefd[1]);
+    close (serverfd);
+    close (listenfd);
+    sl_disconnect (slconn);
+    sl_freeslcd (slconn);
+    return;
+  }
+  SLT_PASS ("fork() for the draining reader succeeded");
 
   if (child == 0)
   {
@@ -241,6 +266,7 @@ test_recvdata (void)
   int64_t n;
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for sl_recvdata() test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for sl_recvdata() test");
 
@@ -269,6 +295,7 @@ test_recvdata_on_closed_connection (void)
   char buf[16];
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for the closed-connection test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for the closed-connection test");
 
@@ -293,6 +320,7 @@ test_recvresp (void)
   char resp[64];
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for sl_recvresp() test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for sl_recvresp() test");
 
@@ -316,6 +344,7 @@ test_recvresp_split_across_reads (void)
   char resp[64];
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for the split-response test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for the split-response test");
 
@@ -342,6 +371,7 @@ test_poll_timeout (void)
   SLCD *slconn;
 
   listenfd = start_listener (&port);
+  SLT_ASSERT (listenfd >= 0, "test listener created for sl_poll() timeout test");
   slconn   = connect_to (listenfd, port, &serverfd);
   SLT_NOT_NULL (slconn, "connected for sl_poll() timeout test");
 
@@ -361,6 +391,12 @@ test_connect_refused (void)
 
   /* Reserve then immediately release a port so nothing is listening on it. */
   probefd = start_listener (&port);
+  if (probefd < 0)
+  {
+    SLT_FAIL ("test listener created to reserve a port", "start_listener() failed");
+    return;
+  }
+  SLT_PASS ("test listener created to reserve a port");
   close (probefd);
 
   slconn = sl_initslcd ("t", NULL);
@@ -393,7 +429,13 @@ test_ping_disconnects_after_failed_hello_response (void)
   SLT_ASSERT (listenfd >= 0, "test listener created for the ping-leak test");
 
   child = fork ();
-  SLT_ASSERT (child >= 0, "fork() for the accept-then-close peer succeeded");
+  if (child < 0)
+  {
+    SLT_FAIL ("fork() for the accept-then-close peer succeeded", "fork() failed");
+    close (listenfd);
+    return;
+  }
+  SLT_PASS ("fork() for the accept-then-close peer succeeded");
 
   if (child == 0)
   {
@@ -432,68 +474,13 @@ static void trigger_senddata_null (void);
 static void trigger_recvdata_null (void);
 static void trigger_recvresp_null (void);
 
-typedef struct
-{
-  const char *name;
-  void (*fn) (void);
-} Probe;
-
-static const Probe PROBES[] = {
+static const FxProbe PROBES[] = {
     {"disconnect_null", trigger_disconnect_null},
     {"configlink_null", trigger_configlink_null},
     {"senddata_null", trigger_senddata_null},
     {"recvdata_null", trigger_recvdata_null},
     {"recvresp_null", trigger_recvresp_null},
 };
-
-static int
-survives (const char *probe_name)
-{
-  pid_t pid = fork ();
-
-  if (pid == 0)
-  {
-    close (STDERR_FILENO);
-    execl (g_argv0, g_argv0, "--probe", probe_name, (char *)NULL);
-    _exit (127); /* only reached if execl() itself failed */
-  }
-
-  if (pid > 0)
-  {
-    int status;
-    waitpid (pid, &status, 0);
-    return WIFEXITED (status) && WEXITSTATUS (status) == 0;
-  }
-
-  return 0; /* fork() failed; treat as a failure to avoid a false pass */
-}
-
-static void
-assert_survives (const char *probe_name, const char *desc)
-{
-  SLT_ASSERT (survives (probe_name), desc);
-}
-
-static int
-run_probe_if_requested (int argc, char **argv)
-{
-  int i;
-
-  if (argc < 3 || strcmp (argv[1], "--probe") != 0)
-    return 0;
-
-  for (i = 0; i < (int)(sizeof (PROBES) / sizeof (PROBES[0])); i++)
-  {
-    if (strcmp (argv[2], PROBES[i].name) == 0)
-    {
-      PROBES[i].fn ();
-      exit (0);
-    }
-  }
-
-  fprintf (stderr, "unknown probe: %s\n", argv[2]);
-  exit (127);
-}
 
 static void
 trigger_disconnect_null (void)
@@ -530,20 +517,18 @@ trigger_recvresp_null (void)
 static void
 test_null_guards_do_not_crash (void)
 {
-  assert_survives ("disconnect_null", "sl_disconnect(NULL) does not crash");
-  assert_survives ("configlink_null", "sl_configlink(NULL) does not crash");
-  assert_survives ("senddata_null", "sl_senddata(NULL, ...) does not crash");
-  assert_survives ("recvdata_null", "sl_recvdata(NULL, ...) does not crash");
-  assert_survives ("recvresp_null", "sl_recvresp(NULL, ...) does not crash");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "disconnect_null"), "sl_disconnect(NULL) does not crash");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "configlink_null"), "sl_configlink(NULL) does not crash");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "senddata_null"), "sl_senddata(NULL, ...) does not crash");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "recvdata_null"), "sl_recvdata(NULL, ...) does not crash");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "recvresp_null"), "sl_recvresp(NULL, ...) does not crash");
 }
 
 int
 main (int argc, char **argv)
 {
   g_argv0 = argv[0];
-
-  if (run_probe_if_requested (argc, argv))
-    return 0;
+  fx_dispatch_probe (argc, argv, PROBES, sizeof (PROBES) / sizeof (PROBES[0])); /* exits directly if this is a probe re-exec */
 
   SLT_RUN (test_connect_and_disconnect);
   SLT_RUN (test_senddata);

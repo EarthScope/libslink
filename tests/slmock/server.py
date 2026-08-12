@@ -66,6 +66,22 @@ class CommandReader:
         else:
             idx = min(idx_cr, idx_lf)
 
+        # A '\r' at the very end of the buffer is ambiguous: it could be a
+        # complete bare-'\r' v4 terminator, or the first half of a '\r\n'
+        # pair split across two recv()s by a TLS record boundary. Give a
+        # trailing '\n' a brief chance to arrive before deciding -- short
+        # enough not to meaningfully delay the far more common genuine
+        # bare-'\r' case, long enough for a same-write split to resolve.
+        if idx == len(self.buf) - 1 and self.buf[idx : idx + 1] == b"\r":
+            old_timeout = self.timeout
+            self.timeout = 0.05
+            try:
+                self._fill()
+            except socket.timeout:
+                pass
+            finally:
+                self.timeout = old_timeout
+
         cmd = self.buf[:idx]
         if self.buf[idx : idx + 2] == b"\r\n":
             terminator = b"\r\n"
@@ -107,6 +123,11 @@ class MockServer:
         self.accept_timeout = accept_timeout
         self.connection_count = 0
         self.errors = []
+        # The one connection _serve() is currently handling (this server is
+        # single-connection-at-a-time), so stop() can force it closed and
+        # unblock a handler stuck in recv()/sendall() instead of leaving it
+        # to run past stop() and leak into a later test.
+        self._current_conn = None
         # Passed through to each connection's CommandReader; see its
         # docstring. A handler that negotiates the version dynamically
         # (e.g. deciding v3 vs v4 based on what HELLO advertises) can
@@ -164,6 +185,7 @@ class MockServer:
                 continue
 
             reader = CommandReader(conn, strict_protocol=self.strict_protocol)
+            self._current_conn = conn
 
             try:
                 self.handler(conn, reader, self, conn_index)
@@ -177,6 +199,7 @@ class MockServer:
             except Exception as e:  # noqa: BLE001
                 self.errors.append(e)
             finally:
+                self._current_conn = None
                 try:
                     conn.close()
                 except OSError:
@@ -188,6 +211,21 @@ class MockServer:
             self._listener.close()
         except OSError:
             pass
+
+        # Force-close a connection the handler is still blocked on (a long
+        # recv() timeout, an explicit sleep) so it can't outlive stop() and
+        # leak its socket/thread into a later test.
+        conn = self._current_conn
+        if conn is not None:
+            try:
+                conn.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                conn.close()
+            except OSError:
+                pass
+
         self._thread.join(timeout=3)
 
     def address(self):
@@ -344,6 +382,7 @@ def serve_v4(
     accept=True,
     error_text="ERROR ARGUMENTS rejected",
     defer_responses=False,
+    expected_commands=None,
 ):
     """v4 negotiation: the client sends STATION/SELECT/DATA commands for
     every configured station back-to-back, then reads all responses in
@@ -353,22 +392,31 @@ def serve_v4(
     the pipelined batch, only silence.
 
     `defer_responses=True` instead drains that whole pipelined batch
-    first (a short quiet period marks where the client stopped sending
-    and started waiting), answers all of it at once, and only then
-    reads the END/ENDFETCH that follows -- the asynchronous handshaking
-    the v4 spec permits (protocol.html, "Handshaking": "Client may send
+    first, answers all of it at once, and only then reads the
+    END/ENDFETCH that follows -- the asynchronous handshaking the v4
+    spec permits (protocol.html, "Handshaking": "Client may send
     asynchronous commands"), proving the client doesn't depend on
-    responses trickling back inline with its own sends."""
+    responses trickling back inline with its own sends. `cmd` (already
+    read by the caller) counts as the first pipelined command; pass the
+    number of commands still to come as `expected_commands` (deterministic
+    from the station/selector configuration the caller used) so draining
+    doesn't depend on a quiet-period timeout that a slowed-down client
+    (a loaded CI runner, a sanitizer build) could blow past. Falls back to
+    a timeout-based drain when the caller doesn't know the count."""
     reader.strict_protocol = 4
     _check_history(reader, cmd, 4)
     commands = [cmd]
 
     if defer_responses:
-        while True:
-            more = reader.try_read_command(0.3)
-            if more is None:
-                break
-            commands.append(more)
+        if expected_commands is not None:
+            for _ in range(expected_commands):
+                commands.append(reader.read_command())
+        else:
+            while True:
+                more = reader.try_read_command(0.3)
+                if more is None:
+                    break
+                commands.append(more)
 
         for _ in commands:
             respond(conn, "OK" if accept else error_text)

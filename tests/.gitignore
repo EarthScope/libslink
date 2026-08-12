@@ -12,6 +12,12 @@ test_netprims
 test_network
 slharness
 
+fuzz/fuzz_detect
+fuzz/fuzz_dtparse
+fuzz/fuzz_globmatch
+fuzz/fuzz_payload
+fuzz/fuzz_statefile
+
 __pycache__/
 slmock/__pycache__/
 *.dSYM/

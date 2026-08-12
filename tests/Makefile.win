@@ -24,6 +24,13 @@ slharness: $(OBJS)
 .c.obj:
 	$(CC) /nologo $(CFLAGS) $(INCS) $(OPTS) /c $<
 
+# Runs the same Python protocol/spec/TLS/exports suite the Windows CI job
+# runs directly (.github/workflows/test.yml); the C unit test binaries
+# have no Windows port (see the header comment), so there is no C-binary
+# side to this the way tests/Makefile's `test` target has.
+test check: all
+	python -m unittest test_protocol test_spec_v3 test_spec_v4 test_tls test_exports -v
+
 # Clean-up directives
 clean:
-	-del a.out core *.o *.obj *% *~ $(BIN)
+	-del a.out core *.o *.obj *~ $(BIN)

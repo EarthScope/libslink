@@ -61,6 +61,7 @@ test_level_routing (void)
   reset_capture ();
   sl_log_rl (log, 2, 0, "error message\n");
   SLT_EQ_INT (captured_diag_count, 1, "level 2 goes to diag_print");
+  SLT_EQ_INT (captured_log_count, 0, "level 2 does not go to log_print");
   SLT_EQ_STR (captured_diag, "ERR: error message\n", "level 2 message carries the error prefix");
 
   reset_capture ();
@@ -125,10 +126,13 @@ test_null_prefixes_and_callbacks (void)
   SLlog *log = sl_loginit_rl (NULL, 2, NULL, NULL, NULL, NULL);
   int retval;
 
-  /* With no callbacks configured, output falls back to stdout/stderr via
-   * fprintf(); just confirm this does not crash and reports a sane length. */
-  retval = sl_log_rl (log, 0, 0, "no callback configured\n");
-  SLT_ASSERT (retval > 0, "sl_log_rl() with no log_print callback still returns a formatted length");
+  /* With no diag_print configured, output falls back to fprintf(stderr, ...);
+   * an error-level message exercises that fallback without writing to the
+   * shared stdout this binary's own TAP output is on (the log_print
+   * fallback, for level 0, writes to stdout and is not exercised here for
+   * that reason). */
+  retval = sl_log_rl (log, 2, 0, "no callback configured\n");
+  SLT_ASSERT (retval > 0, "sl_log_rl() with no diag_print callback still returns a formatted length");
 
   free (log);
 }

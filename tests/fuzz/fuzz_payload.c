@@ -11,37 +11,8 @@
 #include "fuzzcommon.h"
 
 #include <inttypes.h>
-#include <time.h>
 
 #define MAX_BUF 4096
-
-static void
-build_seeds (uint8_t *seed2, uint8_t *seed3)
-{
-  MS2Fields f2;
-  MS3Fields f3;
-
-  memset (&f2, 0, sizeof (f2));
-  f2.network = "XX";
-  f2.station = "TEST";
-  f2.channel = "BHZ";
-  f2.year = 2024;
-  f2.day = 216;
-  f2.numblockettes = 1;
-  f2.blocketteoffset = MS2_FIXED_LENGTH;
-  memset (seed2, 0, MAX_BUF);
-  fx_ms2_fixed (seed2, MAX_BUF, &f2, 0);
-  fx_ms2_b1000 (seed2, MAX_BUF, MS2_FIXED_LENGTH, 11, 0, 9 /* 2^9 = 512 */, 0, 0);
-
-  memset (&f3, 0, sizeof (f3));
-  f3.sid = "FDSN:XX_TEST";
-  f3.year = 2024;
-  f3.day = 216;
-  f3.samplerate = 20.0;
-  f3.datalength = 200;
-  memset (seed3, 0, MAX_BUF);
-  fx_ms3_fixed (seed3, MAX_BUF, &f3, 0);
-}
 
 /* Payload formats worth exercising specifically, beyond pure-random bytes
  * in the field: the two recognized ones, and a handful the switch in
@@ -71,28 +42,16 @@ run (long iterations, const uint8_t *seed2, const uint8_t *seed3)
     double samplerate = 0.0;
     uint32_t samplecount = 0;
     size_t len = fz_rand_below (MAX_BUF);
-    int mode = (int)fz_rand_below (3);
-    uint32_t plbuffer_size = (uint32_t)fz_rand_below (MAX_BUF + 64);
     /* Never exceeds the real destination size -- doing so would be a lie
      * to the callee about how much room it actually has, which is the
      * caller's responsibility to get right, not something this API can
      * defend against. Under-reporting (including 0) is fair game. */
+    uint32_t plbuffer_size = (uint32_t)fz_rand_below (MAX_BUF + 1);
     size_t sourceid_size = fz_rand_below (sizeof (sourceid) + 1);
     size_t starttimestr_size = fz_rand_below (sizeof (starttimestr) + 1);
     size_t summary_size = fz_rand_below (sizeof (summary) + 1);
 
-    if (mode == 0)
-      fz_random_bytes (plbuffer, len);
-    else if (mode == 1)
-    {
-      memcpy (plbuffer, seed2, MAX_BUF);
-      fz_mutate (plbuffer, len);
-    }
-    else
-    {
-      memcpy (plbuffer, seed3, MAX_BUF);
-      fz_mutate (plbuffer, len);
-    }
+    fz_fill_input (plbuffer, MAX_BUF, len, seed2, seed3);
 
     memset (&packetinfo, 0, sizeof (packetinfo));
     packetinfo.payloadformat = random_payloadformat ();
@@ -116,19 +75,16 @@ int
 main (int argc, char **argv)
 {
   long iterations = 10000000;
-  uint64_t seed = 0;
   uint8_t seed2[MAX_BUF];
   uint8_t seed3[MAX_BUF];
+  uint64_t seed = fz_setup (argc, argv, &iterations);
 
-  fz_parse_args (argc, argv, &iterations, &seed);
-  if (seed == 0)
-    seed = (uint64_t)time (NULL);
-  fz_seed (seed);
+  fz_suppress_logging ();
 
   printf ("fuzz_payload: seed=%" PRIu64 " iterations=%ld\n", seed, iterations);
   fflush (stdout);
 
-  build_seeds (seed2, seed3);
+  fz_build_mseed_seeds (seed2, seed3, MAX_BUF);
   run (iterations, seed2, seed3);
 
   printf ("fuzz_payload: survived %ld iterations\n", iterations);

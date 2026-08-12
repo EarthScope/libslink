@@ -41,6 +41,7 @@ harness_setenv (const char *name, const char *value, int overwrite)
 #endif
 
 #define MAX_STATIONS 16
+#define MAX_CAP_CHECKS 16
 
 static char g_authvalue[256] = {0};
 static int  g_auth_null      = 0;
@@ -195,7 +196,7 @@ main (int argc, char **argv)
   const char *authenv_pass  = NULL;
   const char *timewindow_start = NULL;
   const char *timewindow_end   = NULL;
-  const char *cap_checks[MAX_STATIONS];
+  const char *cap_checks[MAX_CAP_CHECKS];
   int cap_check_count        = 0;
   int max_packets            = 20;
   double timeout_seconds     = 10.0;
@@ -294,7 +295,14 @@ main (int argc, char **argv)
     else if (strcmp (a, "--tls") == 0)
       g_force_tls = 1;
     else if (strcmp (a, "--cap") == 0 && argi + 1 < argc)
+    {
+      if (cap_check_count >= MAX_CAP_CHECKS)
+      {
+        fprintf (stderr, "too many --cap options (max %d)\n", MAX_CAP_CHECKS);
+        exit (2);
+      }
       cap_checks[cap_check_count++] = argv[++argi];
+    }
     else if (strcmp (a, "--ping") == 0)
       do_ping = 1;
     else if (strcmp (a, "--verbose") == 0)

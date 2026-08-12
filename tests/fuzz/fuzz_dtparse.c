@@ -18,10 +18,6 @@
 #include "fuzzcommon.h"
 
 #include <inttypes.h>
-#include <time.h>
-
-#define INPUT_MAX 128
-#define OUTPUT_BUF (INPUT_MAX + 16)
 
 static const char *const ISO_SEEDS[] = {
     "2024-08-03T17:23:18.0Z",
@@ -33,6 +29,9 @@ static const char *const ISO_SEEDS[] = {
 static const char *const SELECTOR_SEEDS[] = {
     "00BHZ", "BHZ", "EH?.D", "--BHZ", "*", "00_B_H_Z.D",
 };
+
+#define INPUT_MAX 128
+#define OUTPUT_BUF (INPUT_MAX + 16)
 
 static void
 random_input (char *buf, size_t maxlen)
@@ -69,16 +68,14 @@ run_datetime (long iterations)
     if (mode == 0)
       random_input (input, sizeof (input) - 1);
     else
-      mutated_seed_input (input, sizeof (input), ISO_SEEDS,
-                          sizeof (ISO_SEEDS) / sizeof (*ISO_SEEDS));
+      mutated_seed_input (input, sizeof (input), ISO_SEEDS, FZ_COUNT (ISO_SEEDS));
 
     sl_isodatetime (output, input);
 
     if (mode == 0)
       random_input (input, sizeof (input) - 1);
     else
-      mutated_seed_input (input, sizeof (input), ISO_SEEDS,
-                          sizeof (ISO_SEEDS) / sizeof (*ISO_SEEDS));
+      mutated_seed_input (input, sizeof (input), ISO_SEEDS, FZ_COUNT (ISO_SEEDS));
 
     sl_commadatetime (output, input);
   }
@@ -101,8 +98,7 @@ run_selector (long iterations)
     if (mode == 0)
       random_input (input, sizeof (input) - 1);
     else
-      mutated_seed_input (input, sizeof (input), SELECTOR_SEEDS,
-                          sizeof (SELECTOR_SEEDS) / sizeof (*SELECTOR_SEEDS));
+      mutated_seed_input (input, sizeof (input), SELECTOR_SEEDS, FZ_COUNT (SELECTOR_SEEDS));
 
     sl_v3to4selector (output, v4selectorlength, input);
   }
@@ -112,12 +108,9 @@ int
 main (int argc, char **argv)
 {
   long iterations = 10000000;
-  uint64_t seed = 0;
+  uint64_t seed = fz_setup (argc, argv, &iterations);
 
-  fz_parse_args (argc, argv, &iterations, &seed);
-  if (seed == 0)
-    seed = (uint64_t)time (NULL);
-  fz_seed (seed);
+  fz_suppress_logging ();
 
   printf ("fuzz_dtparse: seed=%" PRIu64 " iterations=%ld (x2 targets)\n", seed, iterations);
   fflush (stdout);

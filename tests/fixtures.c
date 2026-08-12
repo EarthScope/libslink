@@ -6,6 +6,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/wait.h>
+#include <unistd.h>
 
 #include "fixtures.h"
 
@@ -69,7 +71,11 @@ void
 fx_ms2_fixed (uint8_t *buf, size_t bufsize, const MS2Fields *f, int big_endian)
 {
   if (bufsize < MS2_FIXED_LENGTH)
-    return;
+  {
+    fprintf (stderr, "fx_ms2_fixed(): buffer too small (%zu < %d)\n", bufsize,
+             MS2_FIXED_LENGTH);
+    abort ();
+  }
 
   memset (buf, 0, MS2_FIXED_LENGTH);
 
@@ -110,7 +116,11 @@ fx_ms2_b1000 (uint8_t *buf, size_t bufsize, size_t offset,
   uint8_t *b = buf + offset;
 
   if (offset + MS2_B1000_LENGTH > bufsize)
-    return;
+  {
+    fprintf (stderr, "fx_ms2_b1000(): buffer too small (offset %zu + %d > %zu)\n", offset,
+             MS2_B1000_LENGTH, bufsize);
+    abort ();
+  }
 
   put16 (b + 0, 1000, big_endian);
   put16 (b + 2, next, big_endian);
@@ -210,3 +220,63 @@ fx_unlink (char *path)
     free (path);
   }
 } /* End of fx_unlink() */
+
+SLstream *
+fx_find_stream (SLCD *slconn, const char *stationid)
+{
+  SLstream *cur = slconn->streams;
+
+  while (cur)
+  {
+    if (strcmp (cur->stationid, stationid) == 0)
+      return cur;
+    cur = cur->next;
+  }
+
+  return NULL;
+} /* End of fx_find_stream() */
+
+int
+fx_probe_survives (const char *argv0, const char *probe_name)
+{
+  pid_t pid = fork ();
+
+  if (pid == 0)
+  {
+    /* Child: silence the library's own error logging for this probe,
+     * then replace this process image entirely via exec(). */
+    close (STDERR_FILENO);
+    execl (argv0, argv0, "--probe", probe_name, (char *)NULL);
+    _exit (127); /* only reached if execl() itself failed */
+  }
+
+  if (pid > 0)
+  {
+    int status;
+    waitpid (pid, &status, 0);
+    return WIFEXITED (status) && WEXITSTATUS (status) == 0;
+  }
+
+  return 0; /* fork() failed; treat as a failure to avoid a false pass */
+} /* End of fx_probe_survives() */
+
+void
+fx_dispatch_probe (int argc, char **argv, const FxProbe *probes, size_t nprobes)
+{
+  size_t idx;
+
+  if (argc < 3 || strcmp (argv[1], "--probe") != 0)
+    return;
+
+  for (idx = 0; idx < nprobes; idx++)
+  {
+    if (strcmp (argv[2], probes[idx].name) == 0)
+    {
+      probes[idx].fn ();
+      exit (0); /* the probe itself calls _exit() if it wants a non-zero code */
+    }
+  }
+
+  fprintf (stderr, "unknown probe: %s\n", argv[2]);
+  exit (127);
+} /* End of fx_dispatch_probe() */

@@ -7,10 +7,10 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/wait.h>
 #include <unistd.h>
 
 #include "libslink.h"
+#include "fixtures.h"
 #include "slt.h"
 
 /* Crash probes are dispatched by name through argv (see main()) and run
@@ -24,79 +24,19 @@
  * fork() of a process that has already done real allocator work. */
 static const char *g_argv0;
 
+static void trigger_freeslcd_minimal (void);
 static void trigger_host_boundary (void);
 static void trigger_clientname_version_then_free (void);
 static void trigger_request_info_null_slconn (void);
 static void trigger_request_info_null_infostr (void);
 
-typedef struct
-{
-  const char *name;
-  void (*fn) (void);
-} Probe;
-
-static const Probe PROBES[] = {
+static const FxProbe PROBES[] = {
+    {"freeslcd_minimal", trigger_freeslcd_minimal},
     {"host_boundary", trigger_host_boundary},
     {"clientname_dangling", trigger_clientname_version_then_free},
     {"request_info_null_slconn", trigger_request_info_null_slconn},
     {"request_info_null_infostr", trigger_request_info_null_infostr},
 };
-
-/* Run the named probe in a fork+exec'd copy of this binary and report
- * whether it exited cleanly (code 0) instead of crashing. */
-static int
-survives (const char *probe_name)
-{
-  pid_t pid = fork ();
-
-  if (pid == 0)
-  {
-    /* Child: silence the library's own error logging for this probe,
-     * then replace this process image entirely via exec(). */
-    close (STDERR_FILENO);
-    execl (g_argv0, g_argv0, "--probe", probe_name, (char *)NULL);
-    _exit (127); /* only reached if execl() itself failed */
-  }
-
-  if (pid > 0)
-  {
-    int status;
-    waitpid (pid, &status, 0);
-    return WIFEXITED (status) && WEXITSTATUS (status) == 0;
-  }
-
-  return 0; /* fork() failed; treat as a failure to avoid a false pass */
-}
-
-static void
-assert_survives (const char *probe_name, const char *desc)
-{
-  SLT_ASSERT (survives (probe_name), desc);
-}
-
-/* If invoked as "<self> --probe NAME", run just that probe and exit;
- * used only via survives() above. Returns 1 if this was a probe
- * invocation (caller should stop), 0 for a normal test run. */
-static int
-run_probe_if_requested (int argc, char **argv)
-{
-  int i;
-
-  if (argc < 3 || strcmp (argv[1], "--probe") != 0)
-    return 0;
-
-  for (i = 0; i < (int)(sizeof (PROBES) / sizeof (PROBES[0])); i++)
-  {
-    if (strcmp (argv[2], PROBES[i].name) == 0)
-    {
-      PROBES[i].fn ();
-      exit (0); /* the probe itself calls _exit() if it wants a non-zero code */
-    }
-  }
-
-  fprintf (stderr, "unknown probe: %s\n", argv[2]);
-  exit (127);
-}
 
 static void
 test_initslcd_defaults (void)
@@ -120,13 +60,23 @@ test_initslcd_defaults (void)
 }
 
 static void
-test_freeslcd_minimal (void)
+trigger_freeslcd_minimal (void)
 {
   SLCD *slconn = sl_initslcd (NULL, NULL);
 
-  SLT_NOT_NULL (slconn, "sl_initslcd() tolerates a NULL client name");
+  if (!slconn)
+    _exit (1); /* sl_initslcd() must tolerate a NULL client name */
+
   sl_freeslcd (slconn); /* must not crash on an otherwise-empty SLCD */
-  SLT_PASS ("sl_freeslcd() on a minimally configured connection does not crash");
+  _exit (0);
+}
+
+static void
+test_freeslcd_minimal (void)
+{
+  SLT_ASSERT (fx_probe_survives (g_argv0, "freeslcd_minimal"),
+             "sl_initslcd() tolerates a NULL client name, and sl_freeslcd() "
+             "does not crash on a minimally configured connection");
 }
 
 static void
@@ -171,7 +121,7 @@ test_serveraddress (void)
   SLT_EQ_INT (slconn->tls, 1, "port 18500 enables TLS automatically");
 
   SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:18000"), 0, "non-TLS port: accepted");
-  /* tls is sticky once set; sl_set_tlsmode() is the only way to turn it back off */
+  SLT_EQ_INT (slconn->tls, 1, "tls is sticky once set; sl_set_tlsmode() is the only way to turn it back off");
 
   SLT_EQ_INT (sl_set_serveraddress (NULL, "example.org"), -1, "NULL connection is rejected");
   SLT_EQ_INT (sl_set_serveraddress (slconn, NULL), -1, "NULL address is rejected");
@@ -208,9 +158,9 @@ trigger_host_boundary (void)
 static void
 test_serveraddress_host_boundary (void)
 {
-  assert_survives ("host_boundary",
-                   "a 300-character host is stored intact and null-terminated, "
-                   "not overrun (a stack-buffer-overflow under ASan)");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "host_boundary"),
+             "a 300-character host is stored intact and null-terminated, "
+             "not overrun (a stack-buffer-overflow under ASan)");
 }
 
 static void
@@ -302,9 +252,9 @@ trigger_clientname_version_then_free (void)
 static void
 test_clientname_version_dangling_pointer (void)
 {
-  assert_survives ("clientname_dangling",
-                   "re-calling sl_set_clientname() without a version, then sl_freeslcd(), "
-                   "does not double-free clientversion");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "clientname_dangling"),
+             "re-calling sl_set_clientname() without a version, then sl_freeslcd(), "
+             "does not double-free clientversion");
 }
 
 static void
@@ -417,10 +367,10 @@ trigger_request_info_null_infostr (void)
 static void
 test_request_info_null_guards (void)
 {
-  assert_survives ("request_info_null_slconn",
-                   "sl_request_info(NULL, ...) returns an error instead of crashing");
-  assert_survives ("request_info_null_infostr",
-                   "sl_request_info(slconn, NULL) returns an error instead of crashing");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "request_info_null_slconn"),
+             "sl_request_info(NULL, ...) returns an error instead of crashing");
+  SLT_ASSERT (fx_probe_survives (g_argv0, "request_info_null_infostr"),
+             "sl_request_info(slconn, NULL) returns an error instead of crashing");
 }
 
 /* Exercises sl_set_auth_envvars(), including that the constructed auth_data
@@ -464,7 +414,7 @@ int
 main (int argc, char **argv)
 {
   g_argv0 = argv[0];
-  run_probe_if_requested (argc, argv); /* exits directly if this is a probe re-exec */
+  fx_dispatch_probe (argc, argv, PROBES, sizeof (PROBES) / sizeof (PROBES[0])); /* exits directly if this is a probe re-exec */
 
   SLT_RUN (test_initslcd_defaults);
   SLT_RUN (test_freeslcd_minimal);

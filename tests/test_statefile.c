@@ -9,21 +9,6 @@
 #include "fixtures.h"
 #include "slt.h"
 
-static SLstream *
-find_stream (SLCD *slconn, const char *stationid)
-{
-  SLstream *cur = slconn->streams;
-
-  while (cur)
-  {
-    if (strcmp (cur->stationid, stationid) == 0)
-      return cur;
-    cur = cur->next;
-  }
-
-  return NULL;
-}
-
 static void
 test_roundtrip (void)
 {
@@ -42,12 +27,12 @@ test_roundtrip (void)
 
   SLT_EQ_INT (sl_recoverstate (recoverer, path), 0, "sl_recoverstate() succeeds on a saved file");
 
-  s = find_stream (recoverer, "XX_TEST");
+  s = fx_find_stream (recoverer, "XX_TEST");
   SLT_NOT_NULL (s, "XX_TEST survives the round trip");
   SLT_EQ_UINT (s->seqnum, 100, "XX_TEST sequence number round-trips");
   SLT_EQ_STR (s->timestamp, "2024-01-01T00:00:00Z", "XX_TEST timestamp round-trips");
 
-  s = find_stream (recoverer, "XX_TST2");
+  s = fx_find_stream (recoverer, "XX_TST2");
   SLT_NOT_NULL (s, "XX_TST2 survives the round trip");
   SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE, "XX_TST2's unset sequence number round-trips as UNSET");
   SLT_EQ_STR (s->timestamp, "", "XX_TST2's absent timestamp round-trips as empty");
@@ -70,7 +55,12 @@ test_recoverstate_unmatched_streams_ignored (void)
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), 0,
              "an entry for a station not in the stream list is silently ignored");
-  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, 100, "the matching station is still updated");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+    SLT_NOT_NULL (s, "XX_TEST was added");
+    SLT_EQ_UINT (s->seqnum, 100, "the matching station is still updated");
+  }
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -90,11 +80,13 @@ test_recoverstate_legacy_format (void)
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "a legacy-format state file is recognized without a header");
 
-  s = find_stream (slconn, "XX_TEST");
+  s = fx_find_stream (slconn, "XX_TEST");
+  SLT_NOT_NULL (s, "XX_TEST was added");
   SLT_EQ_UINT (s->seqnum, 1234567890ULL, "legacy sequence number parsed");
   SLT_EQ_STR (s->timestamp, "2021-11-19T17:23:18Z", "legacy comma-delimited timestamp converted to ISO");
 
-  s = find_stream (slconn, "XX_NONE");
+  s = fx_find_stream (slconn, "XX_NONE");
+  SLT_NOT_NULL (s, "XX_NONE was added");
   SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE, "legacy '-1' sequence number maps to SL_UNSETSEQUENCE");
 
   fx_unlink (path);
@@ -110,8 +102,13 @@ test_recoverstate_legacy_uni_station (void)
   sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, NULL);
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "legacy uni-station entry recognized");
-  SLT_EQ_UINT (find_stream (slconn, "*")->seqnum, 555,
-              "the legacy 'XX UNI' special case maps to the all-station ('*') entry");
+  {
+    SLstream *s = fx_find_stream (slconn, "*");
+
+    SLT_NOT_NULL (s, "the all-station entry exists");
+    SLT_EQ_UINT (s->seqnum, 555,
+                "the legacy 'XX UNI' special case maps to the all-station ('*') entry");
+  }
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -128,7 +125,12 @@ test_recoverstate_unset_keyword (void)
   sl_add_stream (slconn, "XX_TEST", NULL, 999, NULL);
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "the UNSET keyword is recognized under the V2 format");
-  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, SL_UNSETSEQUENCE, "UNSET maps to SL_UNSETSEQUENCE");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+    SLT_NOT_NULL (s, "XX_TEST was added");
+    SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE, "UNSET maps to SL_UNSETSEQUENCE");
+  }
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -147,7 +149,12 @@ test_recoverstate_comments_and_blanks (void)
   sl_add_stream (slconn, "XX_TEST", NULL, SL_UNSETSEQUENCE, NULL);
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "comment and blank lines are skipped without error");
-  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, 100, "the real entry after comments is still applied");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+    SLT_NOT_NULL (s, "XX_TEST was added");
+    SLT_EQ_UINT (s->seqnum, 100, "the real entry after comments is still applied");
+  }
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -172,8 +179,13 @@ test_recoverstate_timestamp_too_long (void)
 
   SLT_EQ_INT (sl_recoverstate (slconn, path), -1,
              "an over-long timestamp field is reported as an error, without aborting the file");
-  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, SL_UNSETSEQUENCE,
-              "the too-long line is skipped and does not update the stream");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+    SLT_NOT_NULL (s, "XX_TEST was added");
+    SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE,
+                "the too-long line is skipped and does not update the stream");
+  }
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -195,8 +207,13 @@ test_recoverstate_errors (void)
 
   SLT_EQ_INT (sl_recoverstate (slconn, badline), -1,
              "a line with too few fields is reported as an error, without aborting the file");
-  SLT_EQ_UINT (find_stream (slconn, "XX_TEST")->seqnum, 100,
-              "a later, well-formed line in the same file is still applied");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+    SLT_NOT_NULL (s, "XX_TEST was added");
+    SLT_EQ_UINT (s->seqnum, 100,
+                "a later, well-formed line in the same file is still applied");
+  }
 
   fx_unlink (badseq);
   fx_unlink (badline);

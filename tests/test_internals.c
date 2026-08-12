@@ -191,6 +191,61 @@ test_detect_ms2_b1000_reclen_max_valid (void)
              "detect() accepts the top of the valid B1000 record length exponent range");
 }
 
+/* Exponents just outside the valid range (6-20) are what actually pins the
+ * boundary; 3 and 32, tested above, are further out and would still be
+ * correctly rejected by a guard that was mistakenly loosened to 5-21. */
+static void
+test_detect_ms2_b1000_reclen_just_below_min (void)
+{
+  uint8_t buf[128] = {0};
+  MS2Fields f;
+  char payloadformat;
+  int64_t reclen;
+
+  memset (&f, 0, sizeof (f));
+  f.network        = "XX";
+  f.station        = "TEST";
+  f.channel         = "BHZ";
+  f.year            = 2024;
+  f.day             = 216;
+  f.numblockettes   = 1;
+  f.blocketteoffset = MS2_FIXED_LENGTH;
+
+  fx_ms2_fixed (buf, sizeof (buf), &f, 0);
+  fx_ms2_b1000 (buf, sizeof (buf), MS2_FIXED_LENGTH, 11, 0, 5 /* one below the valid minimum, 6 */, 0, 0);
+
+  reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
+
+  SLT_EQ_INT ((int)reclen, -1,
+             "detect() rejects a B1000 record length exponent one below the valid minimum");
+}
+
+static void
+test_detect_ms2_b1000_reclen_just_above_max (void)
+{
+  uint8_t buf[128] = {0};
+  MS2Fields f;
+  char payloadformat;
+  int64_t reclen;
+
+  memset (&f, 0, sizeof (f));
+  f.network        = "XX";
+  f.station        = "TEST";
+  f.channel         = "BHZ";
+  f.year            = 2024;
+  f.day             = 216;
+  f.numblockettes   = 1;
+  f.blocketteoffset = MS2_FIXED_LENGTH;
+
+  fx_ms2_fixed (buf, sizeof (buf), &f, 0);
+  fx_ms2_b1000 (buf, sizeof (buf), MS2_FIXED_LENGTH, 11, 0, 21 /* one above the valid maximum, 20 */, 0, 0);
+
+  reclen = detect ((const char *)buf, sizeof (buf), &payloadformat);
+
+  SLT_EQ_INT ((int)reclen, -1,
+             "detect() rejects a B1000 record length exponent one above the valid maximum");
+}
+
 static void
 test_detect_too_short (void)
 {
@@ -233,10 +288,8 @@ static void
 test_detect_ms3_datalength_over_16_bits (void)
 {
   /* detect()'s miniSEED3 branch reads the header's 32-bit data-length
-   * field but passes it through HO2u(), which takes a uint16_t --
-   * truncating any value above 65535 before the byte-swap logic even
-   * runs. A record announcing more than 64KiB of data payload should
-   * still get its full, correct record length. */
+   * field through HO4u(), so a record announcing more than 64KiB of data
+   * payload still gets its full, correct record length. */
   uint8_t buf[128] = {0};
   MS3Fields f;
   char payloadformat;
@@ -345,14 +398,20 @@ test_receive_header_v4 (void)
   uint32_t payloadlength = 1234;
   uint64_t seqnum        = 9876543210ULL;
   uint8_t stationidlen   = 7;
+  int i;
 
   slconn->protocol = SLPROTO40;
   memcpy (buf, SIGNATURE_V4, 2);
   buf[2] = SLPAYLOAD_MSEED3;
   buf[3] = 0;
-  memcpy (buf + 4, &payloadlength, 4);  /* v4 numeric fields are wire-native (little-endian) */
-  memcpy (buf + 8, &seqnum, 8);
-  memcpy (buf + 16, &stationidlen, 1);
+
+  /* v4 numeric fields are wire-native (little-endian); write the bytes
+   * explicitly so this test doesn't depend on the host's own byte order. */
+  for (i = 0; i < 4; i++)
+    buf[4 + i] = (uint8_t)(payloadlength >> (8 * i));
+  for (i = 0; i < 8; i++)
+    buf[8 + i] = (uint8_t)(seqnum >> (8 * i));
+  buf[16] = stationidlen;
 
   SLT_EQ_INT (receive_header (slconn, buf, sizeof (buf)), SLHEADSIZE_V4, "v4 header consumes exactly SLHEADSIZE_V4 bytes");
   SLT_EQ_INT (slconn->stat->packetinfo.payloadformat, SLPAYLOAD_MSEED3, "v4 payload format field read");
@@ -543,7 +602,7 @@ static void
 test_update_stream_multistation_match (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   SLstream *s;
 
   sl_add_stream (slconn, "XX_TEST", "BHZ", SL_UNSETSEQUENCE, NULL);
@@ -569,7 +628,7 @@ static void
 test_update_stream_no_match (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
 
   sl_add_stream (slconn, "XX_TEST", "BHZ", SL_UNSETSEQUENCE, NULL);
 
@@ -586,7 +645,7 @@ static void
 test_update_stream_all_station (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
 
   sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, NULL);
 
@@ -603,7 +662,7 @@ static void
 test_update_stream_v3_stationid_extraction (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
 
   sl_add_stream (slconn, "XX_TEST", "BHZ", SL_UNSETSEQUENCE, NULL);
 
@@ -631,6 +690,7 @@ test_update_stream_info_packet_skipped (void)
 
   SLT_EQ_INT (update_stream (slconn, (const char *)buf), 0, "update_stream() is a no-op for INFO packets");
   SLT_EQ_UINT (slconn->streams->seqnum, 100, "an INFO packet does not disturb existing stream state");
+  SLT_EQ_STR (slconn->streams->timestamp, "", "an INFO packet does not disturb the stream's timestamp either");
 
   sl_freeslcd (slconn);
 }
@@ -644,6 +704,8 @@ main (void)
   SLT_RUN (test_detect_ms2_b1000_reclen_overflow);
   SLT_RUN (test_detect_ms2_b1000_reclen_too_small);
   SLT_RUN (test_detect_ms2_b1000_reclen_max_valid);
+  SLT_RUN (test_detect_ms2_b1000_reclen_just_below_min);
+  SLT_RUN (test_detect_ms2_b1000_reclen_just_above_max);
   SLT_RUN (test_detect_too_short);
   SLT_RUN (test_detect_ms3);
   SLT_RUN (test_detect_ms3_datalength_over_16_bits);

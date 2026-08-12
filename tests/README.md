@@ -13,7 +13,8 @@ cd tests && ./test_genutils     # run one C binary directly, TAP output
 cd tests && python3 -m unittest test_protocol -v   # run one Python module directly
 ```
 
-Runtime is under a minute; `test_protocol.py`, `test_spec_v3.py`,
+Runtime is on the order of a couple of minutes with `test_tls.py` included
+(longer under a sanitizer); `test_protocol.py`, `test_spec_v3.py`,
 `test_spec_v4.py`, and `test_tls.py` dominate since a few scenarios wait
 out short keepalive/reconnect timers.
 
@@ -32,6 +33,25 @@ python3 -m pip install trustme    # optional; test_tls.py skips cleanly without 
 make test ARGS='-k tls'
 ```
 
+### Fuzz drivers
+
+`fuzz/` holds five mutation-based dynamic-testing drivers (see
+`fuzz/fuzzcommon.h`) covering `detect()`/`receive_header()`/
+`receive_payload()`, `sl_payload_info()`/`sl_payload_summary()`,
+`sl_recoverstate()`, `sl_globmatch()`, and `sl_isodatetime()`/
+`sl_commadatetime()`/`sl_v3to4selector()`. They are not part of `make
+test` — they're long-running by design, meant to be built and run by hand
+(or in CI as a separate time-boxed job), ideally under a sanitizer:
+
+```sh
+make fuzz                                          # builds fuzz/fuzz_*
+fuzz/fuzz_detect --iterations 5000000 --seed 1      # any driver, standalone
+fuzz/fuzz_detect --help                             # each driver takes the same two flags
+```
+
+Each driver prints its seed at start, so a crash can be reproduced
+deterministically by rerunning with the same `--seed`.
+
 ## Layout
 
 - `slt.h` — header-only TAP assertion framework used by every `test_*.c` binary.
@@ -43,6 +63,11 @@ make test ARGS='-k tls'
   `detect()`, `receive_header()`, `update_stream()` helpers directly.
 - `test_netprims.c` — `sl_connect()`/`sl_senddata()`/etc. against a bare
   hand-rolled loopback listener, no protocol negotiation.
+- `test_network.c` — `#include "../network.c"` to reach the file-static
+  `extreply_int()`/`negotiate_v4()`/`negotiate_uni_v3()`/`sl_configlink()`
+  helpers directly.
+- `fuzz/` — mutation-based dynamic-testing drivers; see "Fuzz drivers"
+  above.
 - `slharness.c` — a small deterministic CLI client (see its header
   comment for the flags and output format) used only by the two files
   below.
@@ -70,7 +95,8 @@ make test ARGS='-k tls'
 
 - New pure-function or SLCD-state coverage: add a test function to the
   relevant `test_*.c` file (or a new file, then add it to `C_BINARIES` in
-  both `Makefile` and `runtests.py`) using the `SLT_*` macros in `slt.h`.
+  both `Makefile` and `runtests.py`, and to `.gitignore`) using the
+  `SLT_*` macros in `slt.h`.
 - New protocol scenario exercising the current implementation: add a test
   method to `test_protocol.py`. New behavior a published spec actually
   requires: add it to `test_spec_v3.py`/`test_spec_v4.py` instead, in the

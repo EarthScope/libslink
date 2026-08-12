@@ -25,7 +25,7 @@ mkinfo (char format, char subformat, uint32_t payloadlength)
 static void
 test_ms2_basic (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
   char sourceid[64];
@@ -66,7 +66,7 @@ test_ms2_basic (void)
 static void
 test_ms2_samplerate_signs (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
   double samplerate = -1.0; /* sentinel: sl_payload_info() must overwrite this on success */
@@ -109,7 +109,7 @@ test_ms2_samplerate_signs (void)
 static void
 test_ms2_byteswap_detect (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
   char sourceid[64];
@@ -142,6 +142,7 @@ test_ms2_byteswap_detect (void)
                                starttime, sizeof (starttime),
                                &samplerate, &samplecount),
              0, "sl_payload_info() succeeds for a swapped-byte-order header");
+  SLT_EQ_STR (sourceid, "FDSN:XX_TST2__H_H_Z", "byte-swapped header still yields the correct source id");
   SLT_EQ_STR (starttime, "2024-08-03T01:02:03.0000Z", "byte-swapped header still yields the correct start time");
   SLT_EQ_DBL (samplerate, 50.0, 0.0001, "byte-swapped header still yields the correct sample rate");
   SLT_EQ_UINT (samplecount, 50, "byte-swapped header still yields the correct sample count");
@@ -150,7 +151,7 @@ test_ms2_byteswap_detect (void)
 static void
 test_ms2_optional_outparams (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
 
@@ -174,7 +175,7 @@ test_ms2_optional_outparams (void)
 static void
 test_ms2_truncation (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
   char sourceid[6]; /* too small for "FDSN:XX_TEST_00_B_H_Z" */
@@ -207,7 +208,7 @@ test_ms2_truncation (void)
 static void
 test_ms2_errors (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
 
@@ -241,7 +242,7 @@ test_ms2_errors (void)
 static void
 test_ms3_basic (void)
 {
-  uint8_t buf[128];
+  uint8_t buf[128] = {0};
   MS3Fields f;
   SLpacketinfo pi;
   size_t hdrlen;
@@ -282,7 +283,7 @@ test_ms3_basic (void)
 static void
 test_ms3_errors (void)
 {
-  uint8_t buf[128];
+  uint8_t buf[128] = {0};
   MS3Fields f;
   SLpacketinfo pi;
   size_t hdrlen;
@@ -311,7 +312,7 @@ test_ms3_errors (void)
 static void
 test_summary (void)
 {
-  uint8_t buf[64];
+  uint8_t buf[64] = {0};
   MS2Fields f;
   SLpacketinfo pi;
   char summary[128];
