@@ -263,9 +263,10 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
       continue;
     }
 
-    /* Convert legacy SeedLink, comma-delimited date-time to ISO-compatible format
+    /* Validate the timestamp, converting the legacy SeedLink comma-delimited
+     * date-time to ISO-compatible format if needed (already ISO in V2):
      * Example: '2021,11,19,17,23,18' => '2021-11-18T17:23:18.0Z' */
-    if (timestr && format == 0)
+    if (timestr)
     {
       if (strlen (timestr) > sizeof (timestamp) - 2)
       {

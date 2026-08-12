@@ -203,8 +203,8 @@ sl_add_streamlist (SLCD *slconn, const char *streamlist, const char *defselect)
     /* Add non-empty streams to list, using default selectors if none parsed */
     if (strlen (stream) > 0)
     {
-      if (sl_add_stream (slconn, stream, (selectors) ? selectors : defselect, SL_UNSETSEQUENCE,
-                         NULL))
+      if (sl_add_stream (slconn, stream, (selectors && selectors[0]) ? selectors : defselect,
+                         SL_UNSETSEQUENCE, NULL))
       {
         sl_log_r (slconn, 2, 0, "cannot add stream %s\n", stream);
         free (parselist);

@@ -149,6 +149,19 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
         }
         else
         {
+          /* A connection failure caused by the caller's own configuration
+           * (e.g. a protocol forced with sl_set_protocol() that the server
+           * does not support) reproduces identically on every retry; treat
+           * it as fatal rather than reconnecting forever. */
+          if (slconn->config_error)
+          {
+            sl_log_r (slconn, 2, 0, "[%s] %s(): connection failed due to invalid configuration\n",
+                      slconn->sladdr, __func__);
+            sl_disconnect (slconn);
+            *packetinfo = NULL;
+            return SLTERMINATE;
+          }
+
           /* Connection failed, let outer reconnection logic handle delay */
           sl_log_r (slconn, 2, 0, "[%s] connection failed\n", slconn->sladdr);
           break;
@@ -208,8 +221,11 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
       /* Read incoming data stream */
       if (slconn->stat->conn_state == STREAMING)
       {
-        /* Receive data into internal buffer (skip if connection already closed) */
-        if (slconn->terminate == 0 && slconn->link != -1)
+        /* Receive data into internal buffer (skip if connection already closed
+         * or the buffer is already full; a zero-length read is indistinguishable
+         * from the peer closing the connection) */
+        if (slconn->terminate == 0 && slconn->link != -1 &&
+            slconn->recvdatalen < sizeof (slconn->recvbuffer))
         {
           bytesread =
               sl_recvdata (slconn, slconn->recvbuffer + slconn->recvdatalen,
@@ -462,8 +478,13 @@ sl_collect (SLCD *slconn, const SLpacketinfo **packetinfo, char *plbuffer, uint3
 
         slconn->recvdatalen -= bytesconsumed;
 
-        /* Connection closed and buffer exhausted or can't progress - break to reconnect */
-        if (slconn->link == -1 && (slconn->recvdatalen == 0 || bytesconsumed == 0))
+        /* Connection closed and buffer exhausted or can't progress - break to
+         * reconnect. A payload completed this pass also zeroes bytesconsumed
+         * (above) after shifting it out, so that alone is not "can't
+         * progress" - any further complete packets still buffered must be
+         * drained before reconnecting. */
+        if (slconn->link == -1 &&
+            (slconn->recvdatalen == 0 || (bytesconsumed == 0 && !payload_completed)))
         {
           sl_log_r (slconn, 2, 0, "[%s] %s(): connection closed\n", slconn->sladdr, __func__);
           break;
@@ -593,7 +614,24 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
     /* Parse v3 data header */
     else if (memcmp (buffer, SIGNATURE_V3, 2) == 0)
     {
+      int idx;
+
       memcpy (sequence, buffer + 2, 6);
+
+      /* The field is a fixed-width 6-digit hex value; reject anything else
+       * outright rather than let strtoul() accept a leading sign and wrap
+       * to a value colliding with the SL_UNSETSEQUENCE/SL_ALLDATASEQUENCE
+       * sentinels. */
+      for (idx = 0; idx < 6; idx++)
+      {
+        if (!isxdigit ((unsigned char)sequence[idx]))
+        {
+          sl_log_r (slconn, 2, 0, "[%s] %s() cannot parse sequence number from v3 header: %8.8s\n",
+                    slconn->sladdr, __func__, buffer + 2);
+          return -1;
+        }
+      }
+
       slconn->stat->packetinfo.seqnum = strtoul (sequence, &tail, 16);
 
       if (*tail)
@@ -630,6 +668,19 @@ receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable)
       {
         sl_gswap8 (&slconn->stat->packetinfo.seqnum);
         sl_gswap4 (&slconn->stat->packetinfo.payloadlength);
+      }
+
+      /* Reject a wire sequence number that collides with the reserved
+       * SL_UNSETSEQUENCE/SL_ALLDATASEQUENCE sentinels; storing either would
+       * silently change what the next reconnect requests. */
+      if (slconn->stat->packetinfo.seqnum == SL_UNSETSEQUENCE ||
+          slconn->stat->packetinfo.seqnum == SL_ALLDATASEQUENCE)
+      {
+        sl_log_r (slconn, 2, 0,
+                  "[%s] %s(): sequence number in v4 header collides with a reserved value "
+                  "(%" PRIu64 ")\n",
+                  slconn->sladdr, __func__, slconn->stat->packetinfo.seqnum);
+        return -1;
       }
     }
     else
@@ -1137,42 +1188,57 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
     search = server_address;
   }
 
-  /* Search address for host-port separator, i.e. last ':' */
-  separator = strrchr (search, ':');
-
-  /* If address begins with the separator */
-  if (server_address == separator)
-  {
-    hostptr = SL_DEFAULT_HOST;
-    hostlen = strlen (SL_DEFAULT_HOST);
-
-    if (server_address[1] == '\0') /* Only a separator */
-    {
-      portptr = SL_DEFAULT_PORT;
-    }
-    else /* Only a port */
-    {
-      portptr = server_address + 1;
-    }
-  }
-  /* Otherwise if no separator, use default port */
-  else if (separator == NULL)
+  /* A bare (unbracketed) IPv6 address contains more than one ':'; every
+   * other supported form (hostname, IPv4, either with an optional port)
+   * contains at most one, so more than one ':' with no brackets cannot be
+   * host:port. Treat the whole string as the host with the default port
+   * rather than splitting on the last ':', which would otherwise cut a raw
+   * IPv6 address in two. */
+  if (search == server_address && strchr (server_address, ':') != strrchr (server_address, ':'))
   {
     hostptr = server_address;
     hostlen = strlen (server_address);
     portptr = SL_DEFAULT_PORT;
   }
-  /* Otherwise separate host and port */
   else
   {
-    hostptr = server_address;
-    hostlen = (size_t)(separator - server_address);
+    /* Search address for host-port separator, i.e. last ':' */
+    separator = strrchr (search, ':');
 
-    /* Handle case of separator present but nothing following */
-    if (strlen (separator + 1) > 0)
-      portptr = separator + 1;
-    else
+    /* If address begins with the separator */
+    if (server_address == separator)
+    {
+      hostptr = SL_DEFAULT_HOST;
+      hostlen = strlen (SL_DEFAULT_HOST);
+
+      if (server_address[1] == '\0') /* Only a separator */
+      {
+        portptr = SL_DEFAULT_PORT;
+      }
+      else /* Only a port */
+      {
+        portptr = server_address + 1;
+      }
+    }
+    /* Otherwise if no separator, use default port */
+    else if (separator == NULL)
+    {
+      hostptr = server_address;
+      hostlen = strlen (server_address);
       portptr = SL_DEFAULT_PORT;
+    }
+    /* Otherwise separate host and port */
+    else
+    {
+      hostptr = server_address;
+      hostlen = (size_t)(separator - server_address);
+
+      /* Handle case of separator present but nothing following */
+      if (strlen (separator + 1) > 0)
+        portptr = separator + 1;
+      else
+        portptr = SL_DEFAULT_PORT;
+    }
   }
 
   /* Remove brackets from host if present, i.e. for raw IPv6 addresses */
@@ -2253,7 +2319,10 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
     }
 
     /* If record length was not determined by a 1000 blockette scan the buffer
-     * and search for the next record header. */
+     * and search for the next record header, optionally preceded by an
+     * intervening V3 SeedLink packet header (the record itself carries no
+     * framing of its own, but a V3 data stream interleaves one 8-byte
+     * header per record). */
     if (reclen == 0)
     {
       nextfsdh = buffer + 64;
@@ -2262,6 +2331,15 @@ detect (const char *buffer, uint64_t buflen, char *payloadformat)
       while ((size_t)((nextfsdh - buffer) + 48) < buflen)
       {
         if (MS2_ISVALIDHEADER (nextfsdh))
+        {
+          reclen = nextfsdh - buffer;
+
+          break;
+        }
+
+        if (memcmp (nextfsdh, SIGNATURE_V3, 2) == 0 &&
+            (size_t)((nextfsdh - buffer) + SLHEADSIZE_V3 + 48) < buflen &&
+            MS2_ISVALIDHEADER (nextfsdh + SLHEADSIZE_V3))
         {
           reclen = nextfsdh - buffer;
 
