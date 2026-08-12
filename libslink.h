@@ -28,9 +28,9 @@
 extern "C" {
 #endif
 
-#define LIBSLINK_RELEASE "2025.340"    /**< libslink release date */
+#define LIBSLINK_RELEASE "2026.224"    /**< libslink release date */
 #define LIBSLINK_VERSION_MAJOR  4      /**< libslink major version */
-#define LIBSLINK_VERSION_MINOR  2      /**< libslink minor version */
+#define LIBSLINK_VERSION_MINOR  3      /**< libslink minor version */
 #define LIBSLINK_VERSION_PATCH  0      /**< libslink patch version */
 #define LIBSLINK_STRINGIFY(a)   LIBSLINK_XSTRINGIFY(a)
 #define LIBSLINK_XSTRINGIFY(a)  #a

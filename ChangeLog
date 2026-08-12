@@ -1,4 +1,4 @@
-2026.222:
+2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
 	- Fix miniSEED payload length detection in detect().
 	- Return SLTERMINATE instead of reconnecting forever after END is
