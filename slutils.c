@@ -897,7 +897,10 @@ update_stream (SLCD *slconn, const char *payload)
   /* The all-station mode entry is always first and accepts any station */
   allstation = (curstream != NULL && strcmp (curstream->stationid, "*") == 0);
 
-  /* Update all matching entries, using glob matching for wildcarded station IDs */
+  /* Update all matching entries, using glob matching for wildcarded station IDs.
+   * Entries for the station itself sort before any wildcarded entries, which
+   * are not resumed from their own sequence numbers when such an entry
+   * exists, so the search ends at the first non-matching entry after it. */
   while (curstream != NULL)
   {
     if ((allstation && curstream == slconn->streams) ||
@@ -913,6 +916,10 @@ update_stream (SLCD *slconn, const char *payload)
 
       updates++;
     }
+    else if (exact)
+    {
+      break;
+    }
 
     curstream = curstream->next;
   }
@@ -926,8 +933,9 @@ update_stream (SLCD *slconn, const char *payload)
   }
 
   /* Track each station received via a wildcard entry with its own entry,
-   * to resume each station from its own sequence number */
-  if (!exact)
+   * to resume each station from its own sequence number.  Not done in v3
+   * uni-station mode, which negotiates only the all-station entry. */
+  if (!exact && (slconn->multistation || !(slconn->protocol & SLPROTO3X)))
     sli_add_matchedstream (slconn, packetinfo->stationid, packetinfo->seqnum, timestamp);
 
   return 0;

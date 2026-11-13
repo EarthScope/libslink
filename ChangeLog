@@ -10,6 +10,10 @@
 		such a station is rejected.
 	- Skip the SELECT and DATA commands of a rejected overlapping v4 station
 	- Track only stations whose IDs contain letters, digits, underscores and dashes
+	- Reduce the cost of per-station tracking with many stations
+	  * End the per-packet stream list search after the station's own entry.
+	  * Check negotiation overlaps against only the wildcard entries.
+	  * Do not add station entries in v3 uni-station mode.
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.

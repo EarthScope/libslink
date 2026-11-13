@@ -63,7 +63,8 @@ static int negotiate_uni_v3 (SLCD *slconn);
 static int negotiate_multi_v3 (SLCD *slconn);
 static int negotiate_v4 (SLCD *slconn);
 static int is_wildcard (const SLstream *stream);
-static int stream_overlaps (SLCD *slconn, const SLstream *stream);
+static const SLstream *first_wildcard_int (SLCD *slconn);
+static int stream_overlaps (SLCD *slconn, const SLstream *firstwild, const SLstream *stream);
 static SLstream *next_stream_int (SLCD *slconn, SLstream *curstream);
 static int sockstartup_int (void);
 static int sockconnect_int (SOCKET sock, struct sockaddr *inetaddr, int addrlen);
@@ -1853,29 +1854,65 @@ is_wildcard (const SLstream *stream)
 } /* End of is_wildcard() */
 
 /***************************************************************************
+ * first_wildcard_int:
+ *
+ * Return the first wildcarded stream list entry after any leading
+ * all-station entry, or NULL if none.  The stream list is partitioned
+ * with entries without wildcards first, so this entry and all following
+ * entries are wildcarded.
+ ***************************************************************************/
+static const SLstream *
+first_wildcard_int (SLCD *slconn)
+{
+  const SLstream *curstream = slconn->streams;
+
+  if (curstream && strcmp (curstream->stationid, "*") == 0)
+    curstream = curstream->next;
+
+  for (; curstream; curstream = curstream->next)
+  {
+    if (is_wildcard (curstream))
+      return curstream;
+  }
+
+  return NULL;
+} /* End of first_wildcard_int() */
+
+/***************************************************************************
  * stream_overlaps:
  *
  * Determine if a stream list entry overlaps another entry: a wildcarded
  * entry that matches one or more entries without wildcards, or an entry
  * without wildcards that is matched by one or more wildcarded entries.
  *
+ * \a firstwild is the first wildcarded entry from first_wildcard_int().
+ *
  * Returns 1 if overlapping, else 0.
  ***************************************************************************/
 static int
-stream_overlaps (SLCD *slconn, const SLstream *stream)
+stream_overlaps (SLCD *slconn, const SLstream *firstwild, const SLstream *stream)
 {
   const SLstream *curstream;
-  int wildcard = is_wildcard (stream);
 
-  for (curstream = slconn->streams; curstream; curstream = curstream->next)
+  if (is_wildcard (stream))
   {
-    if (is_wildcard (curstream) == wildcard)
-      continue;
+    for (curstream = slconn->streams; curstream && curstream != firstwild;
+         curstream = curstream->next)
+    {
+      if (!is_wildcard (curstream) && sl_globmatch (curstream->stationid, stream->stationid))
+        return 1;
+    }
 
-    if (wildcard && sl_globmatch (curstream->stationid, stream->stationid))
-      return 1;
+    return 0;
+  }
 
-    if (!wildcard && sl_globmatch (stream->stationid, curstream->stationid))
+  /* A leading all-station entry matches every station */
+  if (slconn->streams && strcmp (slconn->streams->stationid, "*") == 0)
+    return 1;
+
+  for (curstream = firstwild; curstream; curstream = curstream->next)
+  {
+    if (sl_globmatch (stream->stationid, curstream->stationid))
       return 1;
   }
 
@@ -1947,6 +1984,7 @@ negotiate_multi_v3 (SLCD *slconn)
   char sendstr[100]; /* A buffer for command strings */
   char readbuf[100]; /* A buffer for responses */
   SLstream *curstream;
+  const SLstream *firstwild;
 
   char net[22];
   char *sta;
@@ -1998,6 +2036,7 @@ negotiate_multi_v3 (SLCD *slconn)
               slconn->sladdr);
   }
 
+  firstwild = first_wildcard_int (slconn);
   curstream = next_stream_int (slconn, NULL);
 
   /* Loop through the stream list */
@@ -2151,7 +2190,7 @@ negotiate_multi_v3 (SLCD *slconn)
     }
     else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume &&
              !(curstream->seqnum != SL_ALLDATASEQUENCE && is_wildcard (curstream) &&
-               stream_overlaps (slconn, curstream)))
+               stream_overlaps (slconn, firstwild, curstream)))
     {
       char cmd[10];
 
@@ -2454,6 +2493,7 @@ negotiate_v4 (SLCD *slconn)
   char end_time[31] = {0};
   char sendstr[32]; /* A buffer for small command strings */
   SLstream *curstream;
+  const SLstream *firstwild;
 
   struct v4cmd_s *cmdlist = NULL;
   struct v4cmd_s *cmdtail = NULL;
@@ -2509,13 +2549,14 @@ negotiate_v4 (SLCD *slconn)
               slconn->sladdr);
   }
 
+  firstwild = first_wildcard_int (slconn);
   curstream = next_stream_int (slconn, NULL);
 
   /* Loop through the stream list */
   while (curstream != NULL)
   {
     wildcard = is_wildcard (curstream);
-    overlaps = stream_overlaps (slconn, curstream);
+    overlaps = stream_overlaps (slconn, firstwild, curstream);
     tolerated = (!wildcard && overlaps);
 
     /* Commands following a rejected STATION would apply to the previous

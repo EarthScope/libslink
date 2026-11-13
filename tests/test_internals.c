@@ -836,6 +836,48 @@ test_update_stream_explicit_entry_not_duplicated (void)
 }
 
 static void
+test_update_stream_v3_uni_station_no_station_entries (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t buf[64] = {0};
+
+  sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, NULL);
+  slconn->protocol = SLPROTO3X;
+
+  setup_ms2_payload (buf, sizeof (buf), "XX", "S1", "00", "BHZ", 3,
+                     &slconn->stat->packetinfo, 5, "XX_S1");
+  SLT_EQ_INT (update_stream (slconn, (const char *)buf), 0, "update_stream() accepts the packet");
+
+  SLT_EQ_UINT (slconn->streams->seqnum, 3, "the all-station entry is updated");
+  SLT_NULL (slconn->streams->next, "no station entry is added in v3 uni-station mode");
+
+  sl_freeslcd (slconn);
+}
+
+static void
+test_update_stream_duplicate_exact_entries_updated (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t buf[64] = {0};
+  SLstream *s;
+
+  sl_add_stream (slconn, "XX_*", NULL, SL_UNSETSEQUENCE, NULL);
+  sl_add_stream (slconn, "XX_S1", NULL, 1, NULL);
+  sl_add_stream (slconn, "XX_S1", NULL, 1, NULL);
+
+  setup_ms2_payload (buf, sizeof (buf), "XX", "S1", "00", "BHZ", 7,
+                     &slconn->stat->packetinfo, 5, "XX_S1");
+  SLT_EQ_INT (update_stream (slconn, (const char *)buf), 0, "update_stream() matches");
+
+  s = slconn->streams;
+  SLT_ASSERT (s && s->next && strcmp (s->next->stationid, "XX_S1") == 0, "duplicate entries are adjacent");
+  SLT_ASSERT (s && s->seqnum == 7 && s->next && s->next->seqnum == 7,
+              "every entry for the station is updated");
+
+  sl_freeslcd (slconn);
+}
+
+static void
 test_update_stream_all_station_adds_station_entry (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -906,6 +948,8 @@ main (void)
   SLT_RUN (test_update_stream_wildcard_merges_selectors);
   SLT_RUN (test_update_stream_explicit_entry_not_duplicated);
   SLT_RUN (test_update_stream_all_station_adds_station_entry);
+  SLT_RUN (test_update_stream_v3_uni_station_no_station_entries);
+  SLT_RUN (test_update_stream_duplicate_exact_entries_updated);
 
   return SLT_REPORT ();
 }
