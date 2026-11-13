@@ -67,6 +67,62 @@ test_recoverstate_unmatched_streams_ignored (void)
 }
 
 static void
+test_recoverstate_wildcard_matched_stations_added (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile (
+      "#V2 StationID  Sequence  [Timestamp]\n"
+      "XX_S1 3 2024-01-01T00:00:00Z\n"
+      "XX_S2 5\n"
+      "YY_S9 7\n"
+      "XX_* 5\n");
+  SLstream *s;
+
+  sl_add_stream (slconn, "XX_*", "BHZ", SL_UNSETSEQUENCE, NULL);
+
+  SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "sl_recoverstate() succeeds with wildcard-matched stations");
+
+  s = fx_find_stream (slconn, "XX_S1");
+  SLT_NOT_NULL (s, "an entry is added for a station matching a wildcard entry");
+  SLT_EQ_UINT (s ? s->seqnum : 0, 3, "the added entry's sequence number is recovered");
+  SLT_EQ_STR (s ? s->timestamp : NULL, "2024-01-01T00:00:00Z", "the added entry's timestamp is recovered");
+  SLT_EQ_STR (s ? s->selectors : NULL, "BHZ", "the added entry carries the wildcard entry's selectors");
+
+  s = fx_find_stream (slconn, "XX_S2");
+  SLT_EQ_UINT (s ? s->seqnum : 0, 5, "a second wildcard-matched station is added");
+
+  SLT_ASSERT (fx_find_stream (slconn, "YY_S9") == NULL, "a station matching no entry is ignored");
+  SLT_EQ_UINT (fx_find_stream (slconn, "XX_*")->seqnum, 5, "the wildcard entry itself is recovered");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
+test_recoverstate_all_station_matched_stations_added (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile (
+      "#V2 StationID  Sequence  [Timestamp]\n"
+      "* 10\n"
+      "XX_S1 4\n");
+  SLstream *s;
+
+  sl_set_allstation_params (slconn, NULL, SL_UNSETSEQUENCE, NULL);
+
+  SLT_EQ_INT (sl_recoverstate (slconn, path), 0, "sl_recoverstate() succeeds in all-station mode");
+  SLT_EQ_STR (slconn->streams->stationid, "*", "the all-station entry remains first");
+  SLT_EQ_UINT (slconn->streams->seqnum, 10, "the all-station entry is recovered");
+
+  s = slconn->streams->next;
+  SLT_ASSERT (s && strcmp (s->stationid, "XX_S1") == 0 && s->seqnum == 4,
+              "the station entry is added after the all-station entry");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
 test_recoverstate_legacy_format (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -225,6 +281,8 @@ main (void)
 {
   SLT_RUN (test_roundtrip);
   SLT_RUN (test_recoverstate_unmatched_streams_ignored);
+  SLT_RUN (test_recoverstate_wildcard_matched_stations_added);
+  SLT_RUN (test_recoverstate_all_station_matched_stations_added);
   SLT_RUN (test_recoverstate_legacy_format);
   SLT_RUN (test_recoverstate_legacy_uni_station);
   SLT_RUN (test_recoverstate_unset_keyword);

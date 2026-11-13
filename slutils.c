@@ -30,12 +30,16 @@
 #include "globmatch.h"
 #include "libslink.h"
 #include "mseedformat.h"
+#include "slinternal.h"
 
 /* Function(s) only used in this source file */
 static int receive_header (SLCD *slconn, uint8_t *buffer, uint32_t bytesavailable);
 static int64_t receive_payload (SLCD *slconn, char *plbuffer, uint32_t plbuffersize,
                                 uint8_t *buffer, uint32_t bytesavailable);
 static int update_stream (SLCD *slconn, const char *payload);
+static SLstream *add_stream_int (SLCD *slconn, const char *stationid, const char *selectors,
+                                 uint64_t seqnum, const char *isotime);
+static char *wildcard_selectors (SLCD *slconn, const char *stationid, int *matched);
 static int64_t detect (const char *record, uint64_t recbuflen, char *payloadformat);
 static const char *internal_auth_value_data (const char *server, void *auth_data);
 static void free_internal_auth_data (SLCD *slconn);
@@ -822,6 +826,8 @@ update_stream (SLCD *slconn, const char *payload)
   SLpacketinfo *packetinfo = NULL;
   SLstream *curstream;
   int updates = 0;
+  int allstation;
+  int exact = 0;
 
   char timestamp[32] = {0};
   char sourceid[64] = {0};
@@ -888,27 +894,22 @@ update_stream (SLCD *slconn, const char *payload)
 
   curstream = slconn->streams;
 
-  /* For all-station mode */
-  if (curstream != NULL && strcmp (curstream->stationid, "*") == 0)
-  {
-    curstream->seqnum = packetinfo->seqnum;
+  /* The all-station mode entry is always first and accepts any station */
+  allstation = (curstream != NULL && strcmp (curstream->stationid, "*") == 0);
 
-    if (timestamp[0])
-      strcpy (curstream->timestamp, timestamp);
-
-    return 0;
-  }
-
-  /* For multi-station mode, search the stream list and update all matching entries */
+  /* Update all matching entries, using glob matching for wildcarded station IDs */
   while (curstream != NULL)
   {
-    /* Use glob matching to match wildcarded station ID codes */
-    if (sl_globmatch (packetinfo->stationid, curstream->stationid))
+    if ((allstation && curstream == slconn->streams) ||
+        sl_globmatch (packetinfo->stationid, curstream->stationid))
     {
       curstream->seqnum = packetinfo->seqnum;
 
       if (timestamp[0])
         strcpy (curstream->timestamp, timestamp);
+
+      if (strcmp (packetinfo->stationid, curstream->stationid) == 0)
+        exact = 1;
 
       updates++;
     }
@@ -918,11 +919,149 @@ update_stream (SLCD *slconn, const char *payload)
 
   /* If no updates then no match was found */
   if (updates == 0)
+  {
     sl_log_r (slconn, 2, 0, "[%s] unexpected data received: %s\n", slconn->sladdr,
               packetinfo->stationid);
+    return -1;
+  }
 
-  return (updates == 0) ? -1 : 0;
+  /* Track each station received via a wildcard entry with its own entry,
+   * to resume each station from its own sequence number */
+  if (!exact)
+    sli_add_matchedstream (slconn, packetinfo->stationid, packetinfo->seqnum, timestamp);
+
+  return 0;
 } /* End of update_stream() */
+
+/***************************************************************************
+ * wildcard_selectors:
+ *
+ * Combine the selectors of all wildcarded stream list entries matching
+ * \a stationid, removing duplicates.  If any matching entry has no
+ * selectors, i.e. all streams, the result is NULL.
+ *
+ * \a matched is set to the count of matching wildcarded entries.
+ *
+ * Returns an allocated selector string or NULL if none (or on error,
+ * with \a matched set to -1).
+ ***************************************************************************/
+static char *
+wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
+{
+  SLstream *curstream;
+  char *selectors = NULL;
+  char *selptr;
+  char *found;
+  size_t sellen;
+  size_t maxlen = 0;
+  size_t length = 0;
+  int allselected = 0;
+
+  *matched = 0;
+
+  for (curstream = slconn->streams; curstream; curstream = curstream->next)
+  {
+    if (!strpbrk (curstream->stationid, "*?") || !sl_globmatch (stationid, curstream->stationid))
+      continue;
+
+    (*matched)++;
+
+    if (!curstream->selectors || curstream->selectors[strspn (curstream->selectors, " ")] == '\0')
+      allselected = 1;
+    else
+      maxlen += strlen (curstream->selectors) + 1;
+  }
+
+  if (*matched == 0 || allselected)
+    return NULL;
+
+  if ((selectors = (char *)malloc (maxlen + 1)) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
+    *matched = -1;
+    return NULL;
+  }
+
+  selectors[0] = '\0';
+
+  for (curstream = slconn->streams; curstream; curstream = curstream->next)
+  {
+    if (!strpbrk (curstream->stationid, "*?") || !sl_globmatch (stationid, curstream->stationid))
+      continue;
+
+    /* Append each space-separated selector not already present */
+    for (selptr = curstream->selectors; *selptr; selptr += sellen)
+    {
+      selptr += strspn (selptr, " ");
+      sellen = strcspn (selptr, " ");
+
+      if (sellen == 0)
+        break;
+
+      for (found = selectors; *found; found += strcspn (found, " "), found += strspn (found, " "))
+      {
+        if (strcspn (found, " ") == sellen && strncmp (found, selptr, sellen) == 0)
+          break;
+      }
+
+      if (*found)
+        continue;
+
+      if (length > 0)
+        selectors[length++] = ' ';
+
+      memcpy (selectors + length, selptr, sellen);
+      length += sellen;
+      selectors[length] = '\0';
+    }
+  }
+
+  return selectors;
+} /* End of wildcard_selectors() */
+
+/***************************************************************************
+ * sli_add_matchedstream:
+ *
+ * Add a stream list entry for \a stationid if it has no entry of its own
+ * and matches one or more wildcarded entries.  The new entry carries the
+ * combined selectors of the matching wildcarded entries.
+ *
+ * Not part of the public API.
+ *
+ * Returns 1 if an entry was added, 0 if not needed and -1 on error.
+ ***************************************************************************/
+int
+sli_add_matchedstream (SLCD *slconn, const char *stationid, uint64_t seqnum, const char *isotime)
+{
+  SLstream *curstream;
+  char *selectors;
+  int matched;
+
+  if (!slconn || !stationid || stationid[0] == '\0' || strpbrk (stationid, "*?"))
+    return 0;
+
+  for (curstream = slconn->streams; curstream; curstream = curstream->next)
+  {
+    if (strcmp (curstream->stationid, stationid) == 0)
+      return 0;
+  }
+
+  selectors = wildcard_selectors (slconn, stationid, &matched);
+
+  if (matched <= 0)
+    return matched;
+
+  curstream = add_stream_int (slconn, stationid, selectors, seqnum, isotime);
+
+  free (selectors);
+
+  if (curstream == NULL)
+    return -1;
+
+  sl_log_r (slconn, 1, 2, "[%s] added stream list entry for %s\n", slconn->sladdr, stationid);
+
+  return 1;
+} /* End of sli_add_matchedstream() */
 
 /** ************************************************************************
  * @brief Initialize a new ::SLCD
@@ -1732,6 +1871,12 @@ sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol)
  * and partitioned by the presence of wildcard characters in the
  * station ID, starting with more specific entries first.
  *
+ * When data is received for a station that matches only wildcarded
+ * entries, an entry for that station is added to the stream list,
+ * carrying the selectors of the matching wildcarded entries.  Each such
+ * station is resumed from its own sequence number on reconnection, and
+ * the wildcarded entries request data for any other stations.
+ *
  * @param[in] slconn     SeedLink connection description
  * @param[in] stationid  Station ID
  * @param[in] selectors  Selectors for the station ID, NULL if none
@@ -1745,11 +1890,6 @@ int
 sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint64_t seqnum,
                const char *timestamp)
 {
-  SLstream *curstream;
-  SLstream *newstream;
-  SLstream *followstream = NULL;
-  int newparitition = 0;
-  int partition = 0;
   char isotime[32] = {0};
 
   if (!slconn || !stationid)
@@ -1787,12 +1927,42 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
     }
   }
 
+  if (add_stream_int (slconn, stationid, selectors, seqnum, isotime) == NULL)
+    return -1;
+
+  slconn->multistation = 1;
+
+  return 0;
+} /* End of sl_add_stream() */
+
+/***************************************************************************
+ * add_stream_int:
+ *
+ * Allocate a stream list entry and insert it into the stream list,
+ * which is sorted alphanumerically by station ID and partitioned by the
+ * presence of wildcard characters, starting with more specific entries.
+ * An all-station mode entry remains first in the list.
+ *
+ * \a isotime must already be ISO-compatible, or NULL.
+ *
+ * Returns the new entry or NULL on error.
+ ***************************************************************************/
+static SLstream *
+add_stream_int (SLCD *slconn, const char *stationid, const char *selectors, uint64_t seqnum,
+                const char *isotime)
+{
+  SLstream *curstream;
+  SLstream *newstream;
+  SLstream *followstream = NULL;
+  int newparitition = 0;
+  int partition = 0;
+
   newstream = (SLstream *)malloc (sizeof (SLstream));
 
   if (newstream == NULL)
   {
     sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
-    return -1;
+    return NULL;
   }
 
   memset (newstream, 0, sizeof (SLstream));
@@ -1806,12 +1976,16 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
   {
     sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
     free (newstream);
-    return -1;
+    return NULL;
   }
 
   newstream->seqnum = seqnum;
 
-  strcpy (newstream->timestamp, isotime);
+  if (isotime)
+  {
+    strncpy (newstream->timestamp, isotime, sizeof (newstream->timestamp) - 1);
+    newstream->timestamp[sizeof (newstream->timestamp) - 1] = '\0';
+  }
 
   /* Search the stream list to find the proper insertion point.
    * The resulting list is sorted alphanumerically and partitioned by:
@@ -1820,6 +1994,14 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
    * 3) * wildcards in NET_STA. */
   newparitition = (strchr (stationid, '*')) ? 3 : (strchr (stationid, '?')) ? 2 : 1;
   curstream = slconn->streams;
+
+  /* The all-station mode entry remains first */
+  if (curstream && strcmp (curstream->stationid, "*") == 0)
+  {
+    followstream = curstream;
+    curstream = curstream->next;
+  }
+
   while (curstream)
   {
     /* Determine wildcard partition */
@@ -1861,10 +2043,8 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
     slconn->streams = newstream;
   }
 
-  slconn->multistation = 1;
-
-  return 0;
-} /* End of sl_add_stream() */
+  return newstream;
+} /* End of add_stream_int() */
 
 /** ************************************************************************
  * @brief Set the parameters for an all-station mode connection
@@ -1876,6 +2056,11 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
  * For SeedLink v3 this is "uni-station" mode.
  *
  * Also set the multistation flag to false (0).
+ *
+ * The all-station entry is always first in the stream list.  When data is
+ * received for a station, an entry for that station is added after it
+ * so the station can be resumed from its own sequence number (not
+ * supported by v3 uni-station mode).
  *
  * @param[in] slconn     SeedLink connection description
  * @param[in] selectors  Selectors for the station ID, NULL if none
@@ -1949,8 +2134,6 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors, uint64_t seqnum,
   newstream->seqnum = seqnum;
 
   strcpy (newstream->timestamp, isotime);
-
-  newstream->next = NULL;
 
   slconn->streams = newstream;
 

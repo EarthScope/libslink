@@ -1,3 +1,12 @@
+2026.317:
+	- Resume wildcard station entries with each station's own sequence number
+	* Add a stream list entry for each station received via a wildcard
+	entry, carrying the selectors of the matching wildcard entries.
+	* Recover such stations from the state file.
+	* Negotiate stations before wildcard entries, request the next
+	available data for wildcards, and do not fail a v4 negotiation when
+	such a station is rejected.
+
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
 	- Fix miniSEED payload length detection in detect().

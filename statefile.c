@@ -26,6 +26,7 @@
 #include <string.h>
 
 #include "libslink.h"
+#include "slinternal.h"
 
 #define HEADER_V2 "#V2 StationID  Sequence  [Timestamp]"
 
@@ -328,6 +329,13 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
       }
 
       curstream = curstream->next;
+    }
+
+    /* Add an entry for a station previously received via a wildcarded entry */
+    if (curstream == NULL &&
+        sli_add_matchedstream (slconn, stationstr, seqnum, timestr) < 0)
+    {
+      retval = -1;
     }
 
     count++;

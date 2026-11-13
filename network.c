@@ -30,6 +30,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "globmatch.h"
 #include "libslink.h"
 
 #if !defined(SLP_WIN)
@@ -61,6 +62,9 @@ static int batchmode_int (SLCD *slconn);
 static int negotiate_uni_v3 (SLCD *slconn);
 static int negotiate_multi_v3 (SLCD *slconn);
 static int negotiate_v4 (SLCD *slconn);
+static int is_wildcard (const SLstream *stream);
+static int stream_overlaps (SLCD *slconn, const SLstream *stream);
+static SLstream *next_stream_int (SLCD *slconn, SLstream *curstream);
 static int sockstartup_int (void);
 static int sockconnect_int (SOCKET sock, struct sockaddr *inetaddr, int addrlen);
 static int socknoblock_int (SOCKET sock);
@@ -1838,6 +1842,80 @@ negotiate_uni_v3 (SLCD *slconn)
 } /* End of negotiate_uni_v3() */
 
 /***************************************************************************
+ * is_wildcard:
+ *
+ * Returns 1 if the station ID of \a stream contains wildcards, else 0.
+ ***************************************************************************/
+static int
+is_wildcard (const SLstream *stream)
+{
+  return (strpbrk (stream->stationid, "*?") != NULL);
+} /* End of is_wildcard() */
+
+/***************************************************************************
+ * stream_overlaps:
+ *
+ * Determine if a stream list entry overlaps another entry: a wildcarded
+ * entry that matches one or more entries without wildcards, or an entry
+ * without wildcards that is matched by one or more wildcarded entries.
+ *
+ * Returns 1 if overlapping, else 0.
+ ***************************************************************************/
+static int
+stream_overlaps (SLCD *slconn, const SLstream *stream)
+{
+  const SLstream *curstream;
+  int wildcard = is_wildcard (stream);
+
+  for (curstream = slconn->streams; curstream; curstream = curstream->next)
+  {
+    if (is_wildcard (curstream) == wildcard)
+      continue;
+
+    if (wildcard && sl_globmatch (curstream->stationid, stream->stationid))
+      return 1;
+
+    if (!wildcard && sl_globmatch (stream->stationid, curstream->stationid))
+      return 1;
+  }
+
+  return 0;
+} /* End of stream_overlaps() */
+
+/***************************************************************************
+ * next_stream_int:
+ *
+ * Return the stream list entry to negotiate after \a curstream, or the
+ * first when \a curstream is NULL.  Entries without wildcards are
+ * returned first, followed by wildcarded entries, so that stations are
+ * configured before any wildcarded entry that also matches them.
+ *
+ * Returns the next entry or NULL when done.
+ ***************************************************************************/
+static SLstream *
+next_stream_int (SLCD *slconn, SLstream *curstream)
+{
+  int wildcard = (curstream) ? is_wildcard (curstream) : 0;
+
+  curstream = (curstream) ? curstream->next : slconn->streams;
+
+  while (1)
+  {
+    for (; curstream; curstream = curstream->next)
+    {
+      if (is_wildcard (curstream) == wildcard)
+        return curstream;
+    }
+
+    if (wildcard)
+      return NULL;
+
+    wildcard = 1;
+    curstream = slconn->streams;
+  }
+} /* End of next_stream_int() */
+
+/***************************************************************************
  * negotiate_multi_v3:
  *
  * Negotiate stream selection with protocol 3 in multi-station mode
@@ -1848,6 +1926,10 @@ negotiate_uni_v3 (SLCD *slconn)
  *
  * If \a curstream->seqnum is not `SL_UNSETSEQUENCE` and the SLCD \a resume
  * flag is true then data is requested starting at seqnum.
+ *
+ * Entries without wildcards are configured before wildcarded entries.  A
+ * wildcarded entry that matches other entries requests the next available
+ * data, as each matched station resumes from its own sequence number.
  *
  * Returns -1 on errors, otherwise returns the link descriptor.
  ***************************************************************************/
@@ -1916,7 +1998,7 @@ negotiate_multi_v3 (SLCD *slconn)
               slconn->sladdr);
   }
 
-  curstream = slconn->streams;
+  curstream = next_stream_int (slconn, NULL);
 
   /* Loop through the stream list */
   while (curstream != NULL)
@@ -1960,7 +2042,7 @@ negotiate_multi_v3 (SLCD *slconn)
         sl_log_r (slconn, 2, 0, "[%s] station not accepted %s%s%s\n", curstream->stationid,
                   (extreply) ? "{" : "", (extreply) ? extreply : "", (extreply) ? "}" : "");
         /* Increment the loop control and skip to the next stream */
-        curstream = curstream->next;
+        curstream = next_stream_int (slconn, curstream);
         continue;
       }
       else
@@ -2067,7 +2149,9 @@ negotiate_multi_v3 (SLCD *slconn)
       }
       sl_log_r (slconn, 1, 1, "[%s] requesting specified time window\n", curstream->stationid);
     }
-    else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume)
+    else if (curstream->seqnum != SL_UNSETSEQUENCE && slconn->resume &&
+             !(curstream->seqnum != SL_ALLDATASEQUENCE && is_wildcard (curstream) &&
+               stream_overlaps (slconn, curstream)))
     {
       char cmd[10];
 
@@ -2161,7 +2245,7 @@ negotiate_multi_v3 (SLCD *slconn)
       }
     }
 
-    curstream = curstream->next;
+    curstream = next_stream_int (slconn, curstream);
 
   } /* End of stream and selector config (end of stream list). */
 
@@ -2204,6 +2288,12 @@ negotiate_multi_v3 (SLCD *slconn)
  * be requested.  Otherwise, if it is not set to SL_UNSETSEQUENCE and the
  * SLCD.resume flag is true then data is requested starting at seqnum.
  *
+ * Entries without wildcards are configured before wildcarded entries.  A
+ * wildcarded entry that matches other entries requests the next available
+ * data, as each matched station resumes from its own sequence number.
+ * Errors for an entry that is also matched by a wildcarded entry are not
+ * fatal; data for that station is still requested via the wildcard.
+ *
  * Returns -1 on errors, otherwise returns the link descriptor.
  ***************************************************************************/
 static SOCKET
@@ -2212,6 +2302,8 @@ negotiate_v4 (SLCD *slconn)
   int stationcnt = 0; /* Station count */
   int errorcnt = 0;   /* Error count */
   int bytesread = 0;
+  int wildcard;
+  int overlaps;
   size_t sellen = 0;
   char *selptr;
   char *cp;
@@ -2228,6 +2320,7 @@ negotiate_v4 (SLCD *slconn)
   {
     char cmd[100];
     char nsid[22];
+    int tolerated; /* Errors are not fatal */
     struct cmd_s *next;
   };
 
@@ -2285,11 +2378,14 @@ negotiate_v4 (SLCD *slconn)
               slconn->sladdr);
   }
 
-  curstream = slconn->streams;
+  curstream = next_stream_int (slconn, NULL);
 
   /* Loop through the stream list */
   while (curstream != NULL)
   {
+    wildcard = is_wildcard (curstream);
+    overlaps = stream_overlaps (slconn, curstream);
+
     /* Allocate new command in list */
     if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
     {
@@ -2316,6 +2412,7 @@ negotiate_v4 (SLCD *slconn)
     }
 
     strcpy (cmdtail->nsid, curstream->stationid);
+    cmdtail->tolerated = (!wildcard && overlaps);
     cmdtail->next = NULL;
 
     /* Generate STATION command */
@@ -2386,6 +2483,7 @@ negotiate_v4 (SLCD *slconn)
           cmdtail->next = cmdptr;
           cmdtail = cmdptr;
           strcpy (cmdtail->nsid, curstream->stationid);
+          cmdtail->tolerated = (!wildcard && overlaps);
           cmdtail->next = NULL;
 
           /* Generate SELECT command */
@@ -2411,12 +2509,16 @@ negotiate_v4 (SLCD *slconn)
     cmdtail->next = cmdptr;
     cmdtail = cmdptr;
     strcpy (cmdtail->nsid, curstream->stationid);
+    cmdtail->tolerated = (!wildcard && overlaps);
     cmdtail->next = NULL;
 
-    /* Generate DATA command with _incremented_ sequence number */
+    /* Generate DATA command with _incremented_ sequence number.  A wildcarded
+     * entry matching other entries is not resumed from its sequence number,
+     * which may be from any of the stations it matches. */
     if (start_time[0])
     {
-      if (curstream->seqnum == SL_UNSETSEQUENCE || curstream->seqnum == SL_ALLDATASEQUENCE)
+      if (curstream->seqnum == SL_UNSETSEQUENCE || curstream->seqnum == SL_ALLDATASEQUENCE ||
+          (wildcard && overlaps))
       {
         snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL %s%s%s\r", start_time,
                   (end_time[0]) ? " " : "", (end_time[0]) ? end_time : "");
@@ -2430,13 +2532,13 @@ negotiate_v4 (SLCD *slconn)
     }
     else
     {
-      if (curstream->seqnum == SL_UNSETSEQUENCE)
-      {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA\r");
-      }
-      else if (curstream->seqnum == SL_ALLDATASEQUENCE)
+      if (curstream->seqnum == SL_ALLDATASEQUENCE)
       {
         snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL\r");
+      }
+      else if (curstream->seqnum == SL_UNSETSEQUENCE || (wildcard && overlaps))
+      {
+        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA\r");
       }
       else
       {
@@ -2445,7 +2547,7 @@ negotiate_v4 (SLCD *slconn)
       }
     }
 
-    curstream = curstream->next;
+    curstream = next_stream_int (slconn, curstream);
   } /* End of stream and selector config */
 
   /* Send all generated commands */
@@ -2499,6 +2601,11 @@ negotiate_v4 (SLCD *slconn)
     if (bytesread >= 2 && !strncmp (readbuf, "OK", 2))
     {
       sl_log_r (slconn, 1, 2, "[%s] Command OK (%s)\n", cmdptr->nsid, cmdptr->cmd);
+    }
+    else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5) && cmdptr->tolerated)
+    {
+      sl_log_r (slconn, 1, 0, "[%s] Command not accepted (%s), continuing via wildcard: %s\n",
+                cmdptr->nsid, cmdptr->cmd, readbuf);
     }
     else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5))
     {
