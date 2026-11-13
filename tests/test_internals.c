@@ -751,6 +751,35 @@ test_update_stream_wildcard_adds_station_entry (void)
 }
 
 static void
+test_update_stream_wildcard_invalid_station_id_not_added (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t buf[64] = {0};
+  const char *invalid[] = {"XX_S 1", "XX_S\r1", "XX_S[12]", "XX_S\\1", "XX_S.1"};
+  size_t idx;
+
+  sl_add_stream (slconn, "XX_*", NULL, SL_UNSETSEQUENCE, NULL);
+
+  for (idx = 0; idx < sizeof (invalid) / sizeof (invalid[0]); idx++)
+  {
+    setup_ms2_payload (buf, sizeof (buf), "XX", "S1", "00", "BHZ", 2,
+                       &slconn->stat->packetinfo, (uint8_t)strlen (invalid[idx]), invalid[idx]);
+    SLT_EQ_INT (update_stream (slconn, (const char *)buf), 0,
+                "a packet with an unsupported station ID is still accepted via the wildcard");
+  }
+
+  SLT_ASSERT (slconn->streams && !slconn->streams->next,
+              "no entry is added for station IDs with unsupported characters");
+
+  SLT_EQ_INT (sli_add_matchedstream (slconn, "XX_A B", 1, NULL), 0,
+              "a recovered station ID with a space is not added");
+  SLT_EQ_INT (sli_add_matchedstream (slconn, "XX_A-1", 1, NULL), 1,
+              "a station ID with a dash is added");
+
+  sl_freeslcd (slconn);
+}
+
+static void
 test_update_stream_wildcard_merges_selectors (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -873,6 +902,7 @@ main (void)
   SLT_RUN (test_update_stream_v3_stationid_extraction);
   SLT_RUN (test_update_stream_info_packet_skipped);
   SLT_RUN (test_update_stream_wildcard_adds_station_entry);
+  SLT_RUN (test_update_stream_wildcard_invalid_station_id_not_added);
   SLT_RUN (test_update_stream_wildcard_merges_selectors);
   SLT_RUN (test_update_stream_explicit_entry_not_duplicated);
   SLT_RUN (test_update_stream_all_station_adds_station_entry);

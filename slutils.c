@@ -1026,6 +1026,10 @@ wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
  * and matches one or more wildcarded entries.  The new entry carries the
  * combined selectors of the matching wildcarded entries.
  *
+ * Only station IDs of letters, digits, underscores and dashes are added;
+ * others cannot be safely written to a state file, sent in a STATION
+ * command or used as a glob pattern.
+ *
  * Not part of the public API.
  *
  * Returns 1 if an entry was added, 0 if not needed and -1 on error.
@@ -1033,12 +1037,22 @@ wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
 int
 sli_add_matchedstream (SLCD *slconn, const char *stationid, uint64_t seqnum, const char *isotime)
 {
+  static const char validchars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+                                   "abcdefghijklmnopqrstuvwxyz"
+                                   "0123456789_-";
   SLstream *curstream;
   char *selectors;
   int matched;
 
-  if (!slconn || !stationid || stationid[0] == '\0' || strpbrk (stationid, "*?"))
+  if (!slconn || !stationid || stationid[0] == '\0')
     return 0;
+
+  if (stationid[strspn (stationid, validchars)] != '\0')
+  {
+    sl_log_r (slconn, 1, 2, "[%s] not tracking station ID with unsupported characters: '%s'\n",
+              slconn->sladdr, stationid);
+    return 0;
+  }
 
   for (curstream = slconn->streams; curstream; curstream = curstream->next)
   {

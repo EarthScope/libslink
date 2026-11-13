@@ -930,8 +930,16 @@ class TestResumeWildcard(ProtocolTestCase):
             ],
         )
         self.assertEqual(len(events["packets"]), 5, events)
-        self.assertIn("STATION XX_A", histories[2], histories)
         self.assertNotIn(3, histories)
+
+        # No SELECT or DATA follows the rejected STATION, as those would
+        # apply to the previously selected station
+        commands = [c for c in histories[2] if c.startswith(("STATION", "SELECT", "DATA"))]
+        self.assertEqual(
+            commands,
+            ["STATION XX_A", "STATION XX_B", "DATA 5", "STATION XX_*", "DATA"],
+            histories[2],
+        )
 
 
 if __name__ == "__main__":

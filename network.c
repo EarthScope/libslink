@@ -2275,6 +2275,146 @@ negotiate_multi_v3 (SLCD *slconn)
   return slconn->link;
 } /* End of negotiate_multi_v3() */
 
+/* A queued v4 negotiation command */
+struct v4cmd_s
+{
+  char cmd[100];
+  char nsid[22];
+  int tolerated; /* Errors are not fatal */
+  struct v4cmd_s *next;
+};
+
+/***************************************************************************
+ * free_v4cmds_int:
+ *
+ * Free a v4 command list and reset it to empty.
+ ***************************************************************************/
+static void
+free_v4cmds_int (struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtail)
+{
+  struct v4cmd_s *next;
+
+  while (*cmdlist)
+  {
+    next = (*cmdlist)->next;
+    free (*cmdlist);
+    *cmdlist = next;
+  }
+
+  *cmdtail = NULL;
+} /* End of free_v4cmds_int() */
+
+/***************************************************************************
+ * add_v4cmd_int:
+ *
+ * Append an empty command for \a nsid to a v4 command list.
+ *
+ * Returns the new command or NULL on error.
+ ***************************************************************************/
+static struct v4cmd_s *
+add_v4cmd_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtail, const char *nsid,
+               int tolerated)
+{
+  struct v4cmd_s *cmdptr;
+
+  if ((cmdptr = (struct v4cmd_s *)malloc (sizeof (struct v4cmd_s))) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
+    return NULL;
+  }
+
+  cmdptr->cmd[0] = '\0';
+  snprintf (cmdptr->nsid, sizeof (cmdptr->nsid), "%s", nsid);
+  cmdptr->tolerated = tolerated;
+  cmdptr->next = NULL;
+
+  if (*cmdtail)
+    (*cmdtail)->next = cmdptr;
+  else
+    *cmdlist = cmdptr;
+
+  *cmdtail = cmdptr;
+
+  return cmdptr;
+} /* End of add_v4cmd_int() */
+
+/***************************************************************************
+ * send_v4cmds_int:
+ *
+ * Send all commands in a v4 command list, then receive and check all
+ * responses.  \a errorcnt is incremented for each error that is not
+ * tolerated.  The list is freed and reset to empty.
+ *
+ * Returns the count of tolerated commands not accepted, or -1 on error.
+ ***************************************************************************/
+static int
+send_v4cmds_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtail, int *errorcnt)
+{
+  struct v4cmd_s *cmdptr;
+  char readbuf[200]; /* A buffer for responses */
+  char *cp;
+  int bytesread;
+  int rejected = 0;
+
+  for (cmdptr = *cmdlist; cmdptr; cmdptr = cmdptr->next)
+  {
+    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", cmdptr->nsid, cmdptr->cmd);
+
+    bytesread = sl_senddata (slconn, (void *)cmdptr->cmd, strlen (cmdptr->cmd), cmdptr->nsid,
+                             (void *)NULL, 0);
+
+    if (bytesread < 0)
+    {
+      free_v4cmds_int (cmdlist, cmdtail);
+      return -1;
+    }
+  }
+
+  for (cmdptr = *cmdlist; cmdptr; cmdptr = cmdptr->next)
+  {
+    bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf), cmdptr->cmd, cmdptr->nsid);
+
+    if (bytesread < 0)
+    {
+      free_v4cmds_int (cmdlist, cmdtail);
+      return -1;
+    }
+
+    /* Terminate command and response at first carriage return */
+    if ((cp = strchr (cmdptr->cmd, '\r')))
+      *cp = '\0';
+    if ((cp = strchr (readbuf, '\r')))
+      *cp = '\0';
+
+    if (bytesread >= 2 && !strncmp (readbuf, "OK", 2))
+    {
+      sl_log_r (slconn, 1, 2, "[%s] Command OK (%s)\n", cmdptr->nsid, cmdptr->cmd);
+    }
+    else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5) && cmdptr->tolerated)
+    {
+      sl_log_r (slconn, 1, 0, "[%s] Command not accepted (%s), continuing via wildcard: %s\n",
+                cmdptr->nsid, cmdptr->cmd, readbuf);
+      rejected++;
+    }
+    else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5))
+    {
+      sl_log_r (slconn, 2, 0, "[%s] Command not accepted (%s): %s\n", cmdptr->nsid, cmdptr->cmd,
+                readbuf);
+      (*errorcnt)++;
+    }
+    else
+    {
+      sl_log_r (slconn, 2, 0, "[%s] invalid response to command (%s): %s\n", cmdptr->nsid,
+                cmdptr->cmd, readbuf);
+      (*errorcnt)++;
+    }
+  }
+
+  free_v4cmds_int (cmdlist, cmdtail);
+
+  return rejected;
+} /* End of send_v4cmds_int() */
+
 /***************************************************************************
  * negotiate_v4:
  *
@@ -2301,32 +2441,23 @@ negotiate_v4 (SLCD *slconn)
 {
   int stationcnt = 0; /* Station count */
   int errorcnt = 0;   /* Error count */
-  int bytesread = 0;
   int wildcard;
   int overlaps;
+  int tolerated;
+  int rejected;
   size_t sellen = 0;
   char *selptr;
-  char *cp;
   char *cmd_selector;
   char selector[32] = {0};
   char v4selector[32] = {0};
   char start_time[31] = {0};
   char end_time[31] = {0};
-  char sendstr[32];  /* A buffer for small command strings */
-  char readbuf[200]; /* A buffer for responses */
+  char sendstr[32]; /* A buffer for small command strings */
   SLstream *curstream;
 
-  struct cmd_s
-  {
-    char cmd[100];
-    char nsid[22];
-    int tolerated; /* Errors are not fatal */
-    struct cmd_s *next;
-  };
-
-  struct cmd_s *cmdlist = NULL;
-  struct cmd_s *cmdtail = NULL;
-  struct cmd_s *cmdptr = NULL;
+  struct v4cmd_s *cmdlist = NULL;
+  struct v4cmd_s *cmdtail = NULL;
+  struct v4cmd_s *cmdptr = NULL;
 
   if (!slconn)
     return -1;
@@ -2385,38 +2516,42 @@ negotiate_v4 (SLCD *slconn)
   {
     wildcard = is_wildcard (curstream);
     overlaps = stream_overlaps (slconn, curstream);
+    tolerated = (!wildcard && overlaps);
 
-    /* Allocate new command in list */
-    if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
+    /* Commands following a rejected STATION would apply to the previous
+     * station, so a STATION whose errors are tolerated is confirmed before
+     * its SELECT and DATA commands are generated */
+    if (tolerated)
     {
-      sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
-      while (cmdlist)
+      if (send_v4cmds_int (slconn, &cmdlist, &cmdtail, &errorcnt) < 0)
+        return -1;
+
+      if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
+          NULL)
+        return -1;
+
+      snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "STATION %s\r", curstream->stationid);
+
+      if ((rejected = send_v4cmds_int (slconn, &cmdlist, &cmdtail, &errorcnt)) < 0)
+        return -1;
+
+      if (rejected)
       {
-        cmdptr = cmdlist->next;
-        free (cmdlist);
-        cmdlist = cmdptr;
+        curstream = next_stream_int (slconn, curstream);
+        continue;
       }
-
-      return -1;
-    }
-
-    if (!cmdlist)
-    {
-      cmdlist = cmdptr;
-      cmdtail = cmdptr;
     }
     else
     {
-      cmdtail->next = cmdptr;
-      cmdtail = cmdptr;
+      if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
+          NULL)
+      {
+        free_v4cmds_int (&cmdlist, &cmdtail);
+        return -1;
+      }
+
+      snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "STATION %s\r", curstream->stationid);
     }
-
-    strcpy (cmdtail->nsid, curstream->stationid);
-    cmdtail->tolerated = (!wildcard && overlaps);
-    cmdtail->next = NULL;
-
-    /* Generate STATION command */
-    snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "STATION %s\r", curstream->stationid);
 
     stationcnt++;
 
@@ -2439,12 +2574,7 @@ negotiate_v4 (SLCD *slconn)
 
           slconn->config_error = 1;
 
-          while (cmdlist)
-          {
-            cmdptr = cmdlist->next;
-            free (cmdlist);
-            cmdlist = cmdptr;
-          }
+          free_v4cmds_int (&cmdlist, &cmdtail);
 
           return -1;
         }
@@ -2466,51 +2596,25 @@ negotiate_v4 (SLCD *slconn)
             cmd_selector = selector;
           }
 
-          /* Allocate new command in list */
-          if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
+          if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid,
+                                       tolerated)) == NULL)
           {
-            sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
-            while (cmdlist)
-            {
-              cmdptr = cmdlist->next;
-              free (cmdlist);
-              cmdlist = cmdptr;
-            }
-
+            free_v4cmds_int (&cmdlist, &cmdtail);
             return -1;
           }
 
-          cmdtail->next = cmdptr;
-          cmdtail = cmdptr;
-          strcpy (cmdtail->nsid, curstream->stationid);
-          cmdtail->tolerated = (!wildcard && overlaps);
-          cmdtail->next = NULL;
-
           /* Generate SELECT command */
-          snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "SELECT %s\r", cmd_selector);
+          snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "SELECT %s\r", cmd_selector);
         }
       }
     } /* End of selector processing */
 
-    /* Allocate new command in list */
-    if ((cmdptr = (struct cmd_s *)malloc (sizeof (struct cmd_s))) == NULL)
+    if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
+        NULL)
     {
-      sl_log_r (slconn, 2, 0, "%s() Cannot allocate memory\n", __func__);
-      while (cmdlist)
-      {
-        cmdptr = cmdlist->next;
-        free (cmdlist);
-        cmdlist = cmdptr;
-      }
-
+      free_v4cmds_int (&cmdlist, &cmdtail);
       return -1;
     }
-
-    cmdtail->next = cmdptr;
-    cmdtail = cmdptr;
-    strcpy (cmdtail->nsid, curstream->stationid);
-    cmdtail->tolerated = (!wildcard && overlaps);
-    cmdtail->next = NULL;
 
     /* Generate DATA command with _incremented_ sequence number.  A wildcarded
      * entry matching other entries is not resumed from its sequence number,
@@ -2520,12 +2624,12 @@ negotiate_v4 (SLCD *slconn)
       if (curstream->seqnum == SL_UNSETSEQUENCE || curstream->seqnum == SL_ALLDATASEQUENCE ||
           (wildcard && overlaps))
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL %s%s%s\r", start_time,
+        snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "DATA ALL %s%s%s\r", start_time,
                   (end_time[0]) ? " " : "", (end_time[0]) ? end_time : "");
       }
       else
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA %" PRIu64 " %s%s%s\r",
+        snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "DATA %" PRIu64 " %s%s%s\r",
                   (curstream->seqnum + 1), start_time, (end_time[0]) ? " " : "",
                   (end_time[0]) ? end_time : "");
       }
@@ -2534,94 +2638,24 @@ negotiate_v4 (SLCD *slconn)
     {
       if (curstream->seqnum == SL_ALLDATASEQUENCE)
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA ALL\r");
+        snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "DATA ALL\r");
       }
       else if (curstream->seqnum == SL_UNSETSEQUENCE || (wildcard && overlaps))
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA\r");
+        snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "DATA\r");
       }
       else
       {
-        snprintf (cmdtail->cmd, sizeof (cmdtail->cmd), "DATA %" PRIu64 "\r",
-                  (curstream->seqnum + 1));
+        snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "DATA %" PRIu64 "\r", (curstream->seqnum + 1));
       }
     }
 
     curstream = next_stream_int (slconn, curstream);
   } /* End of stream and selector config */
 
-  /* Send all generated commands */
-  cmdptr = cmdlist;
-  while (cmdptr)
-  {
-    sl_log_r (slconn, 1, 2, "[%s] sending: %s\n", cmdptr->nsid, cmdptr->cmd);
-
-    bytesread = sl_senddata (slconn, (void *)cmdptr->cmd, strlen (cmdptr->cmd), cmdptr->nsid,
-                             (void *)NULL, 0);
-
-    if (bytesread < 0)
-    {
-      while (cmdlist)
-      {
-        cmdptr = cmdlist->next;
-        free (cmdlist);
-        cmdlist = cmdptr;
-      }
-
-      return -1;
-    }
-
-    cmdptr = cmdptr->next;
-  }
-
-  /* Receive all responses */
-  cmdptr = cmdlist;
-  while (cmdptr)
-  {
-    bytesread = sl_recvresp (slconn, readbuf, sizeof (readbuf), cmdptr->cmd, cmdptr->nsid);
-
-    if (bytesread < 0)
-    {
-      while (cmdlist)
-      {
-        cmdptr = cmdlist->next;
-        free (cmdlist);
-        cmdlist = cmdptr;
-      }
-
-      return -1;
-    }
-
-    /* Terminate command and response at first carriage return */
-    if ((cp = strchr (cmdptr->cmd, '\r')))
-      *cp = '\0';
-    if ((cp = strchr (readbuf, '\r')))
-      *cp = '\0';
-
-    if (bytesread >= 2 && !strncmp (readbuf, "OK", 2))
-    {
-      sl_log_r (slconn, 1, 2, "[%s] Command OK (%s)\n", cmdptr->nsid, cmdptr->cmd);
-    }
-    else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5) && cmdptr->tolerated)
-    {
-      sl_log_r (slconn, 1, 0, "[%s] Command not accepted (%s), continuing via wildcard: %s\n",
-                cmdptr->nsid, cmdptr->cmd, readbuf);
-    }
-    else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5))
-    {
-      sl_log_r (slconn, 2, 0, "[%s] Command not accepted (%s): %s\n", cmdptr->nsid, cmdptr->cmd,
-                readbuf);
-      errorcnt++;
-    }
-    else
-    {
-      sl_log_r (slconn, 2, 0, "[%s] invalid response to command (%s): %s\n", cmdptr->nsid,
-                cmdptr->cmd, readbuf);
-      errorcnt++;
-    }
-
-    cmdptr = cmdptr->next;
-  }
+  /* Send all remaining commands */
+  if (send_v4cmds_int (slconn, &cmdlist, &cmdtail, &errorcnt) < 0)
+    return -1;
 
   if (errorcnt == 0)
   {
@@ -2639,14 +2673,6 @@ negotiate_v4 (SLCD *slconn)
       sl_log_r (slconn, 2, 0, "[%s] error sending END command\n", slconn->sladdr);
       errorcnt++;
     }
-  }
-
-  /* Free command list */
-  while (cmdlist)
-  {
-    cmdptr = cmdlist->next;
-    free (cmdlist);
-    cmdlist = cmdptr;
   }
 
   return (errorcnt) ? -1 : slconn->link;
