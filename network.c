@@ -2384,7 +2384,7 @@ add_v4cmd_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtail,
  * responses.  \a errorcnt is incremented for each error that is not
  * tolerated.  The list is freed and reset to empty.
  *
- * Returns the count of tolerated commands not accepted, or -1 on error.
+ * Returns 0 on success or -1 on error.
  ***************************************************************************/
 static int
 send_v4cmds_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtail, int *errorcnt)
@@ -2393,7 +2393,6 @@ send_v4cmds_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtai
   char readbuf[200]; /* A buffer for responses */
   char *cp;
   int bytesread;
-  int rejected = 0;
 
   for (cmdptr = *cmdlist; cmdptr; cmdptr = cmdptr->next)
   {
@@ -2433,7 +2432,6 @@ send_v4cmds_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtai
     {
       sl_log_r (slconn, 1, 0, "[%s] Command not accepted (%s), continuing via wildcard: %s\n",
                 cmdptr->nsid, cmdptr->cmd, readbuf);
-      rejected++;
     }
     else if (bytesread >= 5 && !strncmp (readbuf, "ERROR", 5))
     {
@@ -2451,7 +2449,7 @@ send_v4cmds_int (SLCD *slconn, struct v4cmd_s **cmdlist, struct v4cmd_s **cmdtai
 
   free_v4cmds_int (cmdlist, cmdtail);
 
-  return rejected;
+  return 0;
 } /* End of send_v4cmds_int() */
 
 /***************************************************************************
@@ -2483,7 +2481,6 @@ negotiate_v4 (SLCD *slconn)
   int wildcard;
   int overlaps;
   int tolerated;
-  int rejected;
   size_t sellen = 0;
   char *selptr;
   char *cmd_selector;
@@ -2559,40 +2556,14 @@ negotiate_v4 (SLCD *slconn)
     overlaps = stream_overlaps (slconn, firstwild, curstream);
     tolerated = (!wildcard && overlaps);
 
-    /* Commands following a rejected STATION would apply to the previous
-     * station, so a STATION whose errors are tolerated is confirmed before
-     * its SELECT and DATA commands are generated */
-    if (tolerated)
+    if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
+        NULL)
     {
-      if (send_v4cmds_int (slconn, &cmdlist, &cmdtail, &errorcnt) < 0)
-        return -1;
-
-      if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
-          NULL)
-        return -1;
-
-      snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "STATION %s\r", curstream->stationid);
-
-      if ((rejected = send_v4cmds_int (slconn, &cmdlist, &cmdtail, &errorcnt)) < 0)
-        return -1;
-
-      if (rejected)
-      {
-        curstream = next_stream_int (slconn, curstream);
-        continue;
-      }
+      free_v4cmds_int (&cmdlist, &cmdtail);
+      return -1;
     }
-    else
-    {
-      if ((cmdptr = add_v4cmd_int (slconn, &cmdlist, &cmdtail, curstream->stationid, tolerated)) ==
-          NULL)
-      {
-        free_v4cmds_int (&cmdlist, &cmdtail);
-        return -1;
-      }
 
-      snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "STATION %s\r", curstream->stationid);
-    }
+    snprintf (cmdptr->cmd, sizeof (cmdptr->cmd), "STATION %s\r", curstream->stationid);
 
     stationcnt++;
 

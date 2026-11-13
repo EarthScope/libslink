@@ -8,7 +8,6 @@
   	* Negotiate stations before wildcard entries, request the next
 		available data for wildcards, and do not fail a v4 negotiation when
 		such a station is rejected.
-	- Skip the SELECT and DATA commands of a rejected overlapping v4 station
 	- Track only stations whose IDs contain letters, digits, underscores and dashes
 	- Reduce the cost of per-station tracking with many stations
 	  * End the per-packet stream list search after the station's own entry.
