@@ -3,6 +3,7 @@
  * format coverage.
  ***************************************************************************/
 
+#include <stdio.h>
 #include <string.h>
 
 #include "libslink.h"
@@ -117,6 +118,65 @@ test_recoverstate_all_station_matched_stations_added (void)
   s = slconn->streams->next;
   SLT_ASSERT (s && strcmp (s->stationid, "XX_S1") == 0 && s->seqnum == 4,
               "the station entry is added after the all-station entry");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
+read_whole_file (const char *path, char *buf, size_t bufsize)
+{
+  FILE *fp = fopen (path, "rb");
+  size_t len = 0;
+
+  if (fp)
+  {
+    len = fread (buf, 1, bufsize - 1, fp);
+    fclose (fp);
+  }
+
+  buf[len] = '\0';
+}
+
+static void
+test_savestate_wildcard_entries_unset (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile ("");
+  char content[512];
+
+  sl_add_stream (slconn, "XX_*", "BHZ", 5, "2024-01-01T00:00:00Z");
+  sl_add_stream (slconn, "YY_S?", NULL, 6, NULL);
+  sl_add_stream (slconn, "XX_S1", "BHZ", 3, "2024-01-01T00:00:00Z");
+
+  SLT_EQ_INT (sl_savestate (slconn, path), 0, "sl_savestate() succeeds");
+  read_whole_file (path, content, sizeof (content));
+
+  SLT_ASSERT (strstr (content, "\nXX_S1 3 2024-01-01T00:00:00Z\n") != NULL,
+              "a station entry is written with its sequence number and time stamp");
+  SLT_ASSERT (strstr (content, "\nXX_* UNSET\n") != NULL,
+              "a * wildcard entry is written without a sequence number or time stamp");
+  SLT_ASSERT (strstr (content, "\nYY_S? UNSET\n") != NULL,
+              "a ? wildcard entry is written without a sequence number");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
+test_savestate_all_station_entry_keeps_sequence (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile ("");
+  char content[512];
+
+  sl_set_allstation_params (slconn, NULL, 10, NULL);
+
+  SLT_EQ_INT (sl_savestate (slconn, path), 0, "sl_savestate() succeeds in all-station mode");
+  read_whole_file (path, content, sizeof (content));
+
+  SLT_ASSERT (strstr (content, "\n* 10 \n") != NULL,
+              "the all-station entry keeps its sequence number for v3 uni-station resume");
 
   fx_unlink (path);
   sl_freeslcd (slconn);
@@ -283,6 +343,8 @@ main (void)
   SLT_RUN (test_recoverstate_unmatched_streams_ignored);
   SLT_RUN (test_recoverstate_wildcard_matched_stations_added);
   SLT_RUN (test_recoverstate_all_station_matched_stations_added);
+  SLT_RUN (test_savestate_wildcard_entries_unset);
+  SLT_RUN (test_savestate_all_station_entry_keeps_sequence);
   SLT_RUN (test_recoverstate_legacy_format);
   SLT_RUN (test_recoverstate_legacy_uni_station);
   SLT_RUN (test_recoverstate_unset_keyword);

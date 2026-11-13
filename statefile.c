@@ -44,6 +44,10 @@
  *   IU_COLA       1234567890 2024-08-03T17:23:18.0Z
  * ```
  *
+ * In multi-station mode, entries with wildcarded station IDs are written
+ * with an `UNSET` sequence number and no time stamp.  Stations received
+ * via such entries have their own lines and are resumed individually.
+ *
  * @param slconn    The ::SLCD connection to save state
  * @param statefile The name of the state file to write
  *
@@ -79,7 +83,11 @@ sl_savestate (SLCD *slconn, const char *statefile)
   /* Traverse stream list and write sequence numbers and time stamps*/
   while (curstream != NULL)
   {
-    if (curstream->seqnum == SL_UNSETSEQUENCE)
+    /* Wildcarded entries in multi-station mode are resumed via the entries
+     * of the stations they matched; their own sequence numbers are not used */
+    if (slconn->multistation && strpbrk (curstream->stationid, "*?"))
+      linelen = snprintf (line, sizeof (line), "%s UNSET\n", curstream->stationid);
+    else if (curstream->seqnum == SL_UNSETSEQUENCE)
       linelen = snprintf (line, sizeof (line), "%s UNSET %s\n", curstream->stationid,
                           curstream->timestamp);
     else
