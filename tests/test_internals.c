@@ -471,6 +471,10 @@ test_receive_payload_v4_zero_length (void)
   SLT_EQ_UINT (slconn->stat->packetinfo.payloadcollected, 0,
               "payloadcollected stays 0 for a declared 0-byte v4 payload");
 
+  rv = receive_payload (slconn, NULL, 0, wire, sizeof (wire));
+
+  SLT_EQ_INT ((int)rv, 0, "a 0-byte v4 payload is accepted without a payload buffer");
+
   sl_freeslcd (slconn);
 }
 

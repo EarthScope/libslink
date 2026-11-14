@@ -95,8 +95,11 @@ extern "C" {
     #define write _write
     #define open _open
     #define close _close
-    #define snprintf _snprintf
-    #define vsnprintf _vsnprintf
+    /* MSVC before 2015 lacks snprintf(); _snprintf() does not terminate truncated output */
+    #if _MSC_VER < 1900
+      #define snprintf _snprintf
+      #define vsnprintf _vsnprintf
+    #endif
     #define strncasecmp _strnicmp
     #define access _access
     #define strcasecmp _stricmp

@@ -44,6 +44,65 @@ test_roundtrip (void)
 }
 
 static void
+test_roundtrip_nanosecond_timestamp (void)
+{
+  SLCD *saver     = sl_initslcd ("t", NULL);
+  SLCD *recoverer = sl_initslcd ("t", NULL);
+  char *path      = fx_write_tempfile ("");
+  SLstream *s;
+
+  sl_add_stream (saver, "XX_TEST", NULL, 100, "2024-08-03T17:23:18.123456789Z");
+  SLT_EQ_INT (sl_savestate (saver, path), 0, "sl_savestate() succeeds");
+
+  sl_add_stream (recoverer, "XX_TEST", NULL, SL_UNSETSEQUENCE, NULL);
+  SLT_EQ_INT (sl_recoverstate (recoverer, path), 0,
+             "a nanosecond-resolution timestamp is recovered without error");
+
+  s = fx_find_stream (recoverer, "XX_TEST");
+  SLT_NOT_NULL (s, "XX_TEST survives the round trip");
+  SLT_EQ_UINT (s->seqnum, 100, "XX_TEST sequence number round-trips");
+  SLT_EQ_STR (s->timestamp, "2024-08-03T17:23:18.123456789Z",
+             "a nanosecond-resolution timestamp round-trips");
+
+  fx_unlink (path);
+  sl_freeslcd (saver);
+  sl_freeslcd (recoverer);
+}
+
+static void
+test_savestate_replaces_file (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile ("previous content\n");
+  char tmppath[1024];
+  FILE *fp;
+  char line[200] = {0};
+
+  snprintf (tmppath, sizeof (tmppath), "%s.tmp", path);
+  sl_add_stream (slconn, "XX_TEST", NULL, 100, NULL);
+
+  SLT_EQ_INT (sl_savestate (slconn, path), 0, "sl_savestate() replaces an existing file");
+  SLT_ASSERT ((fp = fopen (tmppath, "rb")) == NULL, "no temporary file remains after saving");
+  if (fp)
+    fclose (fp);
+
+  fp = fopen (path, "rb");
+  SLT_NOT_NULL (fp, "the state file exists");
+  if (fp)
+  {
+    SLT_NOT_NULL (fgets (line, sizeof (line), fp), "the state file has a header line");
+    SLT_EQ_STR (line, "#V2 StationID  Sequence  [Timestamp]\n", "the previous content is replaced");
+    fclose (fp);
+  }
+
+  SLT_EQ_INT (sl_savestate (slconn, "/nonexistent/dir/state"), -1,
+             "a state file in a missing directory is reported as an error");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
 test_recoverstate_unmatched_streams_ignored (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -308,6 +367,28 @@ test_recoverstate_timestamp_too_long (void)
 }
 
 static void
+test_recoverstate_legacy_station_too_long (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile ("XX ABCDEFGHIJKLMNOPQRSTUVWXYZ 100\n");
+
+  sl_add_stream (slconn, "XX_ABCDEFGHIJKLMNOPQR", NULL, SL_UNSETSEQUENCE, NULL);
+
+  SLT_EQ_INT (sl_recoverstate (slconn, path), -1,
+             "an over-long legacy NET STA pair is reported as an error");
+  {
+    SLstream *s = fx_find_stream (slconn, "XX_ABCDEFGHIJKLMNOPQR");
+
+    SLT_NOT_NULL (s, "the stream exists");
+    SLT_EQ_UINT (s->seqnum, SL_UNSETSEQUENCE,
+                "an over-long legacy NET STA pair does not update a truncated match");
+  }
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
 test_recoverstate_errors (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -329,6 +410,29 @@ test_recoverstate_errors (void)
     SLT_NOT_NULL (s, "XX_TEST was added");
     SLT_EQ_UINT (s->seqnum, 100,
                 "a later, well-formed line in the same file is still applied");
+  }
+
+  {
+    static const char *badseqs[] = {"-2", "+5", "99999999999999999999999"};
+    size_t i;
+
+    for (i = 0; i < sizeof (badseqs) / sizeof (badseqs[0]); i++)
+    {
+      char content[128];
+      char *path;
+      SLstream *s = fx_find_stream (slconn, "XX_TEST");
+
+      s->seqnum = 100;
+      snprintf (content, sizeof (content), "#V2 StationID  Sequence  [Timestamp]\nXX_TEST\t%s\n",
+                badseqs[i]);
+      path = fx_write_tempfile (content);
+
+      SLT_EQ_INT (sl_recoverstate (slconn, path), -1,
+                 "a signed or out-of-range sequence number is reported as an error");
+      SLT_EQ_UINT (s->seqnum, 100, "a signed or out-of-range sequence number is not applied");
+
+      fx_unlink (path);
+    }
   }
 
   fx_unlink (badseq);
@@ -362,6 +466,8 @@ int
 main (void)
 {
   SLT_RUN (test_roundtrip);
+  SLT_RUN (test_roundtrip_nanosecond_timestamp);
+  SLT_RUN (test_savestate_replaces_file);
   SLT_RUN (test_recoverstate_unmatched_streams_ignored);
   SLT_RUN (test_recoverstate_wildcard_matched_stations_added);
   SLT_RUN (test_recoverstate_all_station_matched_stations_added);
@@ -373,6 +479,7 @@ main (void)
   SLT_RUN (test_recoverstate_long_line);
   SLT_RUN (test_recoverstate_comments_and_blanks);
   SLT_RUN (test_recoverstate_timestamp_too_long);
+  SLT_RUN (test_recoverstate_legacy_station_too_long);
   SLT_RUN (test_recoverstate_errors);
 
   return SLT_REPORT ();

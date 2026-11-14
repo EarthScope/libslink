@@ -21,8 +21,10 @@
  * @author Chad Trabant, EarthScope Data Services
  ***************************************************************************/
 
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "libslink.h"
@@ -48,6 +50,9 @@
  * with an `UNSET` sequence number and no time stamp.  Stations received
  * via such entries have their own lines and are resumed individually.
  *
+ * The state is written to `<statefile>.tmp`, which then replaces
+ * \a statefile, so the directory containing it must be writable.
+ *
  * @param slconn    The ::SLCD connection to save state
  * @param statefile The name of the state file to write
  *
@@ -60,6 +65,8 @@ sl_savestate (SLCD *slconn, const char *statefile)
 {
   SLstream *curstream;
   FILE *fp;
+  char *tmppath;
+  size_t tmppathsize;
   char line[200];
   int linelen;
 
@@ -68,17 +75,30 @@ sl_savestate (SLCD *slconn, const char *statefile)
 
   curstream = slconn->streams;
 
-  /* Open the state file */
-  if ((fp = fopen (statefile, "wb")) == NULL)
+  /* An interrupted write leaves the previous state file in place */
+  tmppathsize = strlen (statefile) + 5;
+  if ((tmppath = (char *)malloc (tmppathsize)) == NULL)
   {
-    sl_log_r (slconn, 2, 0, "cannot open state file for writing\n");
+    sl_log_r (slconn, 2, 0, "cannot allocate memory for state file name\n");
+    return -1;
+  }
+  snprintf (tmppath, tmppathsize, "%s.tmp", statefile);
+
+  if ((fp = fopen (tmppath, "wb")) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "cannot open %s for writing, %s\n", tmppath, strerror (errno));
+    free (tmppath);
     return -1;
   }
 
   sl_log_r (slconn, 1, 2, "saving connection state to state file\n");
 
   /* Write header line */
-  fputs (HEADER_V2 "\n", fp);
+  if (fputs (HEADER_V2 "\n", fp) == EOF)
+  {
+    sl_log_r (slconn, 2, 0, "cannot write to state file, %s\n", strerror (errno));
+    goto error;
+  }
 
   /* Traverse stream list and write sequence numbers and time stamps*/
   while (curstream != NULL)
@@ -101,20 +121,60 @@ sl_savestate (SLCD *slconn, const char *statefile)
     else if (fputs (line, fp) == EOF)
     {
       sl_log_r (slconn, 2, 0, "cannot write to state file, %s\n", strerror (errno));
-      fclose (fp);
-      return -1;
+      goto error;
     }
 
     curstream = curstream->next;
   }
 
-  if (fclose (fp))
+  if (fflush (fp))
   {
-    sl_log_r (slconn, 2, 0, "cannot close state file, %s\n", strerror (errno));
-    return -1;
+    sl_log_r (slconn, 2, 0, "cannot write to state file, %s\n", strerror (errno));
+    goto error;
   }
 
+#if defined(SLP_WIN)
+  if (_commit (_fileno (fp)))
+#else
+  if (fsync (fileno (fp)))
+#endif
+  {
+    sl_log_r (slconn, 2, 0, "cannot sync state file, %s\n", strerror (errno));
+    goto error;
+  }
+
+  if (fclose (fp))
+  {
+    fp = NULL;
+    sl_log_r (slconn, 2, 0, "cannot close state file, %s\n", strerror (errno));
+    goto error;
+  }
+  fp = NULL;
+
+#if defined(SLP_WIN)
+  if (!MoveFileExA (tmppath, statefile, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH))
+  {
+    sl_log_r (slconn, 2, 0, "cannot replace state file %s, error %lu\n", statefile,
+              (unsigned long)GetLastError ());
+    goto error;
+  }
+#else
+  if (rename (tmppath, statefile))
+  {
+    sl_log_r (slconn, 2, 0, "cannot replace state file %s, %s\n", statefile, strerror (errno));
+    goto error;
+  }
+#endif
+
+  free (tmppath);
   return 0;
+
+error:
+  if (fp)
+    fclose (fp);
+  remove (tmppath);
+  free (tmppath);
+  return -1;
 } /* End of sl_savestate() */
 
 /** ************************************************************************
@@ -167,7 +227,7 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
   int retval = 0;
 
   char stationid[22] = {0};
-  char timestamp[31] = {0};
+  char timestamp[32] = {0};
   char *stationstr;
   char *sequencestr;
   char *timestr;
@@ -263,9 +323,14 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
       {
         strcpy (stationid, "*");
       }
-      else
+      else if ((size_t)snprintf (stationid, sizeof (stationid), "%s_%s", field[0], field[1]) >=
+               sizeof (stationid))
       {
-        snprintf (stationid, sizeof (stationid), "%s_%s", field[0], field[1]);
+        sl_log_r (slconn, 2, 0, "station ID on line %d of state file is too long: %s_%s\n", count,
+                  field[0], field[1]);
+        retval = -1;
+        count++;
+        continue;
       }
 
       stationstr = stationid;
@@ -314,9 +379,11 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     }
     else
     {
+      errno = 0;
       seqnum = (uint64_t)strtoull (sequencestr, &endptr, 10);
 
-      if (*endptr)
+      /* strtoull() accepts a sign and wraps negative values */
+      if (!isdigit ((unsigned char)*sequencestr) || *endptr || errno == ERANGE)
       {
         sl_log_r (slconn, 2, 0,
                   "could not parse sequence number from line %d of state file: '%s'\n", count,

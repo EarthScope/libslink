@@ -17,6 +17,46 @@
 	- Reject over-long lines in stream list and state files instead of splitting them
 	- Do not combine negated selectors of multiple wildcard entries for a station entry
 	- Return an error from sl_set_allstation_params() when copying the selectors fails
+	- Harden state file writing and recovery
+	  * Write the state file via a temporary file that replaces it when complete.
+	  * Recover nanosecond-resolution miniSEED 3 timestamps.
+	  * Reject signed and out-of-range sequence numbers.
+	  * Reject legacy NET STA pairs too long for a station ID.
+	- Unregister a connection from the termination handler and free its pending INFO request in sl_freeslcd()
+	- Fix stalls and spins in the sl_collect() loop
+	  * Wait on the socket, or return SLNOPACKET in non-blocking mode, while
+		a partial packet is buffered instead of spinning.
+	  * Finish termination when buffered data cannot be completed without
+		further reads.
+	  * Apply the reconnect delay, and do not reconnect after termination,
+		when the connection closed with its last packet already returned.
+	  * End a pending INFO or keepalive query on a v4 JSON error response.
+	  * Reject an oversized v4 station ID as soon as its header is received.
+	  * Accept a socket descriptor of 0 from sl_connect().
+	  * Accept a NULL payload buffer of size 0, as documented.
+	- Harden connection handling and negotiation
+	  * Return an error instead of raising SIGPIPE when writing to a closed
+		connection, including over TLS.
+	  * Discard the remainder of a server response line longer than the
+		buffer in sl_recvresp().
+	  * Reject INFO requests and v3 selectors too long for a command, and
+		omit an over-long client name and version from USERAGENT.
+	  * Continue when the server rejects CAPABILITIES or USERAGENT.
+	  * Send pipelined v4 commands in groups, reading the responses to each
+		group before sending the next.
+	  * Skip CA certificates that cannot be parsed and continue loading
+		the remaining CA files and paths.
+	  * Detect a refused connection immediately on Windows.
+	  * Map snprintf() to _snprintf() only for MSVC before 2015.
+	- Read miniSEED header fields through aligned copies, and leave the start
+	  time empty for an invalid day-of-year in sl_payload_info()
+	- Normalize whitespace in stream lists
+	  * Convert tabs between selectors in stream list files to spaces.
+	  * Trim whitespace around streams and selectors in sl_add_streamlist().
+	  * Return an error from sl_add_streamlist_file() on a read error.
+	- Keep the trailing newline of truncated log messages
+	- Leave the time window unchanged when sl_set_timewindow() fails
+	- Reject NULL variable names in sl_set_auth_envvars()
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.

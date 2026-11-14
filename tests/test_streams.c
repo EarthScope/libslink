@@ -296,6 +296,29 @@ test_streamlist_file_trailing_whitespace (void)
 }
 
 static void
+test_streamlist_whitespace_separators (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char *path = fx_write_tempfile ("XX_TST6\tBH?\tHH?\n");
+  SLstream *s;
+
+  SLT_EQ_INT (sl_add_streamlist_file (slconn, path, NULL), 1, "a tab-separated line is read");
+  s = fx_find_stream (slconn, "XX_TST6");
+  SLT_NOT_NULL (s, "XX_TST6 was read from the file");
+  SLT_EQ_STR (s->selectors, "BH? HH?", "tabs between selectors become spaces");
+
+  SLT_EQ_INT (sl_add_streamlist (slconn, " XX_TST7 , XX_TST8 : BHZ ", NULL), 2,
+             "a stream list with spaces around entries is parsed");
+  SLT_NOT_NULL (fx_find_stream (slconn, "XX_TST7"), "leading space is trimmed from a station ID");
+  s = fx_find_stream (slconn, "XX_TST8");
+  SLT_NOT_NULL (s, "spaces around a station ID are trimmed");
+  SLT_EQ_STR (s->selectors, "BHZ", "spaces around selectors are trimmed");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
+static void
 test_streamlist_file_long_line (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -334,6 +357,7 @@ main (void)
   SLT_RUN (test_add_streamlist_file);
   SLT_RUN (test_add_streamlist_file_errors);
   SLT_RUN (test_streamlist_file_trailing_whitespace);
+  SLT_RUN (test_streamlist_whitespace_separators);
   SLT_RUN (test_streamlist_file_long_line);
 
   return SLT_REPORT ();
