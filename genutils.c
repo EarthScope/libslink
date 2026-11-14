@@ -28,6 +28,7 @@
 #include <time.h>
 
 #include "libslink.h"
+#include "slinternal.h"
 
 /** ************************************************************************
  * @brief Return true if the byte order of the host is little endian
@@ -581,3 +582,32 @@ sl_strncpclean (char *dest, const char *source, int length)
 
   return didx;
 } /* End of sl_strncpclean() */
+
+/***************************************************************************
+ * sli_linetoolong:
+ *
+ * Determine if \a line, as read by fgets() from \a fp, is only the start
+ * of a longer line, i.e. it has no newline and more characters follow
+ * before the next newline.  The remainder of such a line is consumed.
+ *
+ * Not part of the public API.
+ *
+ * Returns 1 if the line is too long, else 0.
+ ***************************************************************************/
+int
+sli_linetoolong (FILE *fp, const char *line)
+{
+  int remainder = 0;
+  int c;
+
+  if (strchr (line, '\n'))
+    return 0;
+
+  while ((c = fgetc (fp)) != EOF && c != '\n')
+  {
+    if (c != '\r')
+      remainder++;
+  }
+
+  return (remainder > 0);
+} /* End of sli_linetoolong() */

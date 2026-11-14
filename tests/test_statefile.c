@@ -336,6 +336,28 @@ test_recoverstate_errors (void)
   sl_freeslcd (slconn);
 }
 
+static void
+test_recoverstate_long_line (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char content[512];
+  char *path;
+
+  sl_add_stream (slconn, "XX_*", NULL, SL_UNSETSEQUENCE, NULL);
+
+  snprintf (content, sizeof (content), "#V2 StationID  Sequence  [Timestamp]\n"
+            "XX_S1 3%*sXX_S2 9\nXX_S3 4\n", 200, "");
+  path = fx_write_tempfile (content);
+
+  SLT_EQ_INT (sl_recoverstate (slconn, path), -1, "an over-long line is reported as an error");
+  SLT_NULL (fx_find_stream (slconn, "XX_S1"), "an over-long line is skipped");
+  SLT_NULL (fx_find_stream (slconn, "XX_S2"), "the remainder of an over-long line is not an entry");
+  SLT_NOT_NULL (fx_find_stream (slconn, "XX_S3"), "lines after an over-long line are recovered");
+
+  fx_unlink (path);
+  sl_freeslcd (slconn);
+}
+
 int
 main (void)
 {
@@ -348,6 +370,7 @@ main (void)
   SLT_RUN (test_recoverstate_legacy_format);
   SLT_RUN (test_recoverstate_legacy_uni_station);
   SLT_RUN (test_recoverstate_unset_keyword);
+  SLT_RUN (test_recoverstate_long_line);
   SLT_RUN (test_recoverstate_comments_and_blanks);
   SLT_RUN (test_recoverstate_timestamp_too_long);
   SLT_RUN (test_recoverstate_errors);

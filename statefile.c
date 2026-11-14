@@ -205,6 +205,14 @@ sl_recoverstate (SLCD *slconn, const char *statefile)
     sequencestr = NULL;
     timestr = NULL;
 
+    if (sli_linetoolong (fp, line))
+    {
+      sl_log_r (slconn, 2, 0, "line %d of state file is too long: %.40s...\n", count, line);
+      retval = -1;
+      count++;
+      continue;
+    }
+
     /* Terminate at first carriage return or newline */
     if ((ptr = strchr (line, '\r')) != NULL || (ptr = strchr (line, '\n')) != NULL)
       *ptr = '\0';

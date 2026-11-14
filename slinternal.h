@@ -22,6 +22,8 @@
 #ifndef SLINTERNAL_H
 #define SLINTERNAL_H 1
 
+#include <stdio.h>
+
 #include "libslink.h"
 
 #ifdef __cplusplus
@@ -30,6 +32,7 @@ extern "C" {
 
 extern int sli_add_matchedstream (SLCD *slconn, const char *stationid, uint64_t seqnum,
                                   const char *isotime);
+extern int sli_linetoolong (FILE *fp, const char *line);
 
 #ifdef __cplusplus
 }

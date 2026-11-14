@@ -27,6 +27,7 @@
 #include <string.h>
 
 #include "libslink.h"
+#include "slinternal.h"
 
 /** ************************************************************************
  * @brief Add a list of streams and selectors from a file to the ::SLCD
@@ -91,6 +92,14 @@ sl_add_streamlist_file (SLCD *slconn, const char *streamfile, const char *defsel
   {
     memset (stationid, 0, sizeof (stationid));
     memset (selectors, 0, sizeof (selectors));
+
+    if (sli_linetoolong (fp, line))
+    {
+      sl_log_r (slconn, 2, 0, "line too long (max %d characters) in %s: %.40s...\n",
+                (int)sizeof (line) - 1, streamfile, line);
+      fclose (fp);
+      return -1;
+    }
 
     /* Terminate string at first carriage return or newline */
     if ((cp = strchr (line, '\r')) != NULL || (cp = strchr (line, '\n')) != NULL)

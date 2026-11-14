@@ -295,6 +295,31 @@ test_streamlist_file_trailing_whitespace (void)
   sl_freeslcd (slconn);
 }
 
+static void
+test_streamlist_file_long_line (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  char content[512];
+  char *path;
+  int len;
+
+  /* A line of 199 characters fits */
+  len = snprintf (content, sizeof (content), "XX_TST1%*s\n", 199 - 7, "BHZ");
+  SLT_EQ_INT (len, 200, "the test line is 199 characters plus a newline");
+  path = fx_write_tempfile (content);
+  SLT_EQ_INT (sl_add_streamlist_file (slconn, path, NULL), 1, "a 199 character line is accepted");
+  fx_unlink (path);
+
+  /* A longer line is not split into separate entries */
+  snprintf (content, sizeof (content), "XX_TST2%*sXX_BOGUS\nXX_TST3\n", 200, "");
+  path = fx_write_tempfile (content);
+  SLT_EQ_INT (sl_add_streamlist_file (slconn, path, NULL), -1, "an over-long line is an error");
+  SLT_NULL (fx_find_stream (slconn, "XX_BOGUS"), "the remainder of an over-long line is not an entry");
+  fx_unlink (path);
+
+  sl_freeslcd (slconn);
+}
+
 int
 main (void)
 {
@@ -309,6 +334,7 @@ main (void)
   SLT_RUN (test_add_streamlist_file);
   SLT_RUN (test_add_streamlist_file_errors);
   SLT_RUN (test_streamlist_file_trailing_whitespace);
+  SLT_RUN (test_streamlist_file_long_line);
 
   return SLT_REPORT ();
 }
