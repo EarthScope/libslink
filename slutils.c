@@ -2128,6 +2128,7 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors, uint64_t seqnum,
                           const char *timestamp)
 {
   SLstream *newstream;
+  char *newselectors = NULL;
   char isotime[32] = {0};
 
   if (!slconn)
@@ -2156,6 +2157,19 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors, uint64_t seqnum,
 
   newstream = slconn->streams;
 
+  if (newstream != NULL && strcmp (newstream->stationid, "*") != 0)
+  {
+    sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n", slconn->sladdr,
+              __func__);
+    return -1;
+  }
+
+  if (selectors && (newselectors = strdup (selectors)) == NULL)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
+    return -1;
+  }
+
   if (newstream == NULL)
   {
     newstream = (SLstream *)malloc (sizeof (SLstream));
@@ -2163,26 +2177,18 @@ sl_set_allstation_params (SLCD *slconn, const char *selectors, uint64_t seqnum,
     if (newstream == NULL)
     {
       sl_log_r (slconn, 2, 0, "%s(): error allocating memory\n", __func__);
+      free (newselectors);
       return -1;
     }
 
     memset (newstream, 0, sizeof (SLstream));
-  }
-  else if (strcmp (newstream->stationid, "*") != 0)
-  {
-    sl_log_r (slconn, 2, 0, "[%s] %s(): multi-station mode already configured!\n", slconn->sladdr,
-              __func__);
-    return -1;
   }
 
   /* Set the station ID to an all-matching, single wildcard */
   strncpy (newstream->stationid, "*", sizeof (newstream->stationid));
 
   free (newstream->selectors);
-  if (selectors)
-    newstream->selectors = strdup (selectors);
-  else
-    newstream->selectors = NULL;
+  newstream->selectors = newselectors;
 
   newstream->seqnum = seqnum;
 
