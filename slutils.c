@@ -1052,7 +1052,7 @@ sli_add_matchedstream (SLCD *slconn, const char *stationid, uint64_t seqnum, con
   char *selectors;
   int matched;
 
-  if (!slconn || !stationid || stationid[0] == '\0')
+  if (!slconn || !stationid || stationid[0] == '\0' || strlen (stationid) >= SL_MAX_STATIONID)
     return 0;
 
   if (stationid[strspn (stationid, validchars)] != '\0')
@@ -1889,6 +1889,8 @@ sl_set_protocol (SLCD *slconn, LIBPROTOCOL protocol)
  * available data.  The \a seqnum be ::SL_ALLDATASEQUENCE to request
  * all available data from the server (v4 only).
  *
+ * The \a stationid must be shorter than ::SL_MAX_STATIONID characters.
+ *
  * The stream list is sorted alphanumerically by station ID,
  * and partitioned by the presence of wildcard characters in the
  * station ID, starting with more specific entries first.
@@ -1916,6 +1918,13 @@ sl_add_stream (SLCD *slconn, const char *stationid, const char *selectors, uint6
 
   if (!slconn || !stationid)
     return -1;
+
+  if (strlen (stationid) >= SL_MAX_STATIONID)
+  {
+    sl_log_r (slconn, 2, 0, "%s(): station ID is too long (max %d characters): '%s'\n", __func__,
+              SL_MAX_STATIONID - 1, stationid);
+    return -1;
+  }
 
   /* Sanity, check for a all-station mode entry */
   if (slconn->streams)

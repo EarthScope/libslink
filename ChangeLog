@@ -13,6 +13,7 @@
 	  * End the per-packet stream list search after the station's own entry.
 	  * Check negotiation overlaps against only the wildcard entries.
 	  * Do not add station entries in v3 uni-station mode.
+	- Reject station IDs longer than SL_MAX_STATIONID - 1 characters in sl_add_stream()
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.

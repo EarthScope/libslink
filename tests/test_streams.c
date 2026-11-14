@@ -75,7 +75,7 @@ test_add_stream_sort_order (void)
 }
 
 static void
-test_add_stream_truncation (void)
+test_add_stream_too_long (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
   char longid[64];
@@ -84,9 +84,20 @@ test_add_stream_truncation (void)
   longid[sizeof (longid) - 1] = '\0';
 
   SLT_EQ_INT (sl_add_stream (slconn, longid, NULL, SL_UNSETSEQUENCE, NULL),
-             0, "an over-long station id is still accepted");
+             -1, "an over-long station id is rejected");
+  SLT_NULL (slconn->streams, "no entry is added for an over-long station id");
+
+  /* A trailing wildcard beyond the limit would otherwise be dropped */
+  longid[SL_MAX_STATIONID - 1] = '*';
+  longid[SL_MAX_STATIONID] = '\0';
+  SLT_EQ_INT (sl_add_stream (slconn, longid, NULL, SL_UNSETSEQUENCE, NULL),
+             -1, "a station id one character over the limit is rejected");
+
+  longid[SL_MAX_STATIONID - 1] = '\0';
+  SLT_EQ_INT (sl_add_stream (slconn, longid, NULL, SL_UNSETSEQUENCE, NULL),
+             0, "a station id of SL_MAX_STATIONID - 1 characters is accepted");
   SLT_EQ_INT ((int)strlen (slconn->streams->stationid), SL_MAX_STATIONID - 1,
-             "the stored station id is truncated to SL_MAX_STATIONID - 1 characters");
+             "the stored station id is complete");
 
   sl_freeslcd (slconn);
 }
@@ -289,7 +300,7 @@ main (void)
 {
   SLT_RUN (test_add_stream_basic);
   SLT_RUN (test_add_stream_sort_order);
-  SLT_RUN (test_add_stream_truncation);
+  SLT_RUN (test_add_stream_too_long);
   SLT_RUN (test_add_stream_timestamp_bounds);
   SLT_RUN (test_add_stream_all_station_conflict);
   SLT_RUN (test_allstation_params);
