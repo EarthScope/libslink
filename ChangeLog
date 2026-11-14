@@ -1,4 +1,4 @@
-2026.318:
+2026.318: v4.4.0
   - Track each station received via a wildcard stream list entry, resuming
     it from its own sequence number, for compatibility with servers that do
     not support resuming from wildcarded station IDs
