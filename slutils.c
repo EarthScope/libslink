@@ -1378,8 +1378,9 @@ sl_set_clientname (SLCD *slconn, const char *name, const char *version)
  * [2607:f8b0:400a:805::200e]:18000
  * ```
  *
- * This routine will also set the \a tls flag if the port is the default
- * for a secure connection, aka \a SL_SECURE_PORT.
+ * This routine enables TLS if the port is \a SL_SECURE_PORT, and disables
+ * it when changing from \a SL_SECURE_PORT to another port.  TLS enabled
+ * with sl_set_tlsmode() for any other port is left unchanged.
  *
  * @param slconn          SeedLink connection description
  * @param server_address  Server address in \c HOST:PORT format
@@ -1400,6 +1401,7 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
   char *new_sladdr = NULL;
   char *new_slhost = NULL;
   char *new_slport = NULL;
+  int wassecure;
 
   if (!slconn || !server_address)
     return -1;
@@ -1505,16 +1507,22 @@ sl_set_serveraddress (SLCD *slconn, const char *server_address)
     slconn->sladdr = new_sladdr;
   }
 
+  wassecure = (slconn->slport && strcmp (slconn->slport, SL_SECURE_PORT) == 0);
+
   free (slconn->slhost);
   free (slconn->slport);
 
   slconn->slhost = new_slhost;
   slconn->slport = new_slport;
 
-  /* Set TLS flag if port is the TLS default */
+  /* TLS follows the secure port; TLS set explicitly for other ports is kept */
   if (strcmp (slconn->slport, SL_SECURE_PORT) == 0)
   {
     sl_set_tlsmode (slconn, 1);
+  }
+  else if (wassecure)
+  {
+    sl_set_tlsmode (slconn, 0);
   }
 
   return 0;

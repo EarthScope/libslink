@@ -123,8 +123,22 @@ test_serveraddress (void)
   SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:18500"), 0, "TLS port: accepted");
   SLT_EQ_INT (slconn->tls, 1, "port 18500 enables TLS automatically");
 
+  SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:18500"), 0, "TLS port again: accepted");
+  SLT_EQ_INT (slconn->tls, 1, "re-setting port 18500 keeps TLS");
+
   SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:18000"), 0, "non-TLS port: accepted");
-  SLT_EQ_INT (slconn->tls, 1, "tls is sticky once set; sl_set_tlsmode() is the only way to turn it back off");
+  SLT_EQ_INT (slconn->tls, 0, "changing from port 18500 to another port disables TLS");
+
+  sl_set_serveraddress (slconn, "example.org:18500");
+  sl_set_tlsmode (slconn, 0);
+  SLT_EQ_INT (slconn->tls, 0, "sl_set_tlsmode() after the address disables TLS on port 18500");
+
+  sl_set_serveraddress (slconn, "example.org:18000");
+  sl_set_tlsmode (slconn, 1);
+  SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:443"), 0, "explicit TLS port: accepted");
+  SLT_EQ_INT (slconn->tls, 1, "TLS enabled explicitly is kept for a non-18500 port");
+  SLT_EQ_INT (sl_set_serveraddress (slconn, "example.org:19000"), 0, "another non-TLS port: accepted");
+  SLT_EQ_INT (slconn->tls, 1, "TLS enabled explicitly is kept when changing between non-18500 ports");
 
   SLT_EQ_INT (sl_set_serveraddress (NULL, "example.org"), -1, "NULL connection is rejected");
   SLT_EQ_INT (sl_set_serveraddress (slconn, NULL), -1, "NULL address is rejected");

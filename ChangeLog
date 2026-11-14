@@ -58,6 +58,7 @@
 	- Leave the time window unchanged when sl_set_timewindow() fails
 	- Reject NULL variable names in sl_set_auth_envvars()
 	- Convert negated selectors in sl_v3to4selector()
+	- Turn off automatic TLS when sl_set_serveraddress() changes away from port 18500
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.
