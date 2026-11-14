@@ -7,7 +7,6 @@ import base64
 import os
 import queue
 import re
-import resource
 import signal
 import struct
 import subprocess
@@ -16,6 +15,11 @@ import tempfile
 import threading
 import time
 import unittest
+
+try:
+    import resource
+except ImportError:  # POSIX only
+    resource = None
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -1333,6 +1337,7 @@ def _ms2_without_b1000(**kwargs):
 
 
 class TestCollectLoop(ProtocolTestCase):
+    @unittest.skipIf(resource is None, "resource.getrusage() is POSIX only")
     def test_partial_header_waits_without_spinning(self):
         record = mseed.build_ms3(sid="FDSN:XX_TEST_00_B_H_Z", samplerate=100.0, numsamples=50)
         frame = mseed.frame_v4_data(1, "XX_TEST", record)
