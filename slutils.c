@@ -1038,7 +1038,7 @@ wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
 
   if (*matched > 1 && negated)
   {
-    sl_log_r (slconn, 1, 2,
+    sl_log_r (slconn, 1, 3,
               "[%s] not tracking %s, negated selectors of multiple wildcard entries\n",
               slconn->sladdr, stationid);
     *matched = 0;
@@ -1119,7 +1119,7 @@ sli_add_matchedstream (SLCD *slconn, const char *stationid, uint64_t seqnum, con
 
   if (stationid[strspn (stationid, validchars)] != '\0')
   {
-    sl_log_r (slconn, 1, 2, "[%s] not tracking station ID with unsupported characters: '%s'\n",
+    sl_log_r (slconn, 1, 3, "[%s] not tracking station ID with unsupported characters: '%s'\n",
               slconn->sladdr, stationid);
     return 0;
   }

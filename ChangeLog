@@ -1,24 +1,35 @@
-2026.317:
-	- Resume wildcard station entries with each station's own sequence number
-  	* Add a stream list entry for each station received via a wildcard
-		entry, carrying the selectors of the matching wildcard entries.
-  	* Recover such stations from the state file.
-  	* Write wildcard entries to the state file without a sequence number
-		in multi-station mode.
-  	* Negotiate stations before wildcard entries, request the next
-		available data for wildcards, and do not fail a v4 negotiation when
-		such a station is rejected.
-	- Track only stations whose IDs contain letters, digits, underscores and dashes
-	- Reduce the cost of per-station tracking with many stations
-	  * End the per-packet stream list search after the station's own entry.
-	  * Check negotiation overlaps against only the wildcard entries.
-	  * Do not add station entries in v3 uni-station mode.
-	- Reject station IDs longer than SL_MAX_STATIONID - 1 characters in sl_add_stream()
-	- Reject over-long lines in stream list and state files instead of splitting them
-	- Do not combine negated selectors of multiple wildcard entries for a station entry
+2026.318: v4.4.0
+	- Track each station received via a wildcard stream list entry, resuming
+	  it from its own sequence number, for compatibility with servers that do
+	  not support resuming from wildcarded station IDs
+	  * Add a stream list entry for each such station, including in
+		all-station mode (not v3 uni-station mode), carrying the selectors of
+		the matching wildcard entries.  The stream list may now contain
+		entries the caller did not add, sl_set_allstation_params() keeps
+		entries after the all-station entry, and entries are never removed.
+	  * Only track station IDs of letters, digits, underscores and dashes,
+		and not a station matched by multiple wildcard entries when any have
+		negated selectors.
+	  * Save tracked stations to the state file and recover them.  In
+		multi-station mode wildcard entries are written as UNSET without a
+		time stamp, so stations that are not tracked resume from the next
+		available data.
+	  * Negotiate stations before wildcard entries.  A wildcard entry that
+		matches a station entry requests the next available data, ignoring
+		its own sequence number, and a v4 negotiation does not fail when such
+		a station is rejected.
+	  * Keep per-packet tracking and negotiation cost bounded with many
+		stations.
+	- Reject station IDs longer than SL_MAX_STATIONID - 1 characters in
+	  sl_add_stream() instead of truncating them
+	- Reject over-long lines in stream list and state files instead of
+	  splitting them; sl_add_streamlist_file() returns an error and
+	  sl_recoverstate() returns an error after reading the remaining lines
 	- Return an error from sl_set_allstation_params() when copying the selectors fails
 	- Harden state file writing and recovery
-	  * Write the state file via a temporary file that replaces it when complete.
+	  * Write the state file via <statefile>.tmp, which replaces it when
+		complete; the containing directory must be writable and a symbolic
+		link at the state file path is replaced by a regular file.
 	  * Recover nanosecond-resolution miniSEED 3 timestamps.
 	  * Reject signed and out-of-range sequence numbers.
 	  * Reject legacy NET STA pairs too long for a station ID.
@@ -32,7 +43,8 @@
 		when the connection closed with its last packet already returned.
 	  * End a pending INFO or keepalive query on a v4 JSON error response.
 	  * Reject an oversized v4 station ID as soon as its header is received.
-	  * Accept a socket descriptor of 0 from sl_connect().
+	  * Accept a socket descriptor of 0 from sl_connect(), which may now
+		return 0 on success.
 	  * Accept a NULL payload buffer of size 0, as documented.
 	- Harden connection handling and negotiation
 	  * Return an error instead of raising SIGPIPE when writing to a closed
@@ -47,7 +59,9 @@
 	  * Skip CA certificates that cannot be parsed and continue loading
 		the remaining CA files and paths.
 	  * Detect a refused connection immediately on Windows.
-	  * Map snprintf() to _snprintf() only for MSVC before 2015.
+	  * Map snprintf() and vsnprintf() to _snprintf() and _vsnprintf() in
+		libslink.h only for MSVC before 2015, which also applies to code
+		including libslink.h.
 	- Read miniSEED header fields through aligned copies, and leave the start
 	  time empty for an invalid day-of-year in sl_payload_info()
 	- Normalize whitespace in stream lists
