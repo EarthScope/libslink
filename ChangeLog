@@ -57,6 +57,7 @@
 	- Keep the trailing newline of truncated log messages
 	- Leave the time window unchanged when sl_set_timewindow() fails
 	- Reject NULL variable names in sl_set_auth_envvars()
+	- Convert negated selectors in sl_v3to4selector()
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.

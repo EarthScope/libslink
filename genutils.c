@@ -431,20 +431,21 @@ sl_commadatetime (char *commadatetime, const char *datetime)
 /** ************************************************************************
  * @brief Convert SeedLink v3 to v4 selector string if possible
  *
- * SeedLink v3 seletcors are recognized in the following form:
+ * SeedLink v3 selectors are recognized in the following form:
  *
- *   [LL]CCC[.T]  (where LL and .T are optional)
+ *   [!][LL]CCC[.T]  (where !, LL and .T are optional)
  *
- * Example convesions:
+ * Example conversions:
  *  00BHZ  ->  00_B_H_Z
  *  BHZ    ->  *_B_H_Z
  *  EH?.D  ->  *_E_H_?.D
  *  --BHZ  ->  _B_H_Z
+ *  !BHZ   ->  !*_B_H_Z
  *
  * This routine does very little validation, invalid input may result in
  * invalid conversions.
  *
- * The output buffer must be large enough to accomodate the converted
+ * The output buffer must be large enough to accommodate the converted
  * selector, a pragmatic maximum is 32 characters.
  *
  * @param[out] v4selector Buffer to write v4 selector string
@@ -461,10 +462,18 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   size_t streamidlength;
   char *type = NULL;
   int emptylocation = 0;
+  int negated = 0;
   int printed;
 
   if (v4selector == NULL || selector == NULL)
     return NULL;
+
+  /* Leading '!' negates the selector */
+  if (*selector == '!')
+  {
+    selector++;
+    negated = 1;
+  }
 
   /* Remove inital '-' characters indicating empty location code */
   while (*selector == '-')
@@ -495,8 +504,9 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   /* CCC[.T] -> [*]_B_S_SS[.T] */
   if (streamidlength == 3)
   {
-    printed = snprintf (v4selector, v4selectorlength, "%s_%c_%c_%c%s", (emptylocation) ? "" : "*",
-                        selector[0], selector[1], selector[2], (type) ? type : "");
+    printed = snprintf (v4selector, v4selectorlength, "%s%s_%c_%c_%c%s", (negated) ? "!" : "",
+                        (emptylocation) ? "" : "*", selector[0], selector[1], selector[2],
+                        (type) ? type : "");
 
     if (printed >= v4selectorlength)
       return NULL;
@@ -506,8 +516,8 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   /* LCCC[.T] -> L_B_S_SS[.T] */
   else if (streamidlength == 4)
   {
-    printed = snprintf (v4selector, v4selectorlength, "%c_%c_%c_%c%s", selector[0], selector[1],
-                        selector[2], selector[3], (type) ? type : "");
+    printed = snprintf (v4selector, v4selectorlength, "%s%c_%c_%c_%c%s", (negated) ? "!" : "",
+                        selector[0], selector[1], selector[2], selector[3], (type) ? type : "");
 
     if (printed >= v4selectorlength)
       return NULL;
@@ -517,8 +527,9 @@ sl_v3to4selector (char *v4selector, int v4selectorlength, const char *selector)
   /* LLCCC[.T] -> LL_B_S_SS[.T] */
   else if (streamidlength == 5)
   {
-    printed = snprintf (v4selector, v4selectorlength, "%c%c_%c_%c_%c%s", selector[0], selector[1],
-                        selector[2], selector[3], selector[4], (type) ? type : "");
+    printed = snprintf (v4selector, v4selectorlength, "%s%c%c_%c_%c_%c%s", (negated) ? "!" : "",
+                        selector[0], selector[1], selector[2], selector[3], selector[4],
+                        (type) ? type : "");
 
     if (printed >= v4selectorlength)
       return NULL;
