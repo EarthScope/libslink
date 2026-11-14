@@ -15,6 +15,7 @@
 	  * Do not add station entries in v3 uni-station mode.
 	- Reject station IDs longer than SL_MAX_STATIONID - 1 characters in sl_add_stream()
 	- Reject over-long lines in stream list and state files instead of splitting them
+	- Do not combine negated selectors of multiple wildcard entries for a station entry
 
 2026.224: v4.3.0
 	- Send all bytes in sl_senddata(), retrying on partial and blocked writes.

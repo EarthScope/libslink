@@ -811,6 +811,43 @@ test_update_stream_wildcard_merges_selectors (void)
 }
 
 static void
+test_update_stream_wildcard_negated_selectors (void)
+{
+  SLCD *slconn = sl_initslcd ("t", NULL);
+  uint8_t buf[64] = {0};
+  SLstream *s;
+
+  sl_add_stream (slconn, "XX_*", "!LOG", SL_UNSETSEQUENCE, NULL);
+  sl_add_stream (slconn, "*_S1", "BHZ", SL_UNSETSEQUENCE, NULL);
+  sl_add_stream (slconn, "YY_*", "BH? !BHE", SL_UNSETSEQUENCE, NULL);
+
+  setup_ms2_payload (buf, sizeof (buf), "XX", "S1", "00", "BHZ", 10,
+                     &slconn->stat->packetinfo, 5, "XX_S1");
+  SLT_EQ_INT (update_stream (slconn, (const char *)buf), 0, "the packet is accepted via the wildcards");
+  SLT_NULL (find_stream (slconn, "XX_S1"),
+            "no entry is added when negated selectors of multiple entries would be combined");
+
+  setup_ms2_payload (buf, sizeof (buf), "XX", "S2", "00", "BHZ", 11,
+                     &slconn->stat->packetinfo, 5, "XX_S2");
+  update_stream (slconn, (const char *)buf);
+  s = find_stream (slconn, "XX_S2");
+  SLT_EQ_STR (s ? s->selectors : NULL, "!LOG", "a single matching entry's negated selectors are kept");
+
+  setup_ms2_payload (buf, sizeof (buf), "YY", "S2", "00", "BHZ", 12,
+                     &slconn->stat->packetinfo, 5, "YY_S2");
+  update_stream (slconn, (const char *)buf);
+  s = find_stream (slconn, "YY_S2");
+  SLT_EQ_STR (s ? s->selectors : NULL, "BH? !BHE", "a negated selector after a positive one is kept");
+
+  setup_ms2_payload (buf, sizeof (buf), "YY", "S1", "00", "BHZ", 13,
+                     &slconn->stat->packetinfo, 5, "YY_S1");
+  update_stream (slconn, (const char *)buf);
+  SLT_NULL (find_stream (slconn, "YY_S1"), "a negated selector after a positive one is detected");
+
+  sl_freeslcd (slconn);
+}
+
+static void
 test_update_stream_explicit_entry_not_duplicated (void)
 {
   SLCD *slconn = sl_initslcd ("t", NULL);
@@ -946,6 +983,7 @@ main (void)
   SLT_RUN (test_update_stream_wildcard_adds_station_entry);
   SLT_RUN (test_update_stream_wildcard_invalid_station_id_not_added);
   SLT_RUN (test_update_stream_wildcard_merges_selectors);
+  SLT_RUN (test_update_stream_wildcard_negated_selectors);
   SLT_RUN (test_update_stream_explicit_entry_not_duplicated);
   SLT_RUN (test_update_stream_all_station_adds_station_entry);
   SLT_RUN (test_update_stream_v3_uni_station_no_station_entries);

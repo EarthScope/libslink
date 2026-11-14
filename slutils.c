@@ -948,6 +948,10 @@ update_stream (SLCD *slconn, const char *payload)
  * \a stationid, removing duplicates.  If any matching entry has no
  * selectors, i.e. all streams, the result is NULL.
  *
+ * Negated selectors of one entry would also exclude streams selected by
+ * another, so selectors of multiple entries are not combined when any
+ * are negated; \a matched is then set to 0.
+ *
  * \a matched is set to the count of matching wildcarded entries.
  *
  * Returns an allocated selector string or NULL if none (or on error,
@@ -964,6 +968,7 @@ wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
   size_t maxlen = 0;
   size_t length = 0;
   int allselected = 0;
+  int negated = 0;
 
   *matched = 0;
 
@@ -975,13 +980,30 @@ wildcard_selectors (SLCD *slconn, const char *stationid, int *matched)
     (*matched)++;
 
     if (!curstream->selectors || curstream->selectors[strspn (curstream->selectors, " ")] == '\0')
+    {
       allselected = 1;
+    }
     else
+    {
       maxlen += strlen (curstream->selectors) + 1;
+
+      if (curstream->selectors[strspn (curstream->selectors, " ")] == '!' ||
+          strstr (curstream->selectors, " !"))
+        negated = 1;
+    }
   }
 
   if (*matched == 0 || allselected)
     return NULL;
+
+  if (*matched > 1 && negated)
+  {
+    sl_log_r (slconn, 1, 2,
+              "[%s] not tracking %s, negated selectors of multiple wildcard entries\n",
+              slconn->sladdr, stationid);
+    *matched = 0;
+    return NULL;
+  }
 
   if ((selectors = (char *)malloc (maxlen + 1)) == NULL)
   {
